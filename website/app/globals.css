@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+/*
+ * Tuatale design tokens — Tailwind v4 @theme block.
+ *
+ * Mirrors lib/tokens.ts (TS source of truth). Drift is guarded by
+ * tests/tokens-sync.test.ts which parses this block and asserts every
+ * value matches tokens.ts. Update both sides together.
+ *
+ * Naming: kebab-case here generates the matching Tailwind utility — so
+ * --color-iron-oxide drives `bg-iron-oxide`, `text-iron-oxide`, etc.
+ */
+@theme {
+  /* Colors — Soft Heirloom palette */
+  --color-cream: #fbf3ee;
+  --color-cream-deep: #f5e5dc;
+  --color-iron-oxide: #7a3328;
+  --color-sage: #6b7d5e;
+  --color-near-black: #2e2620;
+  --color-warm-grey: #7a6f62;
+  --color-warm-grey-light: #d9cfc2;
+
+  /* Fonts — exposed as CSS vars by next/font/google in app/layout.tsx */
+  --font-heading: var(--font-eb-garamond);
+  --font-body: var(--font-inter);
+
+  /* Font sizes — named per the type scale (h1, h2, h3, body, caption) */
+  --text-h1: 32px;
+  --text-h2: 24px;
+  --text-h3: 18px;
+  --text-body: 16px;
+  --text-caption: 14px;
+
+  /* Line heights */
+  --leading-heading: 1.25;
+  --leading-body: 1.6;
+
+  /* Letter spacing */
+  --tracking-wordmark: 0.02em;
+
+  /* Spacing — 8px base scale */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+
+  /* Breakpoints — mobile-first; 0px is implicit, no token needed */
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1024px;
+  --breakpoint-wide: 1280px;
+}
+
+/*
+ * Base body defaults: Inter 400, near-black on cream, body line-height,
+ * optimised text rendering. Headings opt into EB Garamond via the
+ * Heading primitive.
+ */
+body {
+  background: var(--color-cream);
+  color: var(--color-near-black);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: var(--text-body);
+  font-weight: 400;
+  line-height: var(--leading-body);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
