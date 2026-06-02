@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>template — prompt-6-iter-1</title>
+
+<!-- Google Fonts: EB Garamond — same as prompt-2-iter-2 and prompt-4-iter-1
+     for project-wide typographic consistency. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+<style>
+  /* ---- Page size + reset --------------------------------------------
+     Landscape letter. Cream background unified to #FAF9F0 (rim-match)
+     2026-05-24 — was #F0EADB. This template fills the page edge-to-edge
+     with the image so the body cream is only visible THROUGH the text-
+     overlay's semi-transparent backdrop (rgba(240, 234, 219, 0.92) below
+     — DELIBERATELY KEPT at the old cream value for this overlay; that
+     8% transmission of body bg is subtle enough that unifying it adds
+     no value while changing the on-art text band's appearance). */
+  @page {
+    size: 11in 8.5in;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 11in;
+    height: 8.5in;
+    overflow: hidden;
+    background-color: #FAF9F0;
+  }
+
+  /* ---- Page container ----------------------------------------------- */
+  .page {
+    position: relative;
+    width: 11in;
+    height: 8.5in;
+  }
+
+  /* ---- Image layer (full-bleed) -------------------------------------
+     Image fills the entire page. No mask, no margins, no organic edges
+     — climactic full-bleed is the design intent. object-fit:cover with
+     center center crops symmetrically (1408×768 source aspect 1.833 in
+     11×8.5 page aspect 1.294: horizontal overflow 29.4% split as 14.7%
+     each side; visible source x=15-85%). */
+  .image-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+  .image-layer img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
+    display: block;
+  }
+
+  /* ---- Text overlay (lower band) ------------------------------------
+     Bottom 30% of page (y=70-100%). Semi-transparent cream backdrop
+     (rgba #F0EADB at 0.92 opacity) lets a hint of painted scene show
+     through while keeping text legible. Padding 0.4in vertical /
+     1.2in horizontal gives the text 8.6in × 1.75in content area —
+     plenty of room for narratives ≤200 chars at 18pt. */
+  .text-overlay {
+    position: absolute;
+    top: 70%;
+    left: 0;
+    width: 100%;
+    height: 30%;
+    background: rgba(240, 234, 219, 0.92);
+    z-index: 2;
+    padding: 0.4in 1.2in;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .narrative {
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    font-size: 18pt;
+    font-weight: 400;
+    line-height: 1.6;
+    color: #1F1A14;
+    text-align: center;
+    font-variant-numeric: oldstyle-nums;
+    letter-spacing: 0.005em;
+    max-width: 100%;
+  }
+  .narrative p {
+    margin: 0 0 1em 0;
+  }
+  .narrative p:last-child {
+    margin-bottom: 0;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="image-layer">
+      <img src="{{IMAGE_URL}}" alt="">
+    </div>
+    <div class="text-overlay">
+      <div class="narrative">{{NARRATIVE_TEXT}}</div>
+    </div>
+  </div>
+</body>
+</html>

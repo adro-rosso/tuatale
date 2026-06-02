@@ -1,0 +1,29 @@
+{
+  "id": "prompt-8-iter-1",
+  "description": "Vertical-split layout — portrait-pinned image (3:4) filling the left 58% column, narrative text in the right 42% column on pure cream. Type B (no region detection, no auto-fit, static CSS). Composition prompt asks Gemini for vertical-emphasis scenes (looking up, towering elements, vertical scale) — the catalogue's portrait-image-orientation slot, distinct from prompt-2's landscape side-by-side. Aspect-pinned to 3:4 so column aspect matches image aspect exactly (zero crop). Validated 2026-05-24 over N=3 (Milky Way / towering tree / stress: indoor-reading-looking-down) — pin held identically across all 3 (0.747 vs 0.750 target), Gemini composed vertically even on the stress scene (tall room interpretation for a low/seated/looking-down action). Catalogue's first portrait-image template + first template on the side-by-side-with-portrait arrangement axis.",
+  "selection_metadata": {
+    "summary": "Vertical-split layout. Portrait-pinned image on the left, narrative text in a pure-cream column on the right. Vertical-emphasis compositions (looking up, towering sky, vertical scale).",
+    "max_narrative_chars": 280,
+    "aesthetic_intent": ["vertical", "towering", "looking-up", "tall-composition", "portrait-image"]
+  },
+  "typography": {
+    "fontFamily": "EB Garamond",
+    "fontSize": 18,
+    "lineHeight": 1.7,
+    "letterSpacing": "0.005em",
+    "color": "#1F1A14",
+    "fontVariantNumeric": "oldstyle-nums"
+  },
+  "regionDetection": null,
+  "autoFit": null,
+  "imageGeneration": {
+    "aspectRatio": "3:4",
+    "styleOverride": "watercolor on cold-press paper, wet-on-wet wash technique, visible pigment granulation, organic uneven boundaries where wash absorbs into paper fiber. Loose, painterly, with intentional white space and atmospheric bleeding. Inspired by contemporary picture book illustration in the style of Sophie Blackall. Warm earthy palette.",
+    "customCompositionRules": "single focal subject, vertical composition, face clearly visible, the vertical axis of the composition aligned with the subject's gaze or gesture.",
+    "compositionPromptTemplate": "The image is a 3:4 PORTRAIT frame — taller than wide. This is a vertical composition. The painted scene fills the portrait frame edge-to-edge; compose to USE the full vertical scale of the frame.\n\nVERTICAL COMPOSITION INTENT: This composition's expressive purpose is VERTICAL SCALE and reaching-upward energy. The composition should emphasize VERTICAL movement, scale, or gaze: the protagonist LOOKING UP, towering elements rising ABOVE the subject (vast sky, tall trees, rising stars, soaring clouds), or the subject framed against a TALL vertical backdrop. The UPPER portion of the frame is where the vertical scale unfolds — the towering sky, the rising elements, the vast above. The LOWER portion is where the protagonist is grounded.\n\nSUBJECT PLACEMENT: protagonist centered horizontally in the portrait frame, positioned in the LOWER HALF of the frame (roughly bottom 40% — feet on the ground), looking UP or reaching UP toward the towering content above. Face clearly visible.\n\nFull painted scene edge-to-edge — atmospheric watercolor wash extending to all four edges of the portrait frame. No cream margins, no contained vignette."
+  },
+  "rendering": {
+    "templateHtmlPath": "template.html",
+    "pageSize": { "width": "11in", "height": "8.5in" }
+  }
+}

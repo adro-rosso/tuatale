@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>prompt-7-iter-1 v2 PROTOTYPE — three-band layout</title>
+
+<!-- Prototype for v2 structural redesign. NOT the canonical template.
+     If approved, will move to ../template.html and ../config.json gets
+     updated accordingly. Until then, canonical files are untouched. -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;500;600&family=Patrick+Hand&display=swap" rel="stylesheet">
+
+<style>
+  /* ---- Page size + reset --------------------------------------------- */
+  @page {
+    size: 11in 8.5in;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 11in;
+    height: 8.5in;
+    overflow: hidden;
+    background-color: #F0E8D8;
+  }
+  .page {
+    position: relative;
+    width: 11in;
+    height: 8.5in;
+  }
+
+  /* ---- IMAGE BAND ---------------------------------------------------
+     5% top margin → 36% image height → 41% bottom of image.
+     50% page width centered (left 25% to 75%).
+     Native 16:9 pinned image (1376×768 → aspect 1.778) drops into a
+     50%w × 36%h box (528×297px at 96dpi → 1.778 aspect) with NO object-
+     fit crop. The CSS box matches Gemini's pinned aspect exactly.
+     Feathered edges via cross-gradient mask (12% feather each side). */
+  .image-band {
+    position: absolute;
+    top: 5%;
+    left: 25%;
+    width: 50%;
+    height: 36%;
+  }
+  .image-band img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    -webkit-mask-image:
+      linear-gradient(to right,  transparent 0%, black 12%, black 88%, transparent 100%),
+      linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to right,  transparent 0%, black 12%, black 88%, transparent 100%),
+      linear-gradient(to bottom, transparent 0%, black 12%, black 88%, transparent 100%);
+    mask-composite: intersect;
+  }
+
+  /* ---- GAP BAND (41% to 58% of page height) -------------------------
+     17% tall pure cream. No element occupies this zone — the body
+     background-color (#F0E8D8) shows through. Image CANNOT extend into
+     this band (clipped by .image-band's height). Text CANNOT extend up
+     into this band (clipped by .text-band's top: 58%). The clean gap
+     is the structural guarantee. */
+
+  /* ---- TEXT BAND ----------------------------------------------------
+     58% top → 32% height → ends at 90% page height.
+     50% page width centered. No backdrop, no text-shadow halo — text
+     sits on pure cream (the gap band physically prevents painted
+     intrusion). Flexbox centers the narrative both axes. */
+  .text-band {
+    position: absolute;
+    top: 58%;
+    left: 25%;
+    width: 50%;
+    height: 32%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .narrative {
+    font-family: "Architects Daughter", "Patrick Hand", "Caveat", cursive, serif;
+    font-size: 14pt;
+    font-weight: 400;
+    line-height: 1.7;
+    color: #3D2418;
+    letter-spacing: 0.01em;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="image-band">
+      <img src="{{IMAGE_URL}}" alt="">
+    </div>
+    <div class="text-band">
+      <div class="narrative">{{NARRATIVE_TEXT}}</div>
+    </div>
+  </div>
+</body>
+</html>

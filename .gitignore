@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------
+# Secrets — never commit any env file (except .env.example, which is the
+# documented template). Covers root pipeline .env AND website/.env.local.
+# ---------------------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+
+# ---------------------------------------------------------------------------
+# Dependencies — auto-generated, recreate with `npm install`
+# Pattern is unanchored so it applies to root AND website/ subtree.
+# ---------------------------------------------------------------------------
+node_modules/
+
+# ---------------------------------------------------------------------------
+# Pipeline outputs — don't pollute the repo with generated books / sheets.
+# output-run*/ catches pre-naming-convention dirs from early DaBookTing dev
+# (output-run1, output-run2, output-run3-character-sheet). recraft-spike/
+# was a throwaway exploratory folder from the same era.
+# ---------------------------------------------------------------------------
+output/
+output-run*/
+recraft-spike/
+
+# ---------------------------------------------------------------------------
+# Binary office documents — kept out of git so the repo stays diffable.
+# Move planning docs to docs/ as markdown when they need to be tracked.
+# ---------------------------------------------------------------------------
+*.docx
+
+# ---------------------------------------------------------------------------
+# Website build artifacts (Next.js + bundlers).
+# website/.gitignore already covers most of these inside the subtree, but
+# we double up at the root so a misconfigured tool can't bypass them.
+# ---------------------------------------------------------------------------
+.next/
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# ---------------------------------------------------------------------------
+# Vercel deployment metadata (created by `vercel pull` / `vercel link`).
+# ---------------------------------------------------------------------------
+.vercel/
+
+# ---------------------------------------------------------------------------
+# Test artifacts (Playwright + Vitest).
+# ---------------------------------------------------------------------------
+playwright-report/
+test-results/
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+npm-debug.log*
+*.log
+
+# ---------------------------------------------------------------------------
+# Editor / OS junk
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/

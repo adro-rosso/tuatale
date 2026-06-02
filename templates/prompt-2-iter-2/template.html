@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>template — prompt-2-iter-2</title>
+
+<!-- Google Fonts: EB Garamond. Old-style serif chosen to match the Recraft
+     reference's typographic character (Garamond / Caslon family). Loaded
+     over the network at render time; the renderer script waits for
+     document.fonts.ready before printing the PDF so font embedding is
+     deterministic. If we ever need offline rendering we self-host the
+     woff2 files inside this template dir. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+<style>
+  /* ---- Page size + reset ---------------------------------------------
+     Landscape letter; matches doc.pdf({width:"11in",height:"8.5in"}) in
+     scripts/render-pdf-template.js. Zero page margin because the cream
+     background extends edge-to-edge. */
+  @page {
+    size: 11in 8.5in;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 11in;
+    height: 8.5in;
+    overflow: hidden;
+    /* Warm cream — unified across all production templates 2026-05-24
+       at #FAF9F0 (rim-match) to eliminate the luminance step around
+       Gemini's painted-rim borders. Previously #F0EADB; see SESSION_NOTES
+       "BG unification (2026-05-24)" for the rim-diagnosis + comparison. */
+    background-color: #FAF9F0;
+  }
+
+  /* ---- Page container ----------------------------------------------- */
+  .page {
+    position: relative;
+    width: 11in;
+    height: 8.5in;
+  }
+
+  /* ---- Image layer --------------------------------------------------
+     Anchored to the right edge; fills the right 65% of page width and
+     full page height. The CSS mask creates a soft horizontal feather on
+     the inner (left) edge of the image — approximating the Recraft
+     reference's organic-edge bleed without faking painted elements that
+     aren't in the source image. See SESSION_NOTES "Template
+     architecture finding" for the honest limit of this approach. */
+  .image-layer {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 65%;
+    height: 100%;
+    /* 18% left-edge feather: 0 → 18% fades from transparent to opaque;
+       the remaining 82% of the image is fully visible. */
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 18%, black 100%);
+            mask-image: linear-gradient(to right, transparent 0%, black 18%, black 100%);
+  }
+  .image-layer img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Anchor meaningful content to the right side of the canvas so it
+       doesn't vanish into the feathered inner edge. */
+    object-position: right center;
+    display: block;
+  }
+
+  /* ---- Text layer ---------------------------------------------------
+     Narrow left column, vertically centered. Width = 32% of page so the
+     text breathes in the cream zone without crowding the feathered
+     image edge. */
+  .text-layer {
+    position: absolute;
+    top: 50%;
+    left: 5%;
+    transform: translateY(-50%);
+    width: 32%;
+  }
+  .narrative {
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    font-size: 18pt;
+    font-weight: 400;
+    line-height: 1.7;
+    color: #1F1A14;
+    text-align: left;
+    /* EB Garamond ships proper old-style figures; opt in. */
+    font-variant-numeric: oldstyle-nums;
+    /* Subtle tightening for body serif — matches refined book practice. */
+    letter-spacing: 0.005em;
+  }
+  .narrative p {
+    margin: 0 0 1em 0;
+  }
+  .narrative p:last-child {
+    margin-bottom: 0;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="image-layer">
+      <img src="{{IMAGE_URL}}" alt="">
+    </div>
+    <div class="text-layer">
+      <div class="narrative">{{NARRATIVE_TEXT}}</div>
+    </div>
+  </div>
+</body>
+</html>

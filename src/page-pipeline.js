@@ -1,0 +1,752 @@
+// src/page-pipeline.js
+// Per-page rendering pipeline that ties together:
+//   - measureText (text-measurement primitive)
+//   - detectCleanRegion (image-aware region detection)
+//   - fitTextToRegion (auto-fit text to detected region)
+//   - generateImage (Gemini image gen)
+//   - dynamic-CSS Puppeteer PDF rendering
+//
+// Given a template config + scene + narrative, this function produces a
+// single PDF page where text is positioned in the cleanest cream area
+// found in the generated (or override-provided) image, and sized to fit
+// that area cleanly via auto-fit.
+//
+// See SESSION_NOTES for Stage-2 architecture context.
+
+import "dotenv/config";  // src/gemini.js reads GEMINI_API_KEY at import time
+import fs from "node:fs";
+import os from "node:os";
+import crypto from "node:crypto";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import puppeteer from "puppeteer";
+import sharp from "sharp";
+import { measureText } from "./text-measurement.js";
+import { detectCleanRegion } from "./region-detection.js";
+import { fitTextToRegion } from "./auto-fit.js";
+import { generateImage } from "./gemini.js";
+
+const GEMINI_IMAGE_USD_PER_CALL = 0.04;
+
+// ---- Unit helpers ---------------------------------------------------------
+
+function parseInchesValue(value) {
+  // Accept "11in", "612pt", or a bare number (treated as inches).
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") throw new Error(`parseInchesValue: bad input ${value}`);
+  if (value.endsWith("in")) return parseFloat(value);
+  if (value.endsWith("pt")) return parseFloat(value) / 72;
+  return parseFloat(value);
+}
+
+function inchesToPoints(inches) {
+  return inches * 72;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// ---- Pixel-to-page-point conversion (object-fit: cover) ------------------
+// scale = max(pageHpt/srcHpx, pageWpt/srcWpx). The larger scale applies;
+// the other axis overflows and is centre-cropped. See SESSION_NOTES
+// "Pixel-to-page-pt conversion is load-bearing" for the math derivation.
+function srcToPagePt(srcRegion, imgInfo, pageSizeIn) {
+  const srcWpx = imgInfo.width;
+  const srcHpx = imgInfo.height;
+  const pageWpt = inchesToPoints(parseInchesValue(pageSizeIn.width));
+  const pageHpt = inchesToPoints(parseInchesValue(pageSizeIn.height));
+
+  const scaleByH = pageHpt / srcHpx;
+  const scaleByW = pageWpt / srcWpx;
+  const scale = Math.max(scaleByH, scaleByW);
+  const scaledWpt = srcWpx * scale;
+  const scaledHpt = srcHpx * scale;
+  const cropLeftPt = (scaledWpt - pageWpt) / 2;
+  const cropTopPt = (scaledHpt - pageHpt) / 2;
+
+  return {
+    region: {
+      x: srcRegion.x * scale - cropLeftPt,
+      y: srcRegion.y * scale - cropTopPt,
+      width: srcRegion.width * scale,
+      height: srcRegion.height * scale,
+    },
+    conversion: {
+      scale,
+      scaleByHeight: scaleByH,
+      scaleByWidth: scaleByW,
+      cropLeftPt,
+      cropTopPt,
+      pageWidthPt: pageWpt,
+      pageHeightPt: pageHpt,
+    },
+  };
+}
+
+// ---- Dynamic CSS override block ------------------------------------------
+function buildDynamicCss({ region, fontSize, color }) {
+  return `
+    .text-layer {
+      top: ${region.y.toFixed(3)}pt !important;
+      left: ${region.x.toFixed(3)}pt !important;
+      width: ${region.width.toFixed(3)}pt !important;
+      height: ${region.height.toFixed(3)}pt !important;
+      transform: none !important;
+    }
+    .narrative {
+      font-size: ${fontSize}pt !important;
+      ${color ? `color: ${color} !important;` : ""}
+    }
+  `;
+}
+
+// ---- Render PDF with dynamic CSS injection -------------------------------
+// Returns { pdfPath, renderedPngPath }. The PNG is a viewport screenshot
+// taken in the same Puppeteer session as the PDF — same HTML, same
+// dimensions, same object-fit:cover crop. It exists so measurement can
+// run against the FINAL rendered page (post-crop, post-text-overlay) —
+// the only honest reflection of what the user sees, and the lesson banked
+// from prompt-7-iter-1 validation (measuring the raw Gemini PNG lied when
+// Gemini's output aspect varied and CSS cover re-cropped it on the page).
+async function renderPdfWithDynamicCss({
+  templateHtmlPath,
+  imagePath,
+  narrativeText,
+  pageSize,
+  dynamicCss,
+  outputPath,
+}) {
+  let templateHtml = fs.readFileSync(templateHtmlPath, "utf8");
+  const imageFileUrl = pathToFileURL(imagePath).href;
+  templateHtml = templateHtml
+    .replace(/\{\{IMAGE_URL\}\}/g, imageFileUrl)
+    .replace(/\{\{NARRATIVE_TEXT\}\}/g, escapeHtml(narrativeText));
+
+  // Source-order CSS: the injected <style> at end of <head> overrides the
+  // template's earlier <style> for equal-specificity selectors. Combined
+  // with !important rules in dynamicCss, the override is robust.
+  // Type B templates skip the injection entirely (dynamicCss is null).
+  if (dynamicCss) {
+    templateHtml = templateHtml.replace(
+      /<\/head>/i,
+      `<style>${dynamicCss}</style></head>`
+    );
+  }
+
+  // Unique per-render temp path in the OS temp dir — NOT a shared path in
+  // the template dir. Concurrent renders (multiple books, or a multi-page
+  // book under load) previously collided on a single
+  // `templates/<id>/_pipeline-rendering.html`, racing write/read/unlink
+  // (caused the Mia + Priya retries in the 2026-05-25 robustness batch).
+  // crypto.randomUUID() guarantees no two renders share a path. The temp
+  // HTML has no relative-path deps (image is an absolute file:// URL,
+  // fonts are absolute https), so os.tmpdir() is safe.
+  const tempHtmlPath = path.join(os.tmpdir(), `daboo-render-${crypto.randomUUID()}.html`);
+  fs.writeFileSync(tempHtmlPath, templateHtml, "utf8");
+
+  // Sidecar PNG path — `page-NN.pdf` → `page-NN-rendered.png`. Sits next
+  // to the PDF in outputDir so tests + downstream tools can locate it
+  // without extra plumbing.
+  const renderedPngPath = outputPath.replace(/\.pdf$/i, "-rendered.png");
+
+  // Viewport for screenshot. Page dimensions at 96dpi (browser default
+  // for CSS inch units). 11×8.5in → 1056×816px. page.pdf() ignores the
+  // viewport (uses print rendering) so the PDF is unaffected; only the
+  // screenshot uses these dimensions.
+  const pageWidthIn = parseInchesValue(pageSize.width);
+  const pageHeightIn = parseInchesValue(pageSize.height);
+  const viewportPxW = Math.round(pageWidthIn * 96);
+  const viewportPxH = Math.round(pageHeightIn * 96);
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.setViewport({ width: viewportPxW, height: viewportPxH });
+    await page.goto(pathToFileURL(tempHtmlPath).href, { waitUntil: "networkidle0" });
+    await page.evaluate(() => document.fonts.ready);
+    await page.pdf({
+      path: outputPath,
+      width: pageSize.width,
+      height: pageSize.height,
+      printBackground: true,
+      margin: { top: 0, right: 0, bottom: 0, left: 0 },
+      preferCSSPageSize: false,
+    });
+    await page.screenshot({
+      path: renderedPngPath,
+      clip: { x: 0, y: 0, width: viewportPxW, height: viewportPxH },
+      type: "png",
+    });
+    await browser.close();
+  } catch (err) {
+    if (browser) { try { await browser.close(); } catch {} }
+    throw err;
+  } finally {
+    // Clean up the per-render temp HTML on BOTH success and error paths.
+    // Guarded: the file may already be gone (or never written) — losing
+    // the temp file is harmless, but a throw here would mask the real error.
+    try { fs.unlinkSync(tempHtmlPath); } catch {}
+  }
+  return { pdfPath: outputPath, renderedPngPath };
+}
+
+// ---- Diagnostic helpers --------------------------------------------------
+
+function finalizeTiming(timing, tStart) {
+  timing.totalMs = Date.now() - tStart;
+  return timing;
+}
+
+function extractFitDiagnostics(fit) {
+  if (!fit) return null;
+  return {
+    fits: fit.fits,
+    fontSize: fit.fontSize,
+    lines: fit.measurement ? fit.measurement.lines : null,
+    iterations: fit.iterations,
+    rejectedSizes: fit.rejectedSizes,
+    measurement: fit.measurement ? {
+      heightPt: fit.measurement.heightPt,
+      widthPt: fit.measurement.widthPt,
+      actualMaxWidthPt: fit.measurement.actualMaxWidthPt,
+    } : null,
+  };
+}
+
+// ---- Main pipeline entry -------------------------------------------------
+
+// Canvas-split V2 composition rule (2026-05-31, validated via the Pip
+// Scene B probe in templates/_multisubject-probe/). Stronger replacement
+// for the Stage C wording ("Single unified scene with all named subjects
+// appearing exactly once...") — adds positive shared-environment cues
+// (same ground / light / horizon) and an expanded negative-list with
+// synonyms (panel / seam / split / diptych / side-by-side) so Gemini's
+// escape hatches into compositional dialects close cleanly.
+//
+// Applied to N>1 branches only (gated 2026-06-01 per Item 7 audit):
+//   - N>1: load-bearing — fixes the mid-distance wide-shot vertical seam
+//     observed across the Bramble + Pip soft-anchor probes
+//   - N=1: skipped — no canvas-seam failure mode to defend against (only
+//     one subject), and the plural framing ("subjects share the same
+//     ground", "each named subject appears exactly once") could subtly
+//     suppress legitimate single-subject compositional flexibility
+const COMPOSITION_RULE_V2 =
+  "Render this as a single continuous painted scene. The entire image must " +
+  "read as one shared physical space with one consistent background that " +
+  "flows unbroken across the full width of the frame. NO panel divisions, " +
+  "NO vertical seams, NO split compositions, NO diptych or side-by-side " +
+  "arrangements. The subjects share the same ground, the same light, the " +
+  "same horizon — they are all in ONE place together, not in separate views. " +
+  "Each named subject appears exactly once in the scene.";
+
+/**
+ * Build the user-facing prompt string for one page's Gemini call. Branches
+ * on subjects.length: N=1 follows the legacy single-subject layout; N>1
+ * adds per-subject Appearance blocks + a References mapping (Stage B's
+ * parallel-emphasis pattern).
+ *
+ * The COMPOSITION_RULE_V2 is appended to templateComposition in the N>1
+ * branch only — N=1 uses the bare templateComposition (no canvas-seam
+ * defense needed for one subject, and the plural framing risks subtle
+ * over-constraint at the prompt level).
+ *
+ * Multi-subject layout (N > 1, Step 3 build, 2026-05-31): one Subject + one
+ * Appearance block per subject; a single shared Style / Composition /
+ * Template composition / Avoid; and a trailing References mapping that
+ * pins each subject to a contiguous range of reference-image positions
+ * (Stage B's parallel-emphasis pattern).
+ *
+ * @param {object} opts
+ * @param {Array<{
+ *   name: string, age: number, description: string,
+ *   subjectType: string, sheetCount: number
+ * }>} opts.subjects  IN ORDER — the order each subject's sheets are
+ *   concatenated into the references array passed to generateImage. Element
+ *   [0] is the anchor (protagonist for multi-character books; the sole
+ *   subject for legacy single-protagonist books). sheetCount is the number
+ *   of refs THIS call uses for this subject (post-allocator), not the total
+ *   minted for them.
+ * @param {object} opts.scene                  { page, action }
+ * @param {string} opts.styleLine              joined Style: text
+ * @param {string} opts.compositionLine        joined Composition: text
+ * @param {string} opts.templateComposition    template-specific composition
+ * @param {string} opts.negativePrompt         joined Avoid: text
+ * @returns {string} the full prompt
+ */
+export function buildScenePrompt({
+  subjects,
+  scene,
+  styleLine,
+  compositionLine,
+  templateComposition,
+  negativePrompt,
+}) {
+  if (!Array.isArray(subjects) || subjects.length === 0) {
+    throw new Error("buildScenePrompt: subjects must be a non-empty array");
+  }
+
+  // ---- N=1: single-subject prompt. ---------------------------------------
+  // The bare templateComposition is sent unchanged — V2 is N>1-only (gated
+  // 2026-06-01 per Item 7 audit: no canvas-seam failure mode to defend
+  // against at N=1, and the plural framing risked suppressing legitimate
+  // single-subject compositional space).
+  // The "name" field on the single subject is intentionally NOT inserted
+  // into the prompt (legacy used anonymous "a <age>-year-old child" to
+  // discourage Gemini from rendering the name as image text).
+  if (subjects.length === 1) {
+    const s = subjects[0];
+    return [
+      `Subject: a ${s.age}-year-old child.`,
+      `Appearance: ${s.description}.`,
+      `Style: ${styleLine}.`,
+      `Composition: ${compositionLine}`,
+      `Template composition: ${templateComposition}`,
+      `Avoid: ${negativePrompt}.`,
+    ].join("\n")
+      + `\n\nScene: ${scene.action}\n\nUse the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
+  }
+
+  // ---- N>1: V2 canvas-seam defense is load-bearing here. -----------------
+  const templateCompositionV2 = `${templateComposition} ${COMPOSITION_RULE_V2}`;
+
+  // ---- N>1: multi-subject prompt with References mapping. ----------------
+  // Stage B's parallel-emphasis pattern: each subject gets its own
+  // labelled Subject + Appearance block, and the closing References line
+  // tells Gemini which reference positions anchor which subject.
+  const subjectBlocks = [];
+  let refCursor = 1; // 1-based positions for human-readable References line
+  const refMappingPieces = [];
+  for (let i = 0; i < subjects.length; i++) {
+    const s = subjects[i];
+    const label = s.subjectType === "non_human"
+      ? `${s.name}, a handmade non-human subject`
+      : `a ${s.age}-year-old child named ${s.name}`;
+    subjectBlocks.push(`Subject ${i + 1}: ${label}.`);
+    subjectBlocks.push(`Appearance of ${s.name}: ${s.description}.`);
+    const startIdx = refCursor;
+    const endIdx = refCursor + s.sheetCount - 1;
+    refMappingPieces.push(
+      startIdx === endIdx
+        ? `ref ${startIdx} is ${s.name}`
+        : `refs ${startIdx}-${endIdx} are ${s.name}`,
+    );
+    refCursor = endIdx + 1;
+  }
+
+  return [
+    `Subjects: ${subjects.length}.`,
+    ...subjectBlocks,
+    `Style: ${styleLine}.`,
+    `Composition: ${compositionLine}`,
+    `Template composition: ${templateCompositionV2}`,
+    `Avoid: ${negativePrompt}.`,
+  ].join("\n")
+    + `\n\nScene: ${scene.action}\n\nUse the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
+}
+
+/**
+ * Render a single page through the full Stage-2 pipeline.
+ *
+ * @param {object} opts
+ * @param {string} opts.templateConfigPath   absolute path to a template config.json
+ * @param {object} opts.scene                { page: number, action: string }
+ * @param {string} opts.narrativeText        the page's narrative
+ * @param {Array<{
+ *   name: string, age: number, description: string,
+ *   subjectType: string, sheets: Buffer[]
+ * }>} [opts.subjects]
+ *   The subjects to anchor this page (Step 3 multi-character build). Order
+ *   matters — element [0] is the anchor (protagonist for multi-character
+ *   books). The wiring layer (scripts/generate-book.js) builds this array
+ *   per-scene from scene.subjects_present + the allocator's view counts.
+ *   `sheets` is the ACTUAL slice for this call (already capped to the
+ *   allocated view count); they are concatenated in order to form the
+ *   refs[] passed to generateImage. Required if imagePathOverride is not set.
+ * @param {string}   [opts.sceneStyle]            required if imagePathOverride not set
+ * @param {string}   [opts.sceneNegativePrompt]   required if imagePathOverride not set
+ * @param {string}   opts.outputDir               directory where PNG + PDF land
+ * @param {string|null} [opts.imagePathOverride=null] skip Gemini, use this image
+ * @returns {Promise<{
+ *   success: boolean,
+ *   pdfPath: string | null,
+ *   imagePath: string | null,
+ *   diagnostics: object,
+ *   error: string | null,
+ * }>}
+ */
+export async function renderPageWithTemplate({
+  templateConfigPath,
+  scene,
+  narrativeText,
+  subjects,
+  sceneStyle,
+  sceneNegativePrompt,
+  outputDir,
+  imagePathOverride = null,
+  callContext = null,
+}) {
+  const timing = {
+    imageGenMs: 0,
+    regionDetectMs: 0,
+    autoFitMs: 0,
+    renderMs: 0,
+    totalMs: 0,
+  };
+  const tStart = Date.now();
+  let cost = 0;
+  let detection = null;
+  let fit = null;
+  let pagePtConversion = null;
+  let dynamicCssOut = null;
+  let imagePath = null;
+
+  try {
+    if (!fs.existsSync(templateConfigPath)) {
+      throw new Error(`template config not found: ${templateConfigPath}`);
+    }
+    const config = JSON.parse(fs.readFileSync(templateConfigPath, "utf8"));
+    const configDir = path.dirname(templateConfigPath);
+    const templateHtmlPath = path.join(configDir, config.rendering.templateHtmlPath);
+
+    // Three template modes:
+    //   Type A: detection ON  + autoFit ON  — detect cream region, auto-fit into it
+    //   Type B: detection OFF + autoFit OFF — static template CSS, fixed fontSize
+    //   Type C: detection OFF + autoFit ON  — fixed config.textRegion box, auto-fit into it
+    // Invalid: detection ON + autoFit OFF (a detected region with no auto-fit
+    // to size text into it is meaningless).
+    const detectionEnabled = config.regionDetection !== null && config.regionDetection !== undefined;
+    const autoFitEnabled = config.autoFit !== null && config.autoFit !== undefined;
+    if (detectionEnabled && !autoFitEnabled) {
+      throw new Error(
+        `Config error: regionDetection is set but autoFit is null. A detected ` +
+        `region needs auto-fit to size text into it. Set autoFit (Type A), null ` +
+        `both (Type B), or use autoFit + textRegion without regionDetection (Type C).`
+      );
+    }
+
+    fs.mkdirSync(outputDir, { recursive: true });
+    const pageNumStr = String(scene.page).padStart(2, "0");
+
+    // ---- 1. Image: generate via Gemini, or use override -----------------
+    if (imagePathOverride) {
+      imagePath = imagePathOverride;
+      if (!fs.existsSync(imagePath)) {
+        throw new Error(`imagePathOverride not found: ${imagePath}`);
+      }
+    } else {
+      if (!Array.isArray(subjects) || subjects.length === 0) {
+        throw new Error("subjects[] required (non-empty) when imagePathOverride is not set");
+      }
+      for (let i = 0; i < subjects.length; i++) {
+        const s = subjects[i];
+        if (!s || typeof s.age !== "number") {
+          throw new Error(`subjects[${i}] missing 'age'`);
+        }
+        if (typeof s.description !== "string") {
+          throw new Error(`subjects[${i}] missing 'description'`);
+        }
+        if (!Array.isArray(s.sheets) || s.sheets.length === 0) {
+          throw new Error(`subjects[${i}] (${s.name ?? "unnamed"}) has no sheets`);
+        }
+        if (subjects.length > 1 && (typeof s.name !== "string" || !s.name)) {
+          throw new Error(`subjects[${i}] missing 'name' (required for multi-subject pages)`);
+        }
+      }
+
+      // Build the Template-composition prompt text.
+      // Type A (region detection + auto-fit): run a baseline measureText
+      // to derive cream-zone dims and substitute placeholders ({{LINES}},
+      // {{CREAM_*}}) in the template.
+      // Type B (static template CSS): no placeholders in the template;
+      // use it verbatim. Skipping the baseline measure also avoids
+      // requiring maxFontSize / paddingVerticalIn / paddingHorizontalIn
+      // in Type B configs.
+      let templateComposition;
+      if (detectionEnabled) {
+        const pageWidthIn = parseInchesValue(config.rendering.pageSize.width);
+        const pageHeightIn = parseInchesValue(config.rendering.pageSize.height);
+
+        const baselineMeasure = await measureText({
+          text: narrativeText,
+          fontFamily: config.typography.fontFamily,
+          fontSize: config.typography.maxFontSize,
+          lineHeight: config.typography.lineHeight,
+          maxWidth: "70%",
+          pageWidth: config.rendering.pageSize.width,
+          pageHeight: config.rendering.pageSize.height,
+          letterSpacing: config.typography.letterSpacing,
+          fontVariantNumeric: config.typography.fontVariantNumeric,
+        });
+
+        const creamWidthIn = (baselineMeasure.actualMaxWidthPt / 72) + config.imageGeneration.paddingHorizontalIn;
+        const creamHeightIn = baselineMeasure.heightIn + config.imageGeneration.paddingVerticalIn;
+        const creamWidthPct = (creamWidthIn / pageWidthIn) * 100;
+        const creamHeightPct = (creamHeightIn / pageHeightIn) * 100;
+
+        templateComposition = config.imageGeneration.compositionPromptTemplate
+          .replace(/\{\{LINES\}\}/g, String(baselineMeasure.lines))
+          .replace(/\{\{CREAM_HEIGHT_PCT\}\}/g, creamHeightPct.toFixed(2))
+          .replace(/\{\{CREAM_WIDTH_PCT\}\}/g, creamWidthPct.toFixed(2))
+          .replace(/\{\{CREAM_HEIGHT_IN\}\}/g, creamHeightIn.toFixed(2))
+          .replace(/\{\{CREAM_WIDTH_IN\}\}/g, creamWidthIn.toFixed(2));
+      } else {
+        // Type B: compositionPromptTemplate has no placeholders, use verbatim
+        templateComposition = config.imageGeneration.compositionPromptTemplate;
+      }
+
+      const styleLine = config.imageGeneration.styleOverride || sceneStyle;
+      const compositionLine = config.imageGeneration.customCompositionRules
+        || "full body, centered subject, clean uncluttered background, consistent framing, face clearly visible.";
+
+      // Adapt each subject for the prompt builder: sheetCount = actual
+      // reference count this call sends for that subject (already capped
+      // by the allocator before they reached us).
+      const promptSubjects = subjects.map((s) => ({
+        name: s.name,
+        age: s.age,
+        description: s.description,
+        subjectType: s.subjectType,
+        sheetCount: s.sheets.length,
+      }));
+      const fullPrompt = buildScenePrompt({
+        subjects: promptSubjects,
+        scene,
+        styleLine,
+        compositionLine,
+        templateComposition,
+        negativePrompt: sceneNegativePrompt,
+      });
+
+      // Reference images: concatenate each subject's allocated sheets in
+      // subject order. Subject ordering is the caller's responsibility;
+      // the References line in the prompt assumes the same order.
+      const referenceImages = [];
+      for (const s of subjects) {
+        for (const sheet of s.sheets) referenceImages.push(sheet);
+      }
+
+      const tImgStart = Date.now();
+      const buf = await generateImage(
+        fullPrompt,
+        referenceImages,
+        { aspectRatio: config.imageGeneration?.aspectRatio },
+        callContext ?? {},
+      );
+      timing.imageGenMs = Date.now() - tImgStart;
+      cost += GEMINI_IMAGE_USD_PER_CALL;
+
+      imagePath = path.join(outputDir, `page-${pageNumStr}.png`);
+      fs.writeFileSync(imagePath, buf);
+    }
+
+    // Default fontSize for Type B (static template CSS). Auto-fit overrides
+    // this for Type A inside the conditional below.
+    let fontSize = config.typography.fontSize;
+
+    if (detectionEnabled) {
+      // ---- 2. Detect clean region (source-pixel coords) -----------------
+      const tDetectStart = Date.now();
+      detection = await detectCleanRegion({
+        imagePath,
+        roi: config.regionDetection.roi,
+        creamTarget: config.regionDetection.creamTarget,
+        creamDistance: config.regionDetection.creamDistance,
+        minSizePx: config.regionDetection.minSizePx,
+      });
+      timing.regionDetectMs = Date.now() - tDetectStart;
+
+      if (detection.warnings.some((w) => w.includes("failed minSizePx"))) {
+        return {
+          success: false,
+          pdfPath: null,
+          imagePath,
+          diagnostics: {
+            regionDetection: detection,
+            pagePtConversion: null,
+            autoFit: null,
+            dynamicCss: null,
+            fontSize,
+            cost,
+            timing: finalizeTiming(timing, tStart),
+          },
+          error: "detected region too small (failed minSizePx)",
+        };
+      }
+
+      // ---- 3. Convert pixel coords → page-point coords -----------------
+      const imgMeta = await sharp(imagePath).metadata();
+      const converted = srcToPagePt(detection.region, imgMeta, config.rendering.pageSize);
+      pagePtConversion = {
+        sourceImageDimensions: { width: imgMeta.width, height: imgMeta.height },
+        regionSourcePx: { ...detection.region },
+        regionPagePt: converted.region,
+        conversion: converted.conversion,
+      };
+
+      // ---- 4. Auto-fit text to page-pt region --------------------------
+      const tFitStart = Date.now();
+      fit = await fitTextToRegion({
+        text: narrativeText,
+        region: { width: converted.region.width, height: converted.region.height },
+        fontFamily: config.typography.fontFamily,
+        lineHeight: config.typography.lineHeight,
+        maxFontSize: config.typography.maxFontSize,
+        minFontSize: config.typography.minFontSize,
+        letterSpacing: config.typography.letterSpacing,
+        fontVariantNumeric: config.typography.fontVariantNumeric,
+      });
+      timing.autoFitMs = Date.now() - tFitStart;
+
+      if (!fit.fits) {
+        return {
+          success: false,
+          pdfPath: null,
+          imagePath,
+          diagnostics: {
+            regionDetection: detection,
+            pagePtConversion,
+            autoFit: extractFitDiagnostics(fit),
+            dynamicCss: null,
+            fontSize,
+            cost,
+            timing: finalizeTiming(timing, tStart),
+          },
+          error: "no readable font size fits detected region",
+        };
+      }
+      fontSize = fit.fontSize;
+
+      // ---- 5a. Build dynamic CSS for the text layer --------------------
+      dynamicCssOut = buildDynamicCss({
+        region: converted.region,
+        fontSize,
+        color: config.typography.color,
+      });
+    } else if (autoFitEnabled) {
+      // ---- Type C: fixed text region from config + auto-fit -----------
+      // No region detection. The text region is a fixed box declared in
+      // config.textRegion (fractional page coords). Auto-fit sizes the
+      // narrative into that fixed box. The region is page-native — no
+      // source-pixel → page-pt conversion needed.
+      if (!config.textRegion) {
+        throw new Error(
+          "Type C template (autoFit set, regionDetection null) requires " +
+          "config.textRegion { x, y, width, height } in fractional page coords."
+        );
+      }
+      const tr = config.textRegion;
+      const pageWpt = inchesToPoints(parseInchesValue(config.rendering.pageSize.width));
+      const pageHpt = inchesToPoints(parseInchesValue(config.rendering.pageSize.height));
+      const fixedRegion = {
+        x: tr.x * pageWpt,
+        y: tr.y * pageHpt,
+        width: tr.width * pageWpt,
+        height: tr.height * pageHpt,
+      };
+
+      const tFitStart = Date.now();
+      fit = await fitTextToRegion({
+        text: narrativeText,
+        region: { width: fixedRegion.width, height: fixedRegion.height },
+        fontFamily: config.typography.fontFamily,
+        lineHeight: config.typography.lineHeight,
+        maxFontSize: config.typography.maxFontSize,
+        minFontSize: config.typography.minFontSize,
+        letterSpacing: config.typography.letterSpacing,
+        fontVariantNumeric: config.typography.fontVariantNumeric,
+      });
+      timing.autoFitMs = Date.now() - tFitStart;
+
+      if (!fit.fits) {
+        return {
+          success: false,
+          pdfPath: null,
+          imagePath,
+          diagnostics: {
+            regionDetection: null,
+            pagePtConversion: null,
+            autoFit: extractFitDiagnostics(fit),
+            dynamicCss: null,
+            fontSize,
+            cost,
+            timing: finalizeTiming(timing, tStart),
+          },
+          error: "no readable font size fits fixed text region",
+        };
+      }
+      fontSize = fit.fontSize;
+
+      dynamicCssOut = buildDynamicCss({
+        region: fixedRegion,
+        fontSize,
+        color: config.typography.color,
+      });
+    }
+    // (Type B: detection / pagePtConversion / fit / dynamicCssOut all stay
+    // null; fontSize stays at config.typography.fontSize; render uses the
+    // template's static CSS only.)
+
+    // ---- 5b. Render PDF (dynamic CSS injection only for Type A) -------
+    const tRenderStart = Date.now();
+    const pdfPath = path.join(outputDir, `page-${pageNumStr}.pdf`);
+    const { renderedPngPath } = await renderPdfWithDynamicCss({
+      templateHtmlPath,
+      imagePath,
+      narrativeText,
+      pageSize: config.rendering.pageSize,
+      dynamicCss: dynamicCssOut,
+      outputPath: pdfPath,
+    });
+    timing.renderMs = Date.now() - tRenderStart;
+    timing.totalMs = Date.now() - tStart;
+
+    return {
+      success: true,
+      pdfPath,
+      imagePath,
+      renderedPngPath,
+      diagnostics: {
+        regionDetection: detection,
+        pagePtConversion,
+        autoFit: extractFitDiagnostics(fit),
+        dynamicCss: dynamicCssOut,
+        fontSize,
+        cost,
+        timing,
+      },
+      error: null,
+    };
+  } catch (err) {
+    // Item 5 D2: preserve the full structured error (WallCeilingError,
+    // RetryExhaustionError with retry_history, etc.) alongside the existing
+    // message string. Callers that read `.error` as a string keep working;
+    // callers that want the structured payload read `.structuredError`.
+    const structuredError =
+      typeof err?.toJSON === "function" ? err.toJSON()
+      : (err?.retry_history != null
+        ? { kind: "retry_exhausted", message: String(err?.message ?? err).slice(0, 300), status: err?.status ?? null, retry_history: err.retry_history }
+        : null);
+    return {
+      success: false,
+      pdfPath: null,
+      imagePath,
+      diagnostics: {
+        regionDetection: detection,
+        pagePtConversion,
+        autoFit: extractFitDiagnostics(fit),
+        dynamicCss: dynamicCssOut,
+        cost,
+        timing: finalizeTiming(timing, tStart),
+      },
+      error: err?.message ?? String(err),
+      structuredError,
+    };
+  }
+}

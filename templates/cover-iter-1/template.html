@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>cover — cover-iter-1 (Variant C)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+<style>
+  /* Canvas matches the interior page aspect exactly: 11×8.5in landscape. */
+  @page { size: 11in 8.5in; margin: 0; }
+  html, body {
+    margin: 0; padding: 0; width: 11in; height: 8.5in; overflow: hidden;
+    background-color: #FAF9F0;  /* unified cream, same as interiors */
+  }
+  .cover { position: relative; width: 11in; height: 8.5in; }
+
+  /* Hero art fills the canvas edge-to-edge. */
+  .hero {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; object-position: center center; display: block;
+  }
+
+  /* Variant C panel — translucent cream band across the lower 30%.
+     Fixed height (the band is consistent); title + subtitle are
+     vertically centred within it. The title font-size is injected
+     ({{TITLE_FONT_SIZE}}) from fitTextToRegion so any title length fits
+     the panel width without wrapping/crowding. Horizontal padding 10%
+     each side → title content width = 80% page, matching config
+     titleRegion.widthFrac used for the auto-fit. */
+  .panel {
+    position: absolute; left: 0; bottom: 0; width: 100%; height: 30%;
+    background: rgba(240, 234, 219, 0.92);
+    box-sizing: border-box;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 0 10%;
+  }
+  .title {
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    font-weight: 600;
+    font-size: {{TITLE_FONT_SIZE}}pt;
+    line-height: 1.1;
+    margin: 0;
+    letter-spacing: 0.01em;
+    color: #1F1A14;
+    text-align: center;
+    font-variant-numeric: oldstyle-nums;
+  }
+  .subtitle {
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    font-style: italic; font-weight: 400;
+    font-size: 20pt;
+    margin: 0.14in 0 0 0;
+    letter-spacing: 0.02em;
+    color: #3D2418;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <img class="hero" src="{{IMAGE_URL}}" alt="">
+    <div class="panel">
+      <h1 class="title">{{TITLE}}</h1>
+      <p class="subtitle">{{SUBTITLE}}</p>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "id": "prompt-3-iter-2",
+  "description": "Image-on-top + blank cream-clearing-below. Architects Daughter hand-lettered serif, ink-brown text. Decorative botanical framing (autumn leaves, grasses, sprigs) removed 2026-05-21 — design standard: template decorations must be scene-neutral or scene-driven, never a fixed thematic motif the scene can contradict. Migrated 2026-05-21 to Type C — fixed config-declared textRegion + auto-fit, no region detection (removes the region-detection escalation defect; see SESSION_NOTES).",
+  "selection_metadata": {
+    "summary": "Text-in-painted-clearing layout. Painted scene with character/landscape in upper portion; text positioned in a blank cream clearing below the painted scene. Intimate, atmospheric, quiet feel.",
+    "max_narrative_chars": 300,
+    "aesthetic_intent": ["intimate", "quiet", "contemplative", "atmospheric", "reflective", "tender"]
+  },
+  "typography": {
+    "fontFamily": "Architects Daughter",
+    "maxFontSize": 16,
+    "minFontSize": 10,
+    "lineHeight": 1.6,
+    "letterSpacing": "0.01em",
+    "color": "#3D2418",
+    "fontVariantNumeric": null
+  },
+  "regionDetection": null,
+  "autoFit": {},
+  "textRegion": { "x": 0.10, "y": 0.70, "width": 0.80, "height": 0.25 },
+  "imageGeneration": {
+    "styleOverride": "watercolor on cold-press paper, wet-on-wet wash technique, visible pigment granulation, organic uneven boundaries where wash absorbs into paper fiber. Loose, painterly, with intentional white space and atmospheric bleeding. Inspired by contemporary picture book illustration in the style of Sophie Blackall. Warm earthy palette.",
+    "customCompositionRules": "full body, clean uncluttered background, consistent framing, face clearly visible.",
+    "compositionPromptTemplate": "The image is a 1408×768 landscape frame, cropped at render to 1.29:1 (~15% trimmed from each horizontal edge), so critical scene content (the protagonist, the main focal action) must sit within the CENTRAL 70% of frame width.\n\nCRITICAL LAYOUT — CONTAINED VIGNETTE, NOT FULL-BLEED: This is NOT an edge-to-edge illustration. The painted scene is a CONTAINED watercolor vignette occupying ONLY the UPPER portion of the frame. It has organic, irregular painted edges and floats on cream paper. The painted scene must NOT reach the bottom edge of the frame. Do NOT paint a full-bleed scene. Do NOT extend floors, ground, walls, furniture, terrain, or hills down to the bottom of the frame — the scene has a definite lower boundary, above which everything is painted and below which everything is blank cream paper. If the painted scene fills the whole frame, there is nowhere for the story text to go.\n\nTHE BLANK CREAM ZONE: The BOTTOM ~37% of the frame is BLANK CREAM PAPER — the exact cream of the page background, with nothing painted on it: no paint, no wash, no texture, no scene content, no ground, no shadow. This blank zone spans the full width of the frame along the bottom. It is essential — it is where the story text is placed.\n\nThe painted vignette: watercolor wash with visible pigment granulation. Its top, left, and right edges bleed organically — soft, irregular, no hard rectangular boundary. Its bottom edge is where the painting ends and the blank cream zone begins."
+  },
+  "rendering": {
+    "templateHtmlPath": "template.html",
+    "pageSize": { "width": "11in", "height": "8.5in" }
+  }
+}

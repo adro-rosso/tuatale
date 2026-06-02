@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FRAME-BREAK v2 — image overflows frame top+bottom into cream</title>
+
+<!-- v2 corrected mockup: image strip narrower than page, with visible
+     cream margins on left+right. Image is TALLER than the frame and
+     extends above + below the frame's top/bottom lines into the cream.
+     Image and frame share left/right coords exactly (65% page width
+     centered) so frame's L/R lines coincide with image's hard edges.
+     The frame's 4 corners are visible — image continues past them
+     vertically. This is "scene overflows its frame" (Flavor 1), NOT
+     the comics character-burst (which needs Flavor 2 bg-removal). -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;500;600&family=Patrick+Hand&display=swap" rel="stylesheet">
+
+<style>
+  @page {
+    size: 11in 8.5in;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 11in;
+    height: 8.5in;
+    overflow: hidden;
+    background-color: #F0E8D8;
+  }
+  .page {
+    position: relative;
+    width: 11in;
+    height: 8.5in;
+  }
+
+  /* ---- Image strip --------------------------------------------------
+     65% page width centered, 58% page height. Cream visible on left +
+     right (17.5% margin each side). Image extends 8% page-height above
+     and 8% below the frame, into the cream. */
+  .image-strip {
+    position: absolute;
+    top: 6%;
+    left: 17.5%;
+    width: 65%;
+    height: 58%;
+  }
+  .image-strip img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
+    display: block;
+  }
+
+  /* ---- Frame border -------------------------------------------------
+     1.5pt solid #3D2418, positioned to coincide with image's L/R edges
+     and inset 8% page-height from image's top + bottom. box-sizing:
+     border-box keeps the border inside the declared dimensions.
+     z-index 1 puts the line above the image so the border reads cleanly
+     on top of painted content at the frame perimeter. */
+  .frame-border {
+    position: absolute;
+    top: 14%;
+    left: 17.5%;
+    width: 65%;
+    height: 42%;
+    border: 1.5pt solid #3D2418;
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ---- Gap (64%-70%, 6% pure cream) --------------------------------- */
+
+  /* ---- Text band ---------------------------------------------------- */
+  .text-band {
+    position: absolute;
+    top: 70%;
+    left: 25%;
+    width: 50%;
+    height: 20%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .narrative {
+    font-family: "Architects Daughter", "Patrick Hand", "Caveat", cursive, serif;
+    font-size: 14pt;
+    font-weight: 400;
+    line-height: 1.7;
+    color: #3D2418;
+    letter-spacing: 0.01em;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="image-strip">
+      <img src="{{IMAGE_URL}}" alt="">
+    </div>
+    <div class="frame-border"></div>
+    <div class="text-band">
+      <div class="narrative">{{NARRATIVE_TEXT}}</div>
+    </div>
+  </div>
+</body>
+</html>

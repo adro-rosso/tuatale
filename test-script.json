@@ -1,0 +1,29 @@
+{
+  "character": {
+    "description": "6-year-old boy, olive skin, curly dark brown hair, green eyes, wearing a red striped shirt, blue shorts, and brown leather sandals",
+    "age": 6,
+    "name": "TestChild"
+  },
+  "style": "soft watercolor children's book illustration, warm lighting, gentle shadows, storybook style, muted earthy palette",
+  "negative_prompt": "photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, watermark, multiple children",
+  "composition_rules": "full body, centered subject, clean uncluttered background, consistent framing, face clearly visible",
+  "character_sheet_prompts": [
+    "front-facing portrait, neutral expression, plain cream background",
+    "three-quarter view, slight smile, plain cream background",
+    "side profile, neutral expression, plain cream background"
+  ],
+  "scenes": [
+    { "page": 1,  "action": "standing at the edge of a forest, looking curious" },
+    { "page": 2,  "action": "kneeling to pet a small brown rabbit on a mossy path" },
+    { "page": 3,  "action": "walking through tall golden grass holding a wooden stick" },
+    { "page": 4,  "action": "looking up at an enormous oak tree with wonder" },
+    { "page": 5,  "action": "sitting on a large rock reading a folded paper map" },
+    { "page": 6,  "action": "crossing a small wooden bridge over a gentle stream" },
+    { "page": 7,  "action": "gently helping a small bird back into its nest" },
+    { "page": 8,  "action": "running through a sunlit clearing laughing with arms open" },
+    { "page": 9,  "action": "crouching to watch fireflies at dusk, hands cupped" },
+    { "page": 10, "action": "sitting by a small campfire, smiling, warm glow on face" },
+    { "page": 11, "action": "walking along a path home under a starry night sky" },
+    { "page": 12, "action": "sleeping peacefully in a cozy bed, soft moonlight through window" }
+  ]
+}

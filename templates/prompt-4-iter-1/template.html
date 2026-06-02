@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>template — prompt-4-iter-1</title>
+
+<!-- Google Fonts: EB Garamond — same as prompt-2-iter-2 for project-wide
+     typographic consistency. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+<style>
+  /* ---- Page size + reset ---------------------------------------------
+     Landscape letter; cream background matches prompt-2's #F0EADB (the
+     project's primary cream). No page margin — the image bleeds toward
+     two edges (top + right) and the cream covers the rest. */
+  @page {
+    size: 11in 8.5in;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 11in;
+    height: 8.5in;
+    overflow: hidden;
+    background-color: #F0EADB;
+  }
+
+  /* ---- Page container ----------------------------------------------- */
+  .page {
+    position: relative;
+    width: 11in;
+    height: 8.5in;
+  }
+
+  /* ---- Image layer (v5 — color-matched substrate, no CSS mask) -----
+     Image rectangle at top:8%, right:5%, width:65%, height:80% — a
+     plain inset rectangle. The image-layer has NO CSS mask. Instead,
+     Gemini is asked (via compositionPromptTemplate) to paint the scene
+     on a cream paper substrate using EXACTLY #F0EADB (the project's
+     page background color). When the image's cream substrate matches
+     the page background, the rectangular boundary is invisible — both
+     sides of the edge are the same color. The painted scene appears
+     to float on cream with organic painted edges, achieved by Gemini
+     painting on the substrate rather than CSS disguising a hard edge.
+     v1-v3 used Pattern A (page-right bleed + partial mask) and failed
+     on the unfeathered right edge. v4 used Pattern B (inset + four-
+     edge mask) and failed when the mask attenuated the painting's
+     contrast at the edges. v5 sidesteps both: no mask, color match. */
+  .image-layer {
+    position: absolute;
+    top: 8%;
+    right: 5%;
+    width: 65%;
+    height: 80%;
+  }
+  .image-layer img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* center center — symmetric on both axes. Container is 65%×80%
+       (aspect 1.052). Source 1408×768 (aspect 1.833) is wider, so
+       object-fit:cover crops horizontally only. Overflow fraction =
+       1 - 1.052/1.833 = 43%, split evenly: visible source x=21-79%. */
+    object-position: center center;
+    display: block;
+  }
+
+  /* ---- Text layer ---------------------------------------------------
+     Anchored lower-left: 32% × 35% of page from (left:4%, top:60%).
+     Bounding box x=4-36%, y=60-95%. The image container's left edge is
+     at page x=35%, so its bounding box touches the text bounding box at
+     x=35-36% / y=60-85%. The 25% horizontal feather mask on the image
+     means the image's leftmost ~16% of page (35-51%) is fading into
+     cream, so visually the text column sits in cream with the painted
+     image dissolving into the gap to its right. 16pt font (vs
+     prompt-2-iter-2's 18pt) because the column competes visually with
+     the upper-right image weight. */
+  .text-layer {
+    position: absolute;
+    left: 4%;
+    top: 60%;
+    width: 32%;
+    height: 35%;
+  }
+  .narrative {
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    font-size: 16pt;
+    font-weight: 400;
+    line-height: 1.6;
+    color: #1F1A14;
+    text-align: left;
+    /* EB Garamond ships proper old-style figures; opt in. */
+    font-variant-numeric: oldstyle-nums;
+    /* Subtle tightening for body serif — matches prompt-2-iter-2. */
+    letter-spacing: 0.005em;
+  }
+  .narrative p {
+    margin: 0 0 1em 0;
+  }
+  .narrative p:last-child {
+    margin-bottom: 0;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="image-layer">
+      <img src="{{IMAGE_URL}}" alt="">
+    </div>
+    <div class="text-layer">
+      <div class="narrative">{{NARRATIVE_TEXT}}</div>
+    </div>
+  </div>
+</body>
+</html>

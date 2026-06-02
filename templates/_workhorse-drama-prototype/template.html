@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WORKHORSE-DRAMA prototype — full image top, clean text band bottom</title>
+
+<!-- Standalone prototype, NOT a canonical template. Validates whether
+     "dramatic full image + text on clean cream band below" reads as
+     distinctly different from prompt-6 (which keeps text OVER the
+     image on a translucent cream band). If approved, productionizes
+     with its own config + composition prompt (asking for a bold, full,
+     dramatic scene — Gemini's happy path). -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+
+<style>
+  @page {
+    size: 11in 8.5in;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 11in;
+    height: 8.5in;
+    overflow: hidden;
+    background-color: #F0E8D8;
+  }
+  .page {
+    position: relative;
+    width: 11in;
+    height: 8.5in;
+  }
+
+  /* ---- IMAGE BAND (0% - 75%) ----------------------------------------
+     Full-bleed top/left/right, hard horizontal cut at 75%. Image scales
+     to fill the band via object-fit:cover; no transition, no overlay —
+     the painting just ends and pure cream begins below. The hard cut
+     IS the distinguishing visual move from prompt-6 (which keeps the
+     image edge-to-edge bottom under a translucent cream text band). */
+  .image-band {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 75%;
+  }
+  .image-band img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
+    display: block;
+  }
+
+  /* ---- TEXT BAND (75% - 100%, pure cream) ---------------------------
+     The bands-are-CSS structural guarantee from prompt-7 v2: image
+     physically cannot intrude (it's clipped at 75% by .image-band's
+     height). No backdrop, no halo — text on pure cream by construction.
+     Text column 50% page width centered (warmer & more contained than
+     full-width caption). Flexbox-centered vertically in the 25% band. */
+  .text-band {
+    position: absolute;
+    top: 75%;
+    left: 25%;
+    width: 50%;
+    height: 25%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .narrative {
+    font-family: "EB Garamond", Georgia, serif;
+    font-size: 18pt;
+    font-weight: 400;
+    line-height: 1.6;
+    letter-spacing: 0.005em;
+    font-variant-numeric: oldstyle-nums;
+    color: #1F1A14;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="image-band">
+      <img src="{{IMAGE_URL}}" alt="">
+    </div>
+    <div class="text-band">
+      <div class="narrative">{{NARRATIVE_TEXT}}</div>
+    </div>
+  </div>
+</body>
+</html>

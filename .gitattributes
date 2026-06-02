@@ -1,0 +1,20 @@
+# Normalise line endings to LF for everything Git treats as text.
+# Windows checkouts will see LF on disk (no autocrlf round-trip), which
+# matches what Vercel + Node + every modern editor expects.
+* text=auto eol=lf
+
+# Belt-and-braces explicit overrides for binary files where Git's heuristic
+# might mis-detect. Add more as we accumulate file types.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.eot       binary
+*.docx      binary
+*.xlsx      binary
+*.pptx      binary

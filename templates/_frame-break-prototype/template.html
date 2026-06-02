@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FRAME-BREAK Flavor-1 prototype — art-bleeds-past-inset-frame</title>
+
+<!-- Standalone prototype, NOT a canonical template. Validates whether the
+     "art bleeds past an inset frame" effect reads as dynamic on a retrofit
+     image (1333 p9 climax). If approved, productionizes as its own template
+     with config + composition prompt asking Gemini to compose for the
+     frame-break (subject + key elements reaching for image edges). -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;500;600&family=Patrick+Hand&display=swap" rel="stylesheet">
+
+<style>
+  /* ---- Page size + reset --------------------------------------------- */
+  @page {
+    size: 11in 8.5in;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 11in;
+    height: 8.5in;
+    overflow: hidden;
+    background-color: #F0E8D8;
+  }
+  .page {
+    position: relative;
+    width: 11in;
+    height: 8.5in;
+  }
+
+  /* ---- IMAGE BAND (5%-65%, 60% page height, 80% width centered) ------
+     The image fills the band via object-fit:cover; painted art reaches
+     all four edges of the band. Inside the band, an absolutely-positioned
+     frame border at 15% inset draws the visible "panel" — the painted
+     content in the 15% rim between band edge and frame is the bleed-past
+     effect. */
+  .image-band {
+    position: absolute;
+    top: 5%;
+    left: 10%;
+    width: 80%;
+    height: 60%;
+  }
+  .image-band img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
+    display: block;
+  }
+
+  /* ---- Frame border (15% inset within image-band) -------------------
+     1.5pt solid warm ink-brown (#3D2418 — same as body text → visually
+     cohesive). Sits above the image (z-index 1) so it's drawn ON TOP of
+     the painted content. The art OUTSIDE this border but inside the
+     image-band reads as "bleeding past the frame."
+     Inset: 15% on all four sides. Within an 80%w × 60%h band on an
+     11×8.5in page, that's a frame at:
+       left  = 10% + 15% × 80% = 22% of page width
+       right = 10% + 80% − 15% × 80% = 78% of page width  → width 56%
+       top   = 5%  + 15% × 60% = 14% of page height
+       bot   = 5%  + 60% − 15% × 60% = 56% of page height → height 42% */
+  .frame-border {
+    position: absolute;
+    inset: 15% 15% 15% 15%;
+    border: 1.5pt solid #3D2418;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* ---- GAP BAND (65%-70%, 5% pure cream) ----------------------------
+     Same structural-gap principle as prompt-7 v2: clean cream strip
+     physically separates the image-band from the text-band so painted
+     content can't intrude into text. */
+
+  /* ---- TEXT BAND (70%-90%, 20% × 50% width centered) ---------------- */
+  .text-band {
+    position: absolute;
+    top: 70%;
+    left: 25%;
+    width: 50%;
+    height: 20%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .narrative {
+    font-family: "Architects Daughter", "Patrick Hand", "Caveat", cursive, serif;
+    font-size: 14pt;
+    font-weight: 400;
+    line-height: 1.7;
+    color: #3D2418;
+    letter-spacing: 0.01em;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="image-band">
+      <img src="{{IMAGE_URL}}" alt="">
+      <div class="frame-border"></div>
+    </div>
+    <div class="text-band">
+      <div class="narrative">{{NARRATIVE_TEXT}}</div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "character": {
+    "description": "6-year-old boy, olive skin, curly dark brown hair, green eyes, wearing a red striped shirt, blue shorts, and brown leather sandals",
+    "age": 6,
+    "name": "TestChild"
+  },
+  "style": "soft watercolor children's book illustration, warm lighting, gentle shadows, storybook style, muted earthy palette",
+  "negative_prompt": "photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, watermark, multiple children",
+  "composition_rules": "plain neutral background, character-focused framing, no story setting, full and clear view of the character",
+  "training_prompts": [
+    "head and shoulders portrait, front-facing, neutral expression, plain cream background",
+    "head and shoulders portrait, three-quarter view turning slightly to the left, soft smile, plain cream background",
+    "head and shoulders portrait, three-quarter view turning slightly to the right, neutral expression looking forward, plain cream background",
+    "waist-up shot, standing straight with hands at sides, plain soft gray background",
+    "head and shoulders portrait, full side profile facing left, neutral expression, plain cream background",
+    "waist-up shot from a slightly low angle, looking down toward the camera, plain soft gray background",
+    "full body, standing relaxed with arms by sides, plain white background",
+    "full body, mid-stride walking pose looking forward, plain white background",
+    "full body, sitting cross-legged with hands in lap, plain white background",
+    "full body, kneeling with one knee down looking forward, plain white background",
+    "head and shoulders portrait, broad genuine smile showing teeth, eyes lively, plain cream background",
+    "head and shoulders portrait, curious thoughtful expression, looking forward, plain cream background"
+  ]
+}
