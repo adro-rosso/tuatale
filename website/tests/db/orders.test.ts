@@ -120,7 +120,10 @@ describeIntegration('orders integration', () => {
       client,
     );
     expect(updated.pipeline_status).toBe('complete');
-    expect(updated.pipeline_completed_at).toBe(completedAt);
+    // Postgres returns timestamptz as `2026-…+00:00`; JS toISOString uses
+    // `…Z`. Normalize both sides through Date round-trip so we're
+    // comparing instants, not string formats.
+    expect(new Date(updated.pipeline_completed_at!).toISOString()).toBe(completedAt);
     expect(updated.book_pdf_url).toBe('https://example.com/book.pdf');
     // Customer/child fields preserved.
     expect(updated.customer_email).toBe(order.customer_email);
