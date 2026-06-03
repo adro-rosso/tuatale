@@ -214,6 +214,20 @@ npx supabase db push --db-url "<test project connection string from dashboard>"
 
 Re-apply whenever a new migration lands in `supabase/migrations/`.
 
+## Recovery
+
+If a customer's draft becomes unreachable (cookie points at a deleted
+draft row after the `pg_cron` cleanup, or other inconsistent state),
+they can visit `/start/reset` to clear the cookie and start fresh.
+
+The Route Handler at `app/start/reset/route.ts` clears the
+`tuatale_draft_id` cookie and redirects to `/start`, which the proxy
+then catches to mint a brand-new draft + cookie.
+
+This URL is also useful during development for testing the cold-start
+flow — visit it between manual wizard runs to reset state without
+fiddling with browser cookie tooling.
+
 ## Relationship to the pipeline at `../`
 
 The book-rendering pipeline at the repo root (`../src/`, `../scripts/`,

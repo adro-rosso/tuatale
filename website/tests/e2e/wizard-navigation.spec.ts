@@ -69,6 +69,35 @@ test('back button reverses navigation without rewinding progress', async ({ page
   await expect(page.getByRole('button', { name: /back/i })).toHaveCount(0);
 });
 
+test('GET /start/reset clears cookie and lands back at /start/child with a fresh one', async ({
+  page,
+  context,
+}) => {
+  // Start a draft, advance two steps so we know the draft is active.
+  await page.goto('/start');
+  await expect(page).toHaveURL(/\/start\/child$/);
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/secondaries$/);
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/theme$/);
+
+  const beforeCookies = await context.cookies();
+  const beforeCookie = beforeCookies.find((c) => c.name === 'tuatale_draft_id');
+  expect(beforeCookie).toBeDefined();
+  const beforeDraftId = beforeCookie?.value;
+
+  // Trigger the reset — should clear the cookie + bounce through /start
+  // back to /start/child with a fresh cookie minted by the proxy.
+  await page.goto('/start/reset');
+  await expect(page).toHaveURL(/\/start\/child$/);
+
+  const afterCookies = await context.cookies();
+  const afterCookie = afterCookies.find((c) => c.name === 'tuatale_draft_id');
+  expect(afterCookie).toBeDefined();
+  expect(afterCookie?.value).not.toBe(beforeDraftId);
+  expect(afterCookie?.value).toMatch(/^[0-9a-f-]{36}$/);
+});
+
 test('proxy sets the draft cookie on first /start visit', async ({ page, context }) => {
   // Start with an empty context (no cookies).
   await context.clearCookies();
