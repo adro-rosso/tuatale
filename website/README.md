@@ -95,6 +95,20 @@ See `.env.example`. Required for Phase 1:
 
 Vercel needs all of these set for both Production and Preview environments.
 
+### Optional — Database integration tests (Phase 2.A onwards)
+
+Integration tests under `tests/db/` run against a SEPARATE Supabase
+project (`tuatale-test`) so production data is never at risk. They skip
+automatically when the env vars aren't set, so CI stays green without
+them.
+
+- `TEST_SUPABASE_URL` — `tuatale-test` project URL
+- `TEST_SUPABASE_SERVICE_ROLE_KEY` — `tuatale-test` service-role key
+- `TEST_SUPABASE_DB_PASSWORD` — `tuatale-test` DB password (used to apply
+  migrations: `npx supabase db push --db-url <connection string>`)
+
+See `db/README.md` for the per-machine setup walkthrough.
+
 ### Optional — Sentry source map upload (Phase 1.5 onwards)
 
 Stack traces in the Sentry dashboard are minified by default. To get
@@ -119,6 +133,86 @@ curl -i https://your-deployment.vercel.app/api/health?test_error=1
 The request returns 500 and Sentry should capture the event within a minute.
 This URL is meant for manual on-demand checking; no normal traffic ever hits
 it.
+
+## Database
+
+Three tables in `public`, all service-role-only at v1 (RLS enabled, no
+policies). Each draft / order / preview event flows through API routes
+that authenticate the caller (cookie for drafts; Stripe signature for
+orders; IP + cookie for preview events) before any DB call.
+
+### `drafts`
+
+Ephemeral form-in-progress state. 30-day expiry. Identified by an
+anonymous `cookie_id`. Customer email captured at the preview step. The
+multi-step form's progress marker (`current_step`) lets the UI resume
+mid-flow.
+
+When payment succeeds, `status` flips to `'converted'` and
+`converted_to_order_id` records the linkage. Converted drafts are
+retained as part of the forensic trail; everything else is deleted by
+the daily `pg_cron` job (see migration `20260603120300_…`).
+
+### `orders`
+
+Permanent post-payment records. Retained forever for legal + business
+needs. All customer / child / theme fields are snapshotted from the
+draft at the moment of payment and never mutate afterwards. The
+pipeline integration in Phase 4 mutates only the pipeline fields
+(`pipeline_status`, `pipeline_started_at`, etc.) and the output URL
+fields (`story_dir`, `book_pdf_url`).
+
+`converted_from_draft_id` is a loose reference back to drafts — there's
+no FK constraint, so the `pg_cron` cleanup can run independently of
+order retention.
+
+### `preview_events`
+
+Append-only audit log of every preview-related event (request,
+generation, threshold block, admin action). Drives rate-limit checks
+and abuse-investigation queries. Composite indexes on
+`(ip_address, created_at desc)` and `(customer_email, created_at desc)`
+make 24h-window count queries fast at any table size.
+
+`draft_id` is a loose reference back to drafts (no FK) so drafts can be
+cleaned up without breaking event history.
+
+### Schema relationships
+
+```
+drafts ──────────┐
+  │              │ (loose ref, no FK)
+  │ (loose ref,  ▼
+  │  no FK) preview_events
+  ▼
+orders.converted_from_draft_id
+```
+
+No referential integrity is enforced at the FK level — the three loose
+references (drafts → orders, drafts → preview_events) trade a small
+amount of consistency policing for the freedom to clean up drafts on
+their own schedule.
+
+### Migration + types commands
+
+| Script             | What it does                                                                                                                                   |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run db:push`  | Push pending migrations to the linked project (after `supabase link --project-ref <ref>`). Uses `SUPABASE_DB_PASSWORD` from env or prompts.    |
+| `npm run db:types` | Regenerate `types/database.ts` from the linked project's live schema. Run after any migration to catch drift between the SQL and the TS types. |
+
+Migrations live under `supabase/migrations/` and are SQL files named
+`YYYYMMDDHHMMSS_short_description.sql`. Apply in order. See the
+official Supabase CLI docs for `supabase migration new` if you'd rather
+let the CLI generate the filename + skeleton.
+
+For the `tuatale-test` project, apply migrations once per machine
+setup with:
+
+```bash
+npx supabase db push --db-url "<test project connection string from dashboard>"
+```
+
+Re-apply whenever a new migration lands in `supabase/migrations/`.
 
 ## Relationship to the pipeline at `../`
 
