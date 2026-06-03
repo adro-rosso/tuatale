@@ -12,7 +12,9 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest watch",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "db:push": "supabase db push --linked",
+    "db:types": "supabase gen types typescript --linked > types/database.ts"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.55.0",
