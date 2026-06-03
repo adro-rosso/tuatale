@@ -1,18 +1,42 @@
 import type { ReactNode } from 'react';
 import { WizardLayout } from '@/components/wizard/WizardLayout';
+import { getDraft } from '@/lib/draft-fetch';
 
 /**
- * Layout for the /start/* route group. The proxy (proxy.ts at the
- * project root) has already minted a draft + set the cookie for any
- * first-time visitor before this layout renders, so by the time we
- * get here the cookie is reliably present.
+ * Layout for the /start/* route group.
  *
- * We don't currently read the draft from the DB at the layout level —
- * the chrome components (ProgressIndicator, StepHeader, WizardNav) all
- * derive what they need from useSelectedLayoutSegment. When Phase 2.C
- * starts displaying draft data in the chrome (e.g. "for Iris" in the
- * header), this is the place to fetch it and pass via React Context.
+ * Fetches the current draft via React.cache (dedupes across components
+ * that ask for it in the same render — currently StepHeader and
+ * PricePanel both need fields from it).
+ *
+ * The proxy ensures a draft exists before this layout renders, so
+ * `getDraft()` should always return kind:'found' on the happy path.
+ * For the rare race window (proxy threw, cookie cleared between
+ * requests, etc.), we render the wizard chrome with neutral fallbacks
+ * — the layout will look fine; only personalised copy + live price
+ * will be at their defaults. The customer can recover by visiting
+ * /start/reset.
  */
-export default function StartLayout({ children }: { children: ReactNode }) {
-  return <WizardLayout>{children}</WizardLayout>;
+export default async function StartLayout({ children }: { children: ReactNode }) {
+  const result = await getDraft();
+  const draft = result.kind === 'found' ? result.draft : null;
+
+  // jsonb columns come back as `unknown`/`Json` from the generated
+  // types. The secondaries we PUT in are always an array of
+  // {name, ..., extra_care?: boolean}; the slice we need for pricing
+  // is just the boolean flag per element.
+  const secondariesForPricing = Array.isArray(draft?.secondaries)
+    ? (draft.secondaries as Array<{ extra_care?: boolean }>).map((s) => ({
+        extra_care: s.extra_care === true,
+      }))
+    : [];
+
+  return (
+    <WizardLayout
+      childName={draft?.child_name ?? null}
+      secondariesForPricing={secondariesForPricing}
+    >
+      {children}
+    </WizardLayout>
+  );
 }
