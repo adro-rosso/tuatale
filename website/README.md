@@ -95,6 +95,19 @@ See `.env.example`. Required for Phase 1:
 
 Vercel needs all of these set for both Production and Preview environments.
 
+### Optional — Sentry source map upload (Phase 1.5 onwards)
+
+Stack traces in the Sentry dashboard are minified by default. To get
+readable source paths (e.g. `app/api/health/route.ts:14`), set these three
+in Vercel only — they're build-time secrets, never bundled into the
+client. Source map upload skips gracefully when they're absent, so CI
+and local builds don't need them.
+
+- `SENTRY_AUTH_TOKEN` — Sentry "internal integration" token with
+  `project:read`, `project:releases`, `org:read` scopes
+- `SENTRY_ORG` — Sentry organisation slug (visible in the Sentry URL)
+- `SENTRY_PROJECT` — Sentry project slug (also in the URL)
+
 ## Sentry verification
 
 Trigger a deliberate error via the health route to verify Sentry is wired:
