@@ -44,7 +44,9 @@ function fakeDraft(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function fakeStripeSession(overrides: Partial<Stripe.Checkout.Session> = {}): Stripe.Checkout.Session {
+function fakeStripeSession(
+  overrides: Partial<Stripe.Checkout.Session> = {},
+): Stripe.Checkout.Session {
   return {
     id: 'cs_test_xyz',
     amount_total: 9400, // base + 1 secondary

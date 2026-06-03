@@ -62,10 +62,7 @@ export async function createCheckoutSession(): Promise<never> {
       : [],
   });
 
-  const origin = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(
-    /\/$/,
-    '',
-  );
+  const origin = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({

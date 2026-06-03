@@ -35,6 +35,26 @@ export const config = {
 };
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  const pathname = request.nextUrl.pathname;
+  // Stash the pathname on a request header so /start/layout.tsx (a
+  // Server Component, no access to useSelectedLayoutSegment) can
+  // detect the active route and switch between wizard chrome and the
+  // success page's minimal chrome.
+  const forwardedHeaders = new Headers(request.headers);
+  forwardedHeaders.set('x-pathname', pathname);
+  const nextOptions = { request: { headers: forwardedHeaders } };
+
+  // /start/success runs AFTER the customer's draft has been converted
+  // to an order by the Stripe webhook. The resolver would see "cookie
+  // present but no active draft" and mint a fresh cookie + draft pair
+  // every time the success page renders — polluting drafts with rows
+  // the customer doesn't want and silently replacing their cookie.
+  // Skip cookie work for this route entirely; the success page reads
+  // the order via the URL's session_id, not the cookie.
+  if (pathname === '/start/success') {
+    return NextResponse.next(nextOptions);
+  }
+
   const existing = request.cookies.get(COOKIE_NAME)?.value ?? null;
 
   // Always pass the incoming cookie (or null) to the resolver. The
@@ -43,7 +63,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // wrapper around the resolver's decision.
   try {
     const result = await getOrCreateDraftForCookie(existing);
-    const response = NextResponse.next();
+    const response = NextResponse.next(nextOptions);
     if (result.kind === 'created') {
       response.cookies.set({
         name: COOKIE_NAME,
@@ -59,6 +79,6 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     // and render either the chrome (cookie was already valid) or an
     // empty wizard (no cookie set). Either way the customer can retry.
     console.error('[proxy] failed to resolve draft:', err);
-    return NextResponse.next();
+    return NextResponse.next(nextOptions);
   }
 }

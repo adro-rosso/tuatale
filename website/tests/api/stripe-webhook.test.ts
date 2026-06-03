@@ -23,13 +23,17 @@ import Stripe from 'stripe';
 
 const WEBHOOK_SECRET = 'whsec_test_dummy_secret';
 
-const { getDraftByIdSpy, markDraftConvertedSpy, getOrderByStripeSessionIdSpy, createOrderFromDraftSpy } =
-  vi.hoisted(() => ({
-    getDraftByIdSpy: vi.fn(),
-    markDraftConvertedSpy: vi.fn(),
-    getOrderByStripeSessionIdSpy: vi.fn(),
-    createOrderFromDraftSpy: vi.fn(),
-  }));
+const {
+  getDraftByIdSpy,
+  markDraftConvertedSpy,
+  getOrderByStripeSessionIdSpy,
+  createOrderFromDraftSpy,
+} = vi.hoisted(() => ({
+  getDraftByIdSpy: vi.fn(),
+  markDraftConvertedSpy: vi.fn(),
+  getOrderByStripeSessionIdSpy: vi.fn(),
+  createOrderFromDraftSpy: vi.fn(),
+}));
 
 vi.mock('@/db/drafts', () => ({
   getDraftById: getDraftByIdSpy,
@@ -54,13 +58,15 @@ beforeAll(() => {
 
 import { POST } from '@/app/api/stripe/webhook/route';
 
-function fakeCheckoutSessionCompletedEvent(overrides: {
-  sessionId?: string;
-  draftId?: string;
-  email?: string;
-  amountTotal?: number;
-  metadata?: Record<string, string>;
-} = {}) {
+function fakeCheckoutSessionCompletedEvent(
+  overrides: {
+    sessionId?: string;
+    draftId?: string;
+    email?: string;
+    amountTotal?: number;
+    metadata?: Record<string, string>;
+  } = {},
+) {
   const sessionId = overrides.sessionId ?? 'cs_test_abc123';
   return {
     id: 'evt_test_001',
@@ -78,7 +84,10 @@ function fakeCheckoutSessionCompletedEvent(overrides: {
         customer_details: { email: overrides.email ?? 'parent@example.com' },
         payment_intent: 'pi_test_abc',
         created: 1717000000,
-        metadata: overrides.metadata ?? { draft_id: overrides.draftId ?? 'draft-uuid-1', cookie_id: 'cookie-uuid-1' },
+        metadata: overrides.metadata ?? {
+          draft_id: overrides.draftId ?? 'draft-uuid-1',
+          cookie_id: 'cookie-uuid-1',
+        },
       },
     },
   };
@@ -160,7 +169,7 @@ describe('Stripe webhook handler', () => {
     expect(markDraftConvertedSpy).toHaveBeenCalledWith('draft-uuid-1', 'order-uuid-1');
   });
 
-  it('idempotency: a second delivery of the same session ack\'s without re-creating', async () => {
+  it("idempotency: a second delivery of the same session ack's without re-creating", async () => {
     getDraftByIdSpy.mockResolvedValue({ ...activeDraft, status: 'converted' });
     getOrderByStripeSessionIdSpy.mockResolvedValue({ id: 'order-uuid-existing' });
 
@@ -186,7 +195,7 @@ describe('Stripe webhook handler', () => {
     expect(markDraftConvertedSpy).toHaveBeenCalledWith('draft-uuid-1', 'order-uuid-existing');
   });
 
-  it('ack\'s 200 (no retry) when event has no draft_id metadata', async () => {
+  it("ack's 200 (no retry) when event has no draft_id metadata", async () => {
     const event = fakeCheckoutSessionCompletedEvent({ metadata: {} });
     const res = await POST(signedRequest(event));
     expect(res.status).toBe(200);
@@ -195,7 +204,7 @@ describe('Stripe webhook handler', () => {
     expect(createOrderFromDraftSpy).not.toHaveBeenCalled();
   });
 
-  it('ack\'s 200 (no retry) when the referenced draft is gone', async () => {
+  it("ack's 200 (no retry) when the referenced draft is gone", async () => {
     getDraftByIdSpy.mockResolvedValue(null);
     const res = await POST(signedRequest(fakeCheckoutSessionCompletedEvent()));
     expect(res.status).toBe(200);

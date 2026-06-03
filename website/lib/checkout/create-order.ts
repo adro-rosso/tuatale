@@ -53,9 +53,7 @@ export async function createOrderFromDraft(
   }
 
   const customerEmail =
-    stripeSession.customer_details?.email ??
-    stripeSession.customer_email ??
-    draft.customer_email;
+    stripeSession.customer_details?.email ?? stripeSession.customer_email ?? draft.customer_email;
   if (!customerEmail) {
     throw new Error(`Stripe session ${stripeSession.id} produced no customer email`);
   }

@@ -148,6 +148,24 @@ describeIntegration('proxy — first-visit cookie minting', () => {
     expect(cookie).toBeDefined();
     expect(cookie?.value).not.toBe(cookieId);
   });
+
+  it('/start/success → passes through without minting a new cookie', async () => {
+    // Customer's draft was just converted by the webhook. Without the
+    // early-return, the resolver would see "no active draft" and mint
+    // a fresh cookie + draft pair every time the success page renders.
+    const cookieId = freshUuid();
+    const draft = await createDraft(cookieId, client);
+    await updateDraft(draft.id, { status: 'converted' }, client);
+
+    const req = makeRequest('http://localhost/start/success?session_id=cs_test_abc', cookieId);
+    const res = await proxy(req);
+
+    // No new cookie minted.
+    expect(res.cookies.get(COOKIE_NAME)).toBeUndefined();
+    // No new draft created.
+    const fresh = await getDraftByCookieId(cookieId, client);
+    expect(fresh).toBeNull(); // converted, not active
+  });
 });
 
 describe('proxy — matcher config', () => {

@@ -75,7 +75,9 @@ test('happy path: fill all required steps and reach payment', async ({ page }) =
   await expect(page).toHaveURL(/\/start\/payment$/);
   // Payment page shows the order summary + a Pay button. We don't
   // click Pay — that would hit live Stripe.
-  await expect(page.getByRole('heading', { level: 1, name: `A book for ${CHILD.name}` })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: `A book for ${CHILD.name}` }),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: /^pay \$/i })).toBeVisible();
   // No Continue on payment (Stripe Checkout is the next step).
   await expect(page.getByRole('button', { name: /continue/i })).toHaveCount(0);

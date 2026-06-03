@@ -42,8 +42,8 @@ export default async function PaymentStepPage() {
           Let&apos;s finish the details first
         </Heading>
         <Body className="text-warm-grey">
-          We need a few more things before checkout — head back to the
-          review page and you&apos;ll see what&apos;s left.
+          We need a few more things before checkout — head back to the review page and you&apos;ll
+          see what&apos;s left.
         </Body>
         <Body size="caption" className="text-warm-grey">
           Missing: {missing.join(', ')}.
@@ -73,7 +73,7 @@ export default async function PaymentStepPage() {
 
   return (
     <div className="space-y-xl">
-      <div className="text-center space-y-sm">
+      <div className="space-y-sm text-center">
         <Body size="caption" className="text-warm-grey tracking-wider uppercase">
           Almost there
         </Body>
@@ -82,7 +82,7 @@ export default async function PaymentStepPage() {
         </Heading>
       </div>
 
-      <div className="border-warm-grey-light bg-cream-deep rounded-lg border p-lg space-y-md">
+      <div className="border-warm-grey-light bg-cream-deep p-lg space-y-md rounded-lg border">
         <Body className="text-near-black whitespace-pre-wrap">
           {theme.length > 200 ? `${theme.slice(0, 200)}…` : theme}
         </Body>
@@ -91,22 +91,15 @@ export default async function PaymentStepPage() {
 
         <ul className="space-y-sm">
           {price.line_items.map((item) => (
-            <li
-              key={item.label}
-              className="text-body flex items-center justify-between"
-            >
+            <li key={item.label} className="text-body flex items-center justify-between">
               <span className="text-near-black">{item.label}</span>
-              <span className="text-near-black tabular-nums">
-                {formatPrice(item.cents)}
-              </span>
+              <span className="text-near-black tabular-nums">{formatPrice(item.cents)}</span>
             </li>
           ))}
         </ul>
 
         <div className="border-warm-grey-light pt-md flex items-center justify-between border-t">
-          <span className="font-body text-near-black text-body font-medium">
-            Total
-          </span>
+          <span className="font-body text-near-black text-body font-medium">Total</span>
           <span className="font-heading text-iron-oxide text-h2 tabular-nums">
             {formatPrice(price.total)}
           </span>
@@ -118,8 +111,7 @@ export default async function PaymentStepPage() {
       </form>
 
       <Body size="caption" className="text-warm-grey text-center">
-        Secure payment via Stripe. We charge once. You&apos;ll see your book
-        before we print it.
+        Secure payment via Stripe. We charge once. You&apos;ll see your book before we print it.
       </Body>
     </div>
   );

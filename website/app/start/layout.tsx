@@ -1,23 +1,46 @@
 import type { ReactNode } from 'react';
+import { headers } from 'next/headers';
+import { Wordmark } from '@/components/Wordmark';
+import { Container } from '@/components/ui/Container';
 import { WizardLayout } from '@/components/wizard/WizardLayout';
 import { getDraft } from '@/lib/draft-fetch';
 
 /**
  * Layout for the /start/* route group.
  *
- * Fetches the current draft via React.cache (dedupes across components
- * that ask for it in the same render — currently StepHeader and
- * PricePanel both need fields from it).
+ * Two render modes:
  *
- * The proxy ensures a draft exists before this layout renders, so
- * `getDraft()` should always return kind:'found' on the happy path.
- * For the rare race window (proxy threw, cookie cleared between
- * requests, etc.), we render the wizard chrome with neutral fallbacks
- * — the layout will look fine; only personalised copy + live price
- * will be at their defaults. The customer can recover by visiting
- * /start/reset.
+ *  1. Wizard chrome (default) — for every /start/<step> page that's
+ *     part of the form flow. Fetches the draft via React.cache
+ *     (dedupes across components that ask for it in the same render)
+ *     and renders ProgressIndicator + StepHeader + PricePanel + Back
+ *     button around the page content.
+ *
+ *  2. Bare chrome — for /start/success. The customer's draft has
+ *     already been converted to an order; the wizard's progress dots,
+ *     price sidebar, and Back button would all be misleading. We
+ *     render just the wordmark + the centered content.
+ *
+ * The proxy stashes the active pathname on the `x-pathname` header so
+ * this Server Component can branch without a client-only hook
+ * (useSelectedLayoutSegment).
  */
 export default async function StartLayout({ children }: { children: ReactNode }) {
+  const pathname = (await headers()).get('x-pathname') ?? '';
+
+  if (pathname === '/start/success') {
+    return (
+      <main className="bg-cream flex min-h-screen flex-col">
+        <div className="px-lg py-md">
+          <Wordmark size="sm" />
+        </div>
+        <section className="flex-1">
+          <Container className="py-xl">{children}</Container>
+        </section>
+      </main>
+    );
+  }
+
   const result = await getDraft();
   const draft = result.kind === 'found' ? result.draft : null;
 
