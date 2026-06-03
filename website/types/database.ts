@@ -1,255 +1,366 @@
-/**
- * Hand-written Supabase Database types — mirror of the schema in
- * supabase/migrations/. Regenerate via `npm run db:types` once the
- * project is linked + migrations are applied to refresh from the live DB
- * (which is also the drift test: if `npm run db:types` produces a diff
- * against this file, the migration and this file are out of sync).
- *
- * Conventions used:
- *   - Postgres uuid           -> string
- *   - timestamptz             -> string (ISO 8601)
- *   - inet                    -> string
- *   - jsonb                   -> Json
- *   - CHECK enums             -> string literal unions
- *   - nullable columns        -> T | null
- *   - Insert: omit columns with defaults (made optional); required only
- *     for not-null no-default columns
- *   - Update: every column optional
- */
-
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-export type ChildGender = 'boy' | 'girl' | 'non_binary';
-export type AgeRange = '3-5' | '5-7' | '7-9';
-
-export type DraftStep = 'child' | 'secondaries' | 'theme' | 'preview' | 'review' | 'payment';
-export type DraftStatus = 'active' | 'abandoned' | 'converted' | 'expired';
-
-export type Currency = 'aud' | 'usd';
-export type PipelineStatus = 'queued' | 'generating' | 'rendering' | 'complete' | 'failed';
-
-export type PreviewEventType =
-  | 'preview_requested'
-  | 'preview_generated'
-  | 'preview_blocked_threshold'
-  | 'admin_flagged'
-  | 'admin_suspended'
-  | 'admin_cleared';
-export type PreviewSuspensionStatus = 'soft_watch' | 'suspended' | 'cleared';
-
-export interface Database {
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: '14.5';
+  };
+  graphql_public: {
+    Tables: {
+      [_ in never]: never;
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json;
+          operationName?: string;
+          query?: string;
+          variables?: Json;
+        };
+        Returns: Json;
+      };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
   public: {
     Tables: {
       drafts: {
         Row: {
-          id: string;
-          created_at: string;
-          updated_at: string;
-          expires_at: string;
-          cookie_id: string;
-          customer_email: string | null;
-          child_name: string | null;
+          age_range: string | null;
           child_age: number | null;
-          child_gender: ChildGender | null;
           child_appearance: string | null;
+          child_gender: string | null;
+          child_name: string | null;
+          converted_to_order_id: string | null;
+          cookie_id: string;
+          created_at: string;
+          current_step: string;
+          customer_email: string | null;
+          estimated_price_cents: number | null;
+          expires_at: string;
+          id: string;
           secondaries: Json;
+          status: string;
           theme: string | null;
           theme_template_id: string | null;
-          age_range: AgeRange | null;
-          current_step: DraftStep;
-          estimated_price_cents: number | null;
-          status: DraftStatus;
-          converted_to_order_id: string | null;
+          updated_at: string;
         };
         Insert: {
-          id?: string;
-          created_at?: string;
-          updated_at?: string;
-          expires_at?: string;
-          cookie_id: string;
-          customer_email?: string | null;
-          child_name?: string | null;
+          age_range?: string | null;
           child_age?: number | null;
-          child_gender?: ChildGender | null;
           child_appearance?: string | null;
+          child_gender?: string | null;
+          child_name?: string | null;
+          converted_to_order_id?: string | null;
+          cookie_id: string;
+          created_at?: string;
+          current_step?: string;
+          customer_email?: string | null;
+          estimated_price_cents?: number | null;
+          expires_at?: string;
+          id?: string;
           secondaries?: Json;
+          status?: string;
           theme?: string | null;
           theme_template_id?: string | null;
-          age_range?: AgeRange | null;
-          current_step?: DraftStep;
-          estimated_price_cents?: number | null;
-          status?: DraftStatus;
-          converted_to_order_id?: string | null;
+          updated_at?: string;
         };
         Update: {
-          id?: string;
-          created_at?: string;
-          updated_at?: string;
-          expires_at?: string;
-          cookie_id?: string;
-          customer_email?: string | null;
-          child_name?: string | null;
+          age_range?: string | null;
           child_age?: number | null;
-          child_gender?: ChildGender | null;
           child_appearance?: string | null;
+          child_gender?: string | null;
+          child_name?: string | null;
+          converted_to_order_id?: string | null;
+          cookie_id?: string;
+          created_at?: string;
+          current_step?: string;
+          customer_email?: string | null;
+          estimated_price_cents?: number | null;
+          expires_at?: string;
+          id?: string;
           secondaries?: Json;
+          status?: string;
           theme?: string | null;
           theme_template_id?: string | null;
-          age_range?: AgeRange | null;
-          current_step?: DraftStep;
-          estimated_price_cents?: number | null;
-          status?: DraftStatus;
-          converted_to_order_id?: string | null;
+          updated_at?: string;
         };
         Relationships: [];
       };
       orders: {
         Row: {
-          id: string;
-          created_at: string;
-          updated_at: string;
-          customer_email: string;
-          child_name: string;
-          child_age: number;
-          child_gender: ChildGender;
-          child_appearance: string;
-          secondaries: Json;
-          theme: string;
-          theme_template_id: string | null;
-          age_range: AgeRange;
-          stripe_session_id: string;
-          stripe_payment_intent_id: string | null;
+          age_range: string;
           amount_paid_cents: number;
-          currency: Currency;
+          book_pdf_url: string | null;
+          child_age: number;
+          child_appearance: string;
+          child_gender: string;
+          child_name: string;
+          converted_from_draft_id: string | null;
+          created_at: string;
+          currency: string;
+          customer_email: string;
+          id: string;
           paid_at: string;
-          pipeline_status: PipelineStatus;
-          pipeline_started_at: string | null;
           pipeline_completed_at: string | null;
           pipeline_error: Json | null;
+          pipeline_started_at: string | null;
+          pipeline_status: string;
+          secondaries: Json;
           story_dir: string | null;
-          book_pdf_url: string | null;
-          converted_from_draft_id: string | null;
+          stripe_payment_intent_id: string | null;
+          stripe_session_id: string;
+          theme: string;
+          theme_template_id: string | null;
+          updated_at: string;
         };
         Insert: {
-          id?: string;
-          created_at?: string;
-          updated_at?: string;
-          customer_email: string;
-          child_name: string;
+          age_range: string;
+          amount_paid_cents: number;
+          book_pdf_url?: string | null;
           child_age: number;
-          child_gender: ChildGender;
           child_appearance: string;
+          child_gender: string;
+          child_name: string;
+          converted_from_draft_id?: string | null;
+          created_at?: string;
+          currency?: string;
+          customer_email: string;
+          id?: string;
+          paid_at: string;
+          pipeline_completed_at?: string | null;
+          pipeline_error?: Json | null;
+          pipeline_started_at?: string | null;
+          pipeline_status?: string;
           secondaries?: Json;
+          story_dir?: string | null;
+          stripe_payment_intent_id?: string | null;
+          stripe_session_id: string;
           theme: string;
           theme_template_id?: string | null;
-          age_range: AgeRange;
-          stripe_session_id: string;
-          stripe_payment_intent_id?: string | null;
-          amount_paid_cents: number;
-          currency?: Currency;
-          paid_at: string;
-          pipeline_status?: PipelineStatus;
-          pipeline_started_at?: string | null;
-          pipeline_completed_at?: string | null;
-          pipeline_error?: Json | null;
-          story_dir?: string | null;
-          book_pdf_url?: string | null;
-          converted_from_draft_id?: string | null;
+          updated_at?: string;
         };
         Update: {
-          id?: string;
-          created_at?: string;
-          updated_at?: string;
-          customer_email?: string;
-          child_name?: string;
-          child_age?: number;
-          child_gender?: ChildGender;
-          child_appearance?: string;
-          secondaries?: Json;
-          theme?: string;
-          theme_template_id?: string | null;
-          age_range?: AgeRange;
-          stripe_session_id?: string;
-          stripe_payment_intent_id?: string | null;
+          age_range?: string;
           amount_paid_cents?: number;
-          currency?: Currency;
+          book_pdf_url?: string | null;
+          child_age?: number;
+          child_appearance?: string;
+          child_gender?: string;
+          child_name?: string;
+          converted_from_draft_id?: string | null;
+          created_at?: string;
+          currency?: string;
+          customer_email?: string;
+          id?: string;
           paid_at?: string;
-          pipeline_status?: PipelineStatus;
-          pipeline_started_at?: string | null;
           pipeline_completed_at?: string | null;
           pipeline_error?: Json | null;
+          pipeline_started_at?: string | null;
+          pipeline_status?: string;
+          secondaries?: Json;
           story_dir?: string | null;
-          book_pdf_url?: string | null;
-          converted_from_draft_id?: string | null;
+          stripe_payment_intent_id?: string | null;
+          stripe_session_id?: string;
+          theme?: string;
+          theme_template_id?: string | null;
+          updated_at?: string;
         };
         Relationships: [];
       };
       preview_events: {
         Row: {
-          id: string;
+          allowed: boolean;
           created_at: string;
-          ip_address: string;
           customer_email: string | null;
           draft_id: string | null;
-          event_type: PreviewEventType;
-          estimated_cost_cents: number | null;
-          ip_count_24h: number | null;
           email_count_24h: number | null;
           email_count_lifetime: number | null;
-          allowed: boolean;
+          estimated_cost_cents: number | null;
+          event_type: string;
           flagged: boolean;
-          suspension_status: PreviewSuspensionStatus | null;
+          id: string;
+          ip_address: unknown;
+          ip_count_24h: number | null;
+          suspension_status: string | null;
         };
         Insert: {
-          id?: string;
+          allowed: boolean;
           created_at?: string;
-          ip_address: string;
           customer_email?: string | null;
           draft_id?: string | null;
-          event_type: PreviewEventType;
-          estimated_cost_cents?: number | null;
-          ip_count_24h?: number | null;
           email_count_24h?: number | null;
           email_count_lifetime?: number | null;
-          allowed: boolean;
+          estimated_cost_cents?: number | null;
+          event_type: string;
           flagged?: boolean;
-          suspension_status?: PreviewSuspensionStatus | null;
+          id?: string;
+          ip_address: unknown;
+          ip_count_24h?: number | null;
+          suspension_status?: string | null;
         };
         Update: {
-          id?: string;
+          allowed?: boolean;
           created_at?: string;
-          ip_address?: string;
           customer_email?: string | null;
           draft_id?: string | null;
-          event_type?: PreviewEventType;
-          estimated_cost_cents?: number | null;
-          ip_count_24h?: number | null;
           email_count_24h?: number | null;
           email_count_lifetime?: number | null;
-          allowed?: boolean;
+          estimated_cost_cents?: number | null;
+          event_type?: string;
           flagged?: boolean;
-          suspension_status?: PreviewSuspensionStatus | null;
+          id?: string;
+          ip_address?: unknown;
+          ip_count_24h?: number | null;
+          suspension_status?: string | null;
         };
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
-    Functions: Record<string, never>;
-    Enums: Record<string, never>;
-    CompositeTypes: Record<string, never>;
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
   };
+};
+
+type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>;
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>];
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
 }
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
+      Row: infer R;
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    ? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R;
+      }
+      ? R
+      : never
+    : never;
 
-// Convenience re-exports for callers that don't want to wade through
-// Database['public']['Tables']['drafts']['Row'] etc.
-export type DraftRow = Database['public']['Tables']['drafts']['Row'];
-export type DraftInsert = Database['public']['Tables']['drafts']['Insert'];
-export type DraftUpdate = Database['public']['Tables']['drafts']['Update'];
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema['Tables']
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+      Insert: infer I;
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I;
+      }
+      ? I
+      : never
+    : never;
 
-export type OrderRow = Database['public']['Tables']['orders']['Row'];
-export type OrderInsert = Database['public']['Tables']['orders']['Insert'];
-export type OrderUpdate = Database['public']['Tables']['orders']['Update'];
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema['Tables']
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
+      Update: infer U;
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U;
+      }
+      ? U
+      : never
+    : never;
 
-export type PreviewEventRow = Database['public']['Tables']['preview_events']['Row'];
-export type PreviewEventInsert = Database['public']['Tables']['preview_events']['Insert'];
-export type PreviewEventUpdate = Database['public']['Tables']['preview_events']['Update'];
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema['Enums']
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
+    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
+    : never;
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema['CompositeTypes']
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
+    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
+    : never;
+
+export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
+  public: {
+    Enums: {},
+  },
+} as const;

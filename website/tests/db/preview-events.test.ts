@@ -21,8 +21,10 @@ import {
   getFlaggedEvents,
 } from '@/db/preview-events';
 import { createTestClient, freshUuid, shouldSkipIntegrationTests, truncateAll } from './helpers';
-import type { PreviewEventInsert } from '@/types/database';
+import type { TablesInsert } from '@/types/database';
 import type { TuataleSupabaseClient } from '@/lib/supabase';
+
+type PreviewEventInsert = TablesInsert<'preview_events'>;
 
 const skipSuite = shouldSkipIntegrationTests();
 const describeIntegration = skipSuite ? describe.skip : describe;

@@ -10,8 +10,15 @@
  * typed exception instead of Supabase's response shape.
  */
 import { createServerClient, type TuataleSupabaseClient } from '@/lib/supabase';
-import type { DraftInsert, DraftRow, DraftUpdate } from '@/types/database';
+import type { Tables, TablesInsert, TablesUpdate } from '@/types/database';
 import { DatabaseError } from './errors';
+
+// Convenience aliases for the official generated Tables<>/Inserts<>/Updates<>
+// helpers — these stay local to the module so swapping in a regenerated
+// types/database.ts only touches files that actually consume the shapes.
+type DraftRow = Tables<'drafts'>;
+type DraftInsert = TablesInsert<'drafts'>;
+type DraftUpdate = TablesUpdate<'drafts'>;
 
 /**
  * Create a fresh draft for the given cookie. The draft starts in 'active'

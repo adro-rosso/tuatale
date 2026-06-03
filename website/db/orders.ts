@@ -7,8 +7,12 @@
  * updateOrderPipelineStatus.
  */
 import { createServerClient, type TuataleSupabaseClient } from '@/lib/supabase';
-import type { OrderInsert, OrderRow, OrderUpdate } from '@/types/database';
+import type { Tables, TablesInsert, TablesUpdate } from '@/types/database';
 import { DatabaseError } from './errors';
+
+type OrderRow = Tables<'orders'>;
+type OrderInsert = TablesInsert<'orders'>;
+type OrderUpdate = TablesUpdate<'orders'>;
 
 /**
  * Create a fresh order from the payment + draft data captured at

@@ -103,28 +103,23 @@ describeIntegration('drafts integration', () => {
     expect(fetched?.converted_to_order_id).toBe(orderId);
   });
 
+  // The CHECK enum columns (child_gender, current_step, status) are typed
+  // as plain `string` by the Supabase type generator — Postgres CHECK
+  // constraints aren't expressed in the schema metadata. These two cases
+  // therefore only fail at the DB layer (runtime), not at compile time.
+  // Phase 2.C will add Zod validation at the API boundary so invalid
+  // values are rejected before they reach the DB at all.
   it('rejects invalid child_gender at the DB constraint layer', async () => {
     const draft = await createDraft(freshUuid(), client);
-    await expect(
-      updateDraft(
-        draft.id,
-        // @ts-expect-error — intentionally violating the type to test the
-        // DB constraint catches values TypeScript would prevent.
-        { child_gender: 'mystery' },
-        client,
-      ),
-    ).rejects.toBeInstanceOf(DatabaseError);
+    await expect(updateDraft(draft.id, { child_gender: 'mystery' }, client)).rejects.toBeInstanceOf(
+      DatabaseError,
+    );
   });
 
   it('rejects invalid current_step at the DB constraint layer', async () => {
     const draft = await createDraft(freshUuid(), client);
     await expect(
-      updateDraft(
-        draft.id,
-        // @ts-expect-error — see above.
-        { current_step: 'mystery_step' },
-        client,
-      ),
+      updateDraft(draft.id, { current_step: 'mystery_step' }, client),
     ).rejects.toBeInstanceOf(DatabaseError);
   });
 });

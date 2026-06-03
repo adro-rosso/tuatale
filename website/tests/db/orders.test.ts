@@ -21,8 +21,10 @@ import {
 } from '@/db/orders';
 import { DatabaseError } from '@/db/errors';
 import { createTestClient, freshUuid, shouldSkipIntegrationTests, truncateAll } from './helpers';
-import type { OrderInsert } from '@/types/database';
+import type { TablesInsert } from '@/types/database';
 import type { TuataleSupabaseClient } from '@/lib/supabase';
+
+type OrderInsert = TablesInsert<'orders'>;
 
 const skipSuite = shouldSkipIntegrationTests();
 const describeIntegration = skipSuite ? describe.skip : describe;
@@ -97,14 +99,11 @@ describeIntegration('orders integration', () => {
   });
 
   it('rejects invalid pipeline_status (CHECK constraint)', async () => {
+    // pipeline_status types as plain `string` post-gen (CHECK constraints
+    // aren't represented in the Supabase types), so this is a runtime
+    // assertion only — same pattern as the drafts gender/step tests.
     await expect(
-      createOrder(
-        validOrderPayload({
-          // @ts-expect-error — intentional violation to test DB constraint.
-          pipeline_status: 'mystery_state',
-        }),
-        client,
-      ),
+      createOrder(validOrderPayload({ pipeline_status: 'mystery_state' }), client),
     ).rejects.toBeInstanceOf(DatabaseError);
   });
 

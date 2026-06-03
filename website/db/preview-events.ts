@@ -11,8 +11,11 @@
  * make these queries cheap regardless of table size.
  */
 import { createServerClient, type TuataleSupabaseClient } from '@/lib/supabase';
-import type { PreviewEventInsert, PreviewEventRow } from '@/types/database';
+import type { Tables, TablesInsert } from '@/types/database';
 import { DatabaseError } from './errors';
+
+type PreviewEventRow = Tables<'preview_events'>;
+type PreviewEventInsert = TablesInsert<'preview_events'>;
 
 /**
  * Append a preview event. Caller fills in the threshold-state fields
