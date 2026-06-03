@@ -1,0 +1,68 @@
+name: CI
+
+# Run on every push to main and every PR targeting main. The PR trigger
+# means PR branches don't need their own push event — opening the PR
+# kicks the suite.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs when a new commit lands on the same ref. Saves
+# CI minutes during quick-fire pushes; the latest commit's run is the
+# only one we care about.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck + lint + format + test + build
+    runs-on: ubuntu-latest
+    # All checks run against the website/ subfolder. The pipeline at the
+    # repo root has no CI yet — it's developer-machine-only code with no
+    # deploy target. When Phase 4 wires pipeline integration, add a
+    # second job here for pipeline tests.
+    defaults:
+      run:
+        working-directory: website
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 (current LTS as of 2026-06). Satisfies Next.js 16's
+      # ≥20 requirement and matches Vercel's default Node runtime.
+      # Bump intentionally; pin to a single major to avoid silent drift.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      # npm ci is faster than npm install for CI and refuses to update
+      # package-lock.json — if the lockfile is stale, the build fails
+      # loudly rather than silently mutating dependencies.
+      - name: install
+        run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: lint
+        run: npm run lint
+
+      - name: format:check
+        run: npm run format:check
+
+      - name: test
+        run: npm test
+
+      # Build runs without Supabase / Stripe / Sentry env vars on purpose
+      # — none are needed at build time. Health route is force-dynamic
+      # (no static evaluation), client SDKs construct lazily, Sentry's
+      # source-map upload step skips gracefully when SENTRY_AUTH_TOKEN
+      # is absent. If a future Phase 2 change requires build-time env
+      # vars, add a "secrets to env" step and document why.
+      - name: build
+        run: npm run build

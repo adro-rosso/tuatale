@@ -25,6 +25,11 @@
 .DS_Store
 *.pem
 
+# local dev scripts — one-off Playwright captures, etc.
+# Keep these out of the repo so the website tree stays focused on shipped
+# code. Move into tests/ if a script grows into a reusable utility.
+/scripts/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

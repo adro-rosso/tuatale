@@ -1,5 +1,7 @@
 # Tuatale — website
 
+[![CI](https://github.com/adro-rosso/tuatale/actions/workflows/ci.yml/badge.svg)](https://github.com/adro-rosso/tuatale/actions/workflows/ci.yml)
+
 A personalized children's book platform. This is the customer-facing website
 (landing → form → checkout → status). The book-rendering pipeline lives in
 the sibling root of this repository (`../src/`, `../scripts/`, `../output/`)
