@@ -20,10 +20,13 @@ import { COOKIE_NAME, getCookieOptions } from '@/lib/draft-cookie';
 import { getOrCreateDraftForCookie } from '@/lib/draft-resolver';
 
 export const config = {
-  // Run only on /start/* paths. Other routes (landing, /api/health) are
-  // untouched. Phase 2.D will extend the matcher for /api/preview/* to
-  // attach rate-limit headers.
-  matcher: '/start/:path*',
+  // Run on the wizard entry route (bare /start) AND every nested step
+  // (/start/child, /start/secondaries, etc.). The /start/:path* glob
+  // does NOT match bare /start — path-to-regexp treats the segment
+  // after the slash as mandatory — so we list both explicitly. Phase
+  // 2.D will extend the array for /api/preview/* to attach rate-limit
+  // headers.
+  matcher: ['/start', '/start/:path*'],
 };
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
@@ -50,10 +53,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       });
     }
     return response;
-  } catch {
+  } catch (err) {
     // Sentry doesn't run in the proxy (no instrumentation hook here).
-    // The layout will see cookieless state and render an error UI;
-    // that path DOES report to Sentry via the standard mechanism.
+    // Log to stderr so the dev-server output surfaces the cause; the
+    // layout will see cookieless state and render an error UI; that
+    // path DOES report to Sentry via the standard mechanism.
+    console.error('[proxy] failed to mint draft cookie:', err);
     return NextResponse.next();
   }
 }

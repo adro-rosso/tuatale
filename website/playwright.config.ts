@@ -32,17 +32,22 @@ export default defineConfig({
     timeout: 120_000,
   },
   projects: [
+    // All three projects pinned to chromium. The default iPhone 14 /
+    // iPad device descriptors use webkit, but our CI/local setup only
+    // installs chromium (smaller download, fewer browsers to maintain).
+    // We override browserName explicitly so the device's viewport +
+    // user-agent + DPR all apply on top of chromium.
     {
       name: 'chromium-desktop',
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'chromium-mobile',
-      use: { ...devices['iPhone 14'] },
+      use: { ...devices['iPhone 14'], browserName: 'chromium' },
     },
     {
       name: 'chromium-tablet',
-      use: { ...devices['iPad (gen 7)'] },
+      use: { ...devices['iPad (gen 7)'], browserName: 'chromium' },
     },
   ],
 });

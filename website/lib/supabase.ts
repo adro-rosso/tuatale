@@ -35,14 +35,32 @@ function requireEnv(name: string): string {
   return value;
 }
 
+/**
+ * Strip any path / trailing slash from a Supabase URL. The SDK expects
+ * bare `https://<ref>.supabase.co` — if the env value accidentally
+ * includes `/rest/v1/` or a trailing slash (easy mistake when copying
+ * from the dashboard's REST URL field), PostgREST queries silently
+ * break with PGRST125 "Invalid path specified in request URL". Auth
+ * calls don't trip on this because the SDK uses the host-only form for
+ * auth, so the breakage only shows up under real DB queries.
+ */
+function normalizeSupabaseUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
+}
+
 export function createBrowserClient(): TuataleSupabaseClient {
-  const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const url = normalizeSupabaseUrl(requireEnv('NEXT_PUBLIC_SUPABASE_URL'));
   const anonKey = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
   return createClient<Database>(url, anonKey);
 }
 
 export function createServerClient(): TuataleSupabaseClient {
-  const url = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const url = normalizeSupabaseUrl(requireEnv('NEXT_PUBLIC_SUPABASE_URL'));
   const serviceRoleKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
   return createClient<Database>(url, serviceRoleKey, {
     auth: {
