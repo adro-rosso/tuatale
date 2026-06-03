@@ -24,33 +24,13 @@ import { drafts } from '@/db';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import {
   type WizardStep,
-  WIZARD_STEPS,
   isWizardStep,
   stepIndex,
   stepPath,
   nextStep,
   previousStep,
 } from '@/lib/wizard-steps';
-
-/**
- * Custom error so the wizard UI can show a specific message when a
- * client tries to advance past the end (or back before the start).
- * In normal use the UI never calls advanceStep from payment or goBack
- * from child — the WizardNav component hides those buttons. This is a
- * defence-in-depth check in case the client is tampered with.
- */
-export class InvalidTransitionError extends Error {
-  constructor(
-    public readonly from: WizardStep,
-    public readonly direction: 'advance' | 'back',
-  ) {
-    super(
-      `Invalid wizard transition: cannot ${direction} from "${from}". ` +
-        `Valid steps: ${WIZARD_STEPS.join(' → ')}.`,
-    );
-    this.name = 'InvalidTransitionError';
-  }
-}
+import { InvalidTransitionError } from './errors';
 
 /**
  * Move from `from` to the next step. Throws InvalidTransitionError if
