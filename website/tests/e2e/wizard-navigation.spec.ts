@@ -1,7 +1,9 @@
 /**
- * Phase 2.B end-to-end smoke: drive the wizard chassis through all six
- * steps in a real browser, verify URL transitions, cookie hygiene, and
- * the payment-step "no continue button" behaviour.
+ * End-to-end smoke for the wizard chassis.
+ *
+ * Phase 2.B walked an empty draft straight through with the generic
+ * "Continue" button. Phase 2.C added real form fields + per-step
+ * validation, so this test now fills each step before advancing.
  *
  * Runs against a local dev server (playwright.config.ts's webServer
  * boots `npm run dev` automatically). The dev server uses .env.local —
@@ -12,48 +14,81 @@
  *
  * NOT run in CI — Playwright browser install is local-only for now.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
-const STEPS = [
-  { path: '/start/child', heading: 'About your child' },
-  { path: '/start/secondaries', heading: 'Friends, pets, or favourite toys' },
-  { path: '/start/theme', heading: 'Choose a theme' },
-  { path: '/start/preview', heading: 'See a glimpse' },
-  { path: '/start/review', heading: 'Review the details' },
-  { path: '/start/payment', heading: 'Almost there' },
-] as const;
+const CHILD = {
+  name: 'Iris',
+  age_range: '5-7',
+  gender: 'girl',
+  appearance:
+    'Iris has curly brown hair just past her shoulders, brown eyes, and a small gap between her two front teeth. She loves wearing her red rain boots.',
+} as const;
 
-test('wizard chassis: /start → /start/child redirect + Continue navigation through all steps', async ({
-  page,
-}) => {
-  // /start always redirects to the first step.
+const THEME_TEXT =
+  'Iris discovers a tiny door at the back of the garden shed. Behind it, a world only as big as her hand — and she has to figure out who lives there before they figure out she does.';
+
+async function fillChildStep(page: Page): Promise<void> {
+  await page.locator('input[name="name"]').fill(CHILD.name);
+  await page.locator('select[name="age_range"]').selectOption(CHILD.age_range);
+  await page.locator(`input[name="gender"][value="${CHILD.gender}"]`).check();
+  await page.locator('textarea[name="appearance"]').fill(CHILD.appearance);
+}
+
+async function fillThemeStep(page: Page): Promise<void> {
+  await page.locator('textarea[name="theme"]').fill(THEME_TEXT);
+}
+
+test('happy path: fill all required steps and reach payment', async ({ page }) => {
   await page.goto('/start');
   await expect(page).toHaveURL(/\/start\/child$/);
+  await expect(page.getByRole('heading', { level: 2, name: 'About your child' })).toBeVisible();
 
-  // Continue button takes us through each subsequent step.
-  for (let i = 0; i < STEPS.length; i++) {
-    const step = STEPS[i]!;
-    await expect(page).toHaveURL(new RegExp(`${step.path}$`));
-    await expect(page.getByRole('heading', { level: 2, name: step.heading })).toBeVisible();
-    if (i < STEPS.length - 1) {
-      await page.getByRole('button', { name: /continue/i }).click();
-    }
-  }
+  await fillChildStep(page);
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/secondaries$/);
+  await expect(
+    page.getByRole('heading', { level: 2, name: `Friends and family for ${CHILD.name}` }),
+  ).toBeVisible();
 
-  // Final step: no Continue button (payment step submits via Phase 2.E).
+  // Secondaries is optional — skip without adding any cards.
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/theme$/);
+  await expect(
+    page.getByRole('heading', { level: 2, name: `Choose a theme for ${CHILD.name}'s story` }),
+  ).toBeVisible();
+
+  await fillThemeStep(page);
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/preview$/);
+
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/review$/);
+  await expect(page.getByRole('heading', { level: 2, name: 'Review the details' })).toBeVisible();
+  // Review surfaces the typed values.
+  await expect(page.getByText(CHILD.name).first()).toBeVisible();
+
+  await page.getByRole('button', { name: /looks good.*continue/i }).click();
   await expect(page).toHaveURL(/\/start\/payment$/);
+  // No Continue on payment (Stripe Checkout lands in Phase 2.E).
   await expect(page.getByRole('button', { name: /continue/i })).toHaveCount(0);
   // But Back is still available.
   await expect(page.getByRole('button', { name: /back/i })).toBeVisible();
 });
 
-test('back button reverses navigation without rewinding progress', async ({ page }) => {
-  // Each click triggers a Server Action that redirects via HTTP — wait
-  // for each URL transition before the next click so we don't race
-  // against the previous form submission's network round-trip.
+test('child step rejects empty submission and surfaces brand-voice errors', async ({ page }) => {
   await page.goto('/start');
   await expect(page).toHaveURL(/\/start\/child$/);
+  // Click Continue with no fields filled.
+  await page.getByRole('button', { name: /continue/i }).click();
+  // Stays on /start/child, validation errors visible.
+  await expect(page).toHaveURL(/\/start\/child$/);
+  await expect(page.getByText("We'll need this.").first()).toBeVisible();
+});
 
+test('back button reverses navigation without rewinding progress', async ({ page }) => {
+  await page.goto('/start');
+  await expect(page).toHaveURL(/\/start\/child$/);
+  await fillChildStep(page);
   await page.getByRole('button', { name: /continue/i }).click();
   await expect(page).toHaveURL(/\/start\/secondaries$/);
 
@@ -69,25 +104,45 @@ test('back button reverses navigation without rewinding progress', async ({ page
   await expect(page.getByRole('button', { name: /back/i })).toHaveCount(0);
 });
 
-test('GET /start/reset clears cookie and lands back at /start/child with a fresh one', async ({
+test('returning customer lands on furthest step reached, with prior input preserved', async ({
   page,
-  context,
 }) => {
-  // Start a draft, advance two steps so we know the draft is active.
+  // Advance to /start/theme so draft.current_step == 'theme'.
   await page.goto('/start');
   await expect(page).toHaveURL(/\/start\/child$/);
+  await fillChildStep(page);
   await page.getByRole('button', { name: /continue/i }).click();
   await expect(page).toHaveURL(/\/start\/secondaries$/);
   await page.getByRole('button', { name: /continue/i }).click();
   await expect(page).toHaveURL(/\/start\/theme$/);
+
+  // Simulate fresh tab: visit /start directly. Proxy should land us at
+  // the furthest reached step, not back at /start/child.
+  await page.goto('/start');
+  await expect(page).toHaveURL(/\/start\/theme$/);
+
+  // And going back to /start/child shows the previously typed values.
+  await page.goto('/start/child');
+  await expect(page.locator('input[name="name"]')).toHaveValue(CHILD.name);
+  await expect(page.locator('select[name="age_range"]')).toHaveValue(CHILD.age_range);
+  await expect(page.locator('textarea[name="appearance"]')).toHaveValue(CHILD.appearance);
+});
+
+test('GET /start/reset clears cookie and lands back at /start/child with a fresh one', async ({
+  page,
+  context,
+}) => {
+  await page.goto('/start');
+  await expect(page).toHaveURL(/\/start\/child$/);
+  await fillChildStep(page);
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/secondaries$/);
 
   const beforeCookies = await context.cookies();
   const beforeCookie = beforeCookies.find((c) => c.name === 'tuatale_draft_id');
   expect(beforeCookie).toBeDefined();
   const beforeDraftId = beforeCookie?.value;
 
-  // Trigger the reset — should clear the cookie + bounce through /start
-  // back to /start/child with a fresh cookie minted by the proxy.
   await page.goto('/start/reset');
   await expect(page).toHaveURL(/\/start\/child$/);
 
@@ -96,10 +151,12 @@ test('GET /start/reset clears cookie and lands back at /start/child with a fresh
   expect(afterCookie).toBeDefined();
   expect(afterCookie?.value).not.toBe(beforeDraftId);
   expect(afterCookie?.value).toMatch(/^[0-9a-f-]{36}$/);
+
+  // Fresh cookie ⇒ fresh draft ⇒ empty form.
+  await expect(page.locator('input[name="name"]')).toHaveValue('');
 });
 
 test('proxy sets the draft cookie on first /start visit', async ({ page, context }) => {
-  // Start with an empty context (no cookies).
   await context.clearCookies();
   await page.goto('/start');
   await expect(page).toHaveURL(/\/start\/child$/);
@@ -109,6 +166,5 @@ test('proxy sets the draft cookie on first /start visit', async ({ page, context
   expect(draftCookie, 'tuatale_draft_id cookie must be set').toBeDefined();
   expect(draftCookie?.httpOnly, 'cookie must be httpOnly').toBe(true);
   expect(draftCookie?.sameSite?.toLowerCase()).toBe('lax');
-  // Value is a UUID v4-shaped string.
   expect(draftCookie?.value).toMatch(/^[0-9a-f-]{36}$/);
 });

@@ -69,8 +69,12 @@ export async function getDraftById(
 }
 
 /**
- * Patch a draft. updated_at refreshes automatically via DB trigger; do not
- * include it in the updates payload.
+ * Patch a draft by its primary key. updated_at refreshes automatically
+ * via DB trigger; do not include it in the updates payload.
+ *
+ * If you're inside a Server Action that only has the cookie value (not
+ * the draft.id), use `updateDraftByCookieId` instead — it does the
+ * cookie → draft.id lookup for you.
  */
 export async function updateDraft(
   id: string,
@@ -85,6 +89,31 @@ export async function updateDraft(
     .single();
   if (error) throw new DatabaseError('drafts.update', error);
   return data;
+}
+
+/**
+ * Look up the active draft for a cookie + patch it in one call. The
+ * canonical pattern for Server Actions that receive just the cookie
+ * value: avoids each action duplicating the
+ * `getDraftByCookieId → updateDraft(draft.id, …)` two-step.
+ *
+ * Throws DatabaseError with operation `drafts.updateByCookieId` when
+ * the cookie has no active draft (treated as a programmer error — the
+ * Proxy should have ensured a draft exists; if it didn't, redirect to
+ * /start/reset before calling this).
+ */
+export async function updateDraftByCookieId(
+  cookieId: string,
+  updates: DraftUpdate,
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<DraftRow> {
+  const draft = await getDraftByCookieId(cookieId, client);
+  if (!draft) {
+    throw new DatabaseError('drafts.updateByCookieId', {
+      message: `No active draft for cookie_id ${cookieId.slice(0, 8)}…`,
+    });
+  }
+  return updateDraft(draft.id, updates, client);
 }
 
 /**

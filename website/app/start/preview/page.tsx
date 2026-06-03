@@ -1,17 +1,32 @@
 import { Body } from '@/components/ui/Body';
+import { Button } from '@/components/ui/Button';
+import { advanceStep } from '@/app/start/_actions/navigation';
 
 /**
- * Step 4 — see a glimpse. Placeholder. Phase 2.D lands the preview
- * generation (a single rendered page, email-gated, rate-limited) so
- * customers can see the style before paying.
+ * Step 4 — see a glimpse. Placeholder for Phase 2.D, which lands the
+ * preview generation (one rendered page, email-gated, rate-limited).
+ *
+ * The Continue button advances the draft to /start/review. Phase 2.C
+ * ships this as a pass-through so the wizard flow is end-to-end
+ * navigable without preview machinery in place.
  */
 export default function PreviewStepPage() {
+  const advance = advanceStep.bind(null, 'preview');
+
   return (
-    <div className="text-center">
-      <Body>
-        This is where you’ll see a single rendered page from the book — a glimpse of what the
-        finished story will look like. Free to view; we’ll ask for your email before generating.
-      </Body>
+    <div className="space-y-lg">
+      <div className="border-warm-grey-light bg-cream p-lg rounded-lg border text-center">
+        <Body className="text-warm-grey">
+          A glimpse of the finished book lands here in the next phase — one rendered page, free to
+          view, so you can see the style before paying. For now, continue straight through.
+        </Body>
+      </div>
+
+      <form action={advance} className="flex justify-end">
+        <Button type="submit" variant="primary">
+          Continue →
+        </Button>
+      </form>
     </div>
   );
 }

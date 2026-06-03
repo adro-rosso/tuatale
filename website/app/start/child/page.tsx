@@ -1,16 +1,23 @@
-import { Body } from '@/components/ui/Body';
+import { getDraft } from '@/lib/draft-fetch';
+import { ChildForm } from './ChildForm';
 
 /**
- * Step 1 — about your child. Placeholder for Phase 2.B; Phase 2.C lands
- * the actual form fields (name, age, gender, appearance markers).
+ * Step 1 — about your child. Phase 2.C: real form with four fields
+ * (name, age range, gender, appearance). Pre-fills from the draft so
+ * a returning customer sees what they previously typed.
  */
-export default function ChildStepPage() {
+export default async function ChildStepPage() {
+  const result = await getDraft();
+  const draft = result.kind === 'found' ? result.draft : null;
+
   return (
-    <div className="text-center">
-      <Body>
-        This is where you’ll tell us about your child — their name, age, and what they look like.
-        The form fields land in Phase 2.C.
-      </Body>
-    </div>
+    <ChildForm
+      initial={{
+        name: draft?.child_name ?? '',
+        age_range: draft?.age_range ?? '',
+        gender: draft?.child_gender ?? '',
+        appearance: draft?.child_appearance ?? '',
+      }}
+    />
   );
 }
