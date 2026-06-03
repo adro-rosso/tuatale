@@ -30,7 +30,11 @@ const THEME_TEXT =
 async function fillChildStep(page: Page): Promise<void> {
   await page.locator('input[name="name"]').fill(CHILD.name);
   await page.locator('select[name="age_range"]').selectOption(CHILD.age_range);
-  await page.locator(`input[name="gender"][value="${CHILD.gender}"]`).check();
+  // sr-only radios are pointer-intercepted by their visible labels.
+  // The radio IS the form-data source though, so a force-check on it
+  // (rather than clicking the wrapping label) keeps the selector tied
+  // to the actual input.
+  await page.locator(`input[name="gender"][value="${CHILD.gender}"]`).check({ force: true });
   await page.locator('textarea[name="appearance"]').fill(CHILD.appearance);
 }
 

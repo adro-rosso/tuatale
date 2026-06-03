@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { validateTheme } from '@/lib/validation/validate';
 import { updateDraftByCookieId } from '@/db/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
@@ -32,6 +33,8 @@ export async function submitThemeStep(
     theme_template_id: result.data.theme_template_id ?? null,
     current_step: 'preview',
   });
+
+  revalidatePath('/start', 'layout');
 
   redirect('/start/preview');
 }

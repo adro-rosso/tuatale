@@ -20,6 +20,7 @@
  */
 
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { drafts } from '@/db';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import {
@@ -82,6 +83,10 @@ async function persistAndRedirect(
     const currentReached: WizardStep = isWizardStep(draft.current_step) ? draft.current_step : from;
     if (stepIndex(to) > stepIndex(currentReached)) {
       await drafts.updateDraft(draft.id, { current_step: to });
+      // Layout cache holds the draft snapshot used by StepHeader +
+      // PricePanel; advancing changes current_step, which the /start
+      // resume route reads, so flush here too.
+      revalidatePath('/start', 'layout');
     }
   }
 

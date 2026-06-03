@@ -49,6 +49,12 @@ vi.mock('next/navigation', () => ({
   },
 }));
 
+// revalidatePath needs a real Next.js render context to record the
+// invalidation; in unit tests we just need it to be a no-op.
+vi.mock('next/cache', () => ({
+  revalidatePath: vi.fn(),
+}));
+
 vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => ({
     get: (name: string) =>

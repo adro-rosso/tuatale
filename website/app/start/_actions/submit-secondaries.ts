@@ -1,6 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { validateSecondaries } from '@/lib/validation/validate';
 import { updateDraftByCookieId } from '@/db/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
@@ -37,6 +38,10 @@ export async function submitSecondariesStep(
     secondaries: result.data as unknown as Json,
     current_step: 'theme',
   });
+
+  // Bust the /start layout cache so PricePanel re-renders with the
+  // updated secondaries count + extra-care total.
+  revalidatePath('/start', 'layout');
 
   redirect('/start/theme');
 }
