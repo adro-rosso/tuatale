@@ -7,13 +7,18 @@
 // Proxy is the only render-time hook that can both read and write
 // cookies on the response.
 //
-// Why pass-through on cookie-present: the proxy docs warn against using
-// it for "slow data fetching". A DB round-trip on every navigation
-// would add ~26ms (Sydney→Supabase) × 6 step navigations per wizard run.
-// We accept that a stale-cookie case (cookie set but DB row missing —
-// pg_cron deleted it after 30 days) shows up as cookieless in the
-// layout, which redirects to /start/reset (a Route Handler that
-// regenerates everything — to be added in Phase 2.C if it bites).
+// Cost model: we DO a Supabase round-trip on every /start/* request so
+// stale cookies (cookie present but draft was deleted by pg_cron,
+// expired, or converted) auto-recover into a fresh cookie + draft
+// without the customer noticing. ~26ms Sydney→Supabase × 6 step
+// navigations per wizard run ≈ 156ms tax total. Acceptable: catches
+// the stale case automatically; alternative ("layout detects, redirects
+// to /start/reset") trades latency for code complexity and a
+// user-visible flash.
+//
+// Manual reset (customer explicitly wants to start over after finishing
+// an order) still exists at /start/reset — that's a different concern
+// from automatic stale-cookie recovery.
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { COOKIE_NAME, getCookieOptions } from '@/lib/draft-cookie';
@@ -30,20 +35,14 @@ export const config = {
 };
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  const existing = request.cookies.get(COOKIE_NAME)?.value;
+  const existing = request.cookies.get(COOKIE_NAME)?.value ?? null;
 
-  // Fast path: cookie present. Trust it and let the layout do the DB
-  // read. Stale-cookie recovery isn't this layer's job.
-  if (existing) {
-    return NextResponse.next();
-  }
-
-  // Cold path: first visit, no cookie. Mint a draft + set the cookie
-  // before the layout renders. Failure to create the draft is
-  // non-fatal — the layout will detect cookieless state and show a
-  // graceful "couldn't start a new book right now" message.
+  // Always pass the incoming cookie (or null) to the resolver. The
+  // resolver decides: found-and-fresh (no work), stale → mint new
+  // cookie + draft, missing → same. The proxy itself stays a thin
+  // wrapper around the resolver's decision.
   try {
-    const result = await getOrCreateDraftForCookie(null);
+    const result = await getOrCreateDraftForCookie(existing);
     const response = NextResponse.next();
     if (result.kind === 'created') {
       response.cookies.set({
@@ -55,10 +54,11 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     return response;
   } catch (err) {
     // Sentry doesn't run in the proxy (no instrumentation hook here).
-    // Log to stderr so the dev-server output surfaces the cause; the
-    // layout will see cookieless state and render an error UI; that
-    // path DOES report to Sentry via the standard mechanism.
-    console.error('[proxy] failed to mint draft cookie:', err);
+    // Log to stderr so the dev-server output surfaces the cause. The
+    // layout will see whatever cookie state existed before the throw
+    // and render either the chrome (cookie was already valid) or an
+    // empty wizard (no cookie set). Either way the customer can retry.
+    console.error('[proxy] failed to resolve draft:', err);
     return NextResponse.next();
   }
 }
