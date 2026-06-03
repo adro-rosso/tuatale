@@ -37,12 +37,19 @@ function requireEnv(name: string): string {
 
 /**
  * Strip any path / trailing slash from a Supabase URL. The SDK expects
- * bare `https://<ref>.supabase.co` — if the env value accidentally
- * includes `/rest/v1/` or a trailing slash (easy mistake when copying
- * from the dashboard's REST URL field), PostgREST queries silently
- * break with PGRST125 "Invalid path specified in request URL". Auth
- * calls don't trip on this because the SDK uses the host-only form for
- * auth, so the breakage only shows up under real DB queries.
+ * bare `https://<ref>.supabase.co`.
+ *
+ * Defense-in-depth: as of Phase 2.B.1 (2026-06-03), .env.local and the
+ * Vercel project both hold the bare host form, so this function is a
+ * no-op on the happy path. Kept anyway because the failure mode of a
+ * mis-copied URL (e.g. pasting the dashboard's REST URL field, which
+ * has `/rest/v1/` appended) is silent and very hard to diagnose:
+ * Auth calls work because the SDK uses host-only for auth, so /api/health
+ * reports "connected" even with a broken URL. The breakage only shows
+ * up under PostgREST queries with code PGRST125 "Invalid path specified
+ * in request URL". Phase 2.B spent ~30 minutes debugging exactly that;
+ * the normalization stops it ever happening again. Cost is zero —
+ * `new URL(raw).host` runs once per client construction.
  */
 function normalizeSupabaseUrl(raw: string): string {
   try {
