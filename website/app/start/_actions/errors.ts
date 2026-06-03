@@ -25,3 +25,23 @@ export class InvalidTransitionError extends Error {
     this.direction = direction;
   }
 }
+
+/**
+ * Thrown when the Stripe checkout server action can't complete: no
+ * cookie, no draft, draft fields missing, or the Stripe SDK rejected
+ * the create call. Sentry will pick these up; the payment page also
+ * guards upstream so this should be defensive-only in practice.
+ */
+export class CheckoutError extends Error {
+  public readonly reason:
+    | 'no_cookie'
+    | 'no_draft'
+    | 'draft_incomplete'
+    | 'stripe_session_no_url';
+
+  constructor(reason: CheckoutError['reason'], message?: string) {
+    super(message ?? `Checkout failed: ${reason}`);
+    this.name = 'CheckoutError';
+    this.reason = reason;
+  }
+}
