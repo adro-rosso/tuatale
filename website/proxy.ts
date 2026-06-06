@@ -23,19 +23,36 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { COOKIE_NAME, getCookieOptions } from '@/lib/draft-cookie';
 import { getOrCreateDraftForCookie } from '@/lib/draft-resolver';
+import { isValidBasicAuth } from '@/lib/admin-auth';
 
 export const config = {
   // Run on the wizard entry route (bare /start) AND every nested step
   // (/start/child, /start/secondaries, etc.). The /start/:path* glob
   // does NOT match bare /start — path-to-regexp treats the segment
-  // after the slash as mandatory — so we list both explicitly. Phase
-  // 2.D will extend the array for /api/preview/* to attach rate-limit
-  // headers.
-  matcher: ['/start', '/start/:path*'],
+  // after the slash as mandatory — so we list both explicitly.
+  //
+  // /admin and /admin/* are gated by HTTP Basic Auth (Cycle A.4).
+  matcher: ['/start', '/start/:path*', '/admin', '/admin/:path*'],
 };
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
+
+  // /admin/* — HTTP Basic Auth gate. Fail-closed: if ADMIN_USERNAME
+  // or ADMIN_PASSWORD env vars are missing, every request returns
+  // 401 so a half-configured environment can't leak the admin
+  // surface. Browser prompts for credentials via the WWW-Authenticate
+  // header and caches them per session.
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    if (!isValidBasicAuth(request.headers.get('authorization'))) {
+      return new NextResponse('Authentication required', {
+        status: 401,
+        headers: { 'WWW-Authenticate': 'Basic realm="Tuatale Admin"' },
+      });
+    }
+    return NextResponse.next();
+  }
+
   // Stash the pathname on a request header so /start/layout.tsx (a
   // Server Component, no access to useSelectedLayoutSegment) can
   // detect the active route and switch between wizard chrome and the
