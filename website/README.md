@@ -72,6 +72,8 @@ tests/                    # vitest unit tests
 | Script                 | What it does                                                             |
 | ---------------------- | ------------------------------------------------------------------------ |
 | `npm run dev`          | Start Next dev server with Turbopack                                     |
+| `npm run dev:inngest`  | Start the Inngest dev server (UI at http://localhost:8288)               |
+| `npm run dev:all`      | Run Next + Inngest dev servers together via `concurrently`               |
 | `npm run build`        | Production build                                                         |
 | `npm run start`        | Serve the production build locally                                       |
 | `npm run lint`         | ESLint (flat config, extends `next/core-web-vitals` + `next/typescript`) |
@@ -81,6 +83,12 @@ tests/                    # vitest unit tests
 | `npm test`             | Vitest unit tests in jsdom                                               |
 | `npm run test:watch`   | Vitest in watch mode                                                     |
 | `npm run test:e2e`     | Playwright E2E tests (Chrome desktop + iPhone 14 + iPad)                 |
+
+For full local development including Inngest functions, use
+`npm run dev:all`. The Inngest dev server auto-discovers functions from
+http://localhost:3000/api/inngest and provides a UI for triggering events
+and inspecting runs at http://localhost:8288. No global install needed —
+the dev server is fetched on demand via `npx inngest-cli@latest`.
 
 ## Environment variables
 
