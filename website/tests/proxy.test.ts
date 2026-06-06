@@ -171,12 +171,7 @@ describeIntegration('proxy — first-visit cookie minting', () => {
 describe('proxy — matcher config', () => {
   // No DB needed for the matcher test — it's structural.
   it("matches '/start' + '/start/:path*' + '/admin' + '/admin/:path*'", () => {
-    expect(proxyConfig.matcher).toEqual([
-      '/start',
-      '/start/:path*',
-      '/admin',
-      '/admin/:path*',
-    ]);
+    expect(proxyConfig.matcher).toEqual(['/start', '/start/:path*', '/admin', '/admin/:path*']);
   });
 });
 
