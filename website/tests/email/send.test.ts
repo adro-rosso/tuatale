@@ -5,7 +5,7 @@
  * happens. Asserts every branch of the success/error tree + that
  * every failure path Sentry-captures.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { getResendSpy, sentryCaptureSpy, sendSpy } = vi.hoisted(() => ({
   getResendSpy: vi.fn(),
@@ -32,6 +32,7 @@ const validContent = {
 
 describe('sendEmail', () => {
   const originalFrom = process.env.EMAIL_FROM;
+  const originalFakeFlag = process.env.E2E_TEST_MODE_FAKE_EMAIL_SEND;
 
   beforeEach(() => {
     getResendSpy.mockReset();
@@ -39,6 +40,14 @@ describe('sendEmail', () => {
     sendSpy.mockReset();
     getResendSpy.mockReturnValue({ emails: { send: sendSpy } });
     process.env.EMAIL_FROM = originalFrom;
+    delete process.env.E2E_TEST_MODE_FAKE_EMAIL_SEND;
+  });
+  afterEach(() => {
+    if (originalFakeFlag === undefined) {
+      delete process.env.E2E_TEST_MODE_FAKE_EMAIL_SEND;
+    } else {
+      process.env.E2E_TEST_MODE_FAKE_EMAIL_SEND = originalFakeFlag;
+    }
   });
 
   it('returns success with the Resend message id on happy path', async () => {
@@ -138,5 +147,28 @@ describe('sendEmail', () => {
     sendSpy.mockRejectedValue('not even an error');
     const res = await sendEmail(validContent);
     expect(res).toEqual({ success: false, error: 'Unknown send error' });
+  });
+
+  describe('E2E_TEST_MODE_FAKE_EMAIL_SEND', () => {
+    it('returns a synthetic success without calling Resend when set to "true"', async () => {
+      process.env.E2E_TEST_MODE_FAKE_EMAIL_SEND = 'true';
+      const res = await sendEmail(validContent);
+      expect(res.success).toBe(true);
+      expect(res).toHaveProperty('messageId');
+      if (res.success) {
+        expect(res.messageId).toMatch(/^msg_test_e2e_/);
+      }
+      expect(getResendSpy).not.toHaveBeenCalled();
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(sentryCaptureSpy).not.toHaveBeenCalled();
+    });
+
+    it('does NOT short-circuit when the flag is anything other than "true"', async () => {
+      process.env.E2E_TEST_MODE_FAKE_EMAIL_SEND = '1';
+      sendSpy.mockResolvedValue({ data: { id: 'msg_real' }, error: null });
+      const res = await sendEmail(validContent);
+      expect(res).toEqual({ success: true, messageId: 'msg_real' });
+      expect(sendSpy).toHaveBeenCalled();
+    });
   });
 });
