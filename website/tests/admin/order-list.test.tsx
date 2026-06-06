@@ -26,6 +26,9 @@ function fakeJob(over: Partial<PipelineJobRow> = {}): PipelineJobRow {
     error_details: null,
     reviewed_by: null,
     review_notes: null,
+    notification_sent_at: null,
+    notification_message_id: null,
+    notification_error: null,
     ...over,
   };
 }

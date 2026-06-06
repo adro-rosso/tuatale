@@ -30,6 +30,7 @@ import {
   retry,
   incrementAttemptCount,
   updateReviewNotes,
+  updateJobNotificationStatus,
   isValidStatusTransition,
   PIPELINE_JOB_STATUSES,
   type PipelineJobStatus,
@@ -366,6 +367,44 @@ describeIntegration('pipeline_jobs integration', () => {
   });
 
   // ---- incrementAttemptCount ----
+
+  it('updateJobNotificationStatus records email-send outcome without changing status', async () => {
+    const job = await createJob({ orderId }, client);
+    await markRunning(job.id, {}, client);
+    await markAwaitingReview(job.id, { pdfUrl: 'https://example.com/a.pdf' }, client);
+    await markShipped(job.id, { reviewedBy: 'adro' }, client);
+
+    // Success: sent_at + message_id populated, error null.
+    const sentAt = new Date('2026-06-08T10:00:00Z');
+    const sentRow = await updateJobNotificationStatus(
+      job.id,
+      {
+        notificationSentAt: sentAt,
+        notificationMessageId: 'msg_abc123',
+        notificationError: null,
+      },
+      client,
+    );
+    expect(sentRow.status).toBe('shipped');
+    expect(new Date(sentRow.notification_sent_at!).toISOString()).toBe(sentAt.toISOString());
+    expect(sentRow.notification_message_id).toBe('msg_abc123');
+    expect(sentRow.notification_error).toBeNull();
+
+    // Failure: sent_at + message_id null, error populated.
+    const failedRow = await updateJobNotificationStatus(
+      job.id,
+      {
+        notificationSentAt: null,
+        notificationMessageId: null,
+        notificationError: 'Resend: invalid recipient',
+      },
+      client,
+    );
+    expect(failedRow.notification_sent_at).toBeNull();
+    expect(failedRow.notification_message_id).toBeNull();
+    expect(failedRow.notification_error).toBe('Resend: invalid recipient');
+    expect(failedRow.status).toBe('shipped'); // status untouched
+  });
 
   it('updateReviewNotes patches notes without touching status', async () => {
     const job = await createJob({ orderId }, client);

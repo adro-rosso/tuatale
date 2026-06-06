@@ -424,3 +424,42 @@ export async function updateReviewNotes(
   if (error) throw new DatabaseError('pipelineJobs.updateReviewNotes', error);
   return data;
 }
+
+/**
+ * Patch the ship-notification tracking columns added in the Cycle A.5
+ * migration. Used by shipJobAction after Resend's `sendEmail` returns
+ * — success records sent_at + message_id, failure records error.
+ *
+ * All three fields are independently nullable so the helper supports
+ * three states without exotic CHECK constraints:
+ *   - success         { sentAt: now, messageId: 'msg_x', error: null }
+ *   - failure         { sentAt: null, messageId: null, error: '...' }
+ *   - skipped (stub)  { sentAt: null, messageId: null, error: 'stub PDF...' }
+ *
+ * Does NOT touch status — the email outcome is orthogonal to whether
+ * the job is shipped.
+ */
+export async function updateJobNotificationStatus(
+  id: string,
+  args: {
+    notificationSentAt: Date | null;
+    notificationMessageId: string | null;
+    notificationError: string | null;
+  },
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<PipelineJobRow> {
+  const { data, error } = await client
+    .from('pipeline_jobs')
+    .update({
+      notification_sent_at: args.notificationSentAt
+        ? args.notificationSentAt.toISOString()
+        : null,
+      notification_message_id: args.notificationMessageId,
+      notification_error: args.notificationError,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw new DatabaseError('pipelineJobs.updateJobNotificationStatus', error);
+  return data;
+}
