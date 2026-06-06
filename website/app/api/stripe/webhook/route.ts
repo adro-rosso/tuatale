@@ -12,6 +12,9 @@
  *      webhooks; we must not double-create orders)
  *   4. Snapshot draft → order
  *   5. Mark the draft as converted, linking to the order id
+ *   6. Create pipeline_jobs row + dispatch Inngest event (Cycle A.3 —
+ *      the bridge between the customer payment and the Track A
+ *      pipeline runtime)
  *
  * Every non-event response is 200 with a payload describing why we
  * skipped — Stripe retries non-2xx responses, and we don't want to
@@ -24,11 +27,87 @@
  * UTF-8 body, which is what stripe.webhooks.constructEvent wants.
  */
 import { NextResponse } from 'next/server';
+import * as Sentry from '@sentry/nextjs';
 import type Stripe from 'stripe';
 import { getStripe } from '@/lib/stripe';
 import { getDraftById, markDraftConverted } from '@/db/drafts';
 import { getOrderByStripeSessionId } from '@/db/orders';
+import * as pipelineJobs from '@/db/pipeline-jobs';
 import { createOrderFromDraft } from '@/lib/checkout/create-order';
+import { inngest } from '@/lib/inngest/client';
+import type { Tables } from '@/types/database';
+
+type OrderRow = Tables<'orders'>;
+type PipelineJobRow = Tables<'pipeline_jobs'>;
+
+/**
+ * Best-effort: create the pipeline job + fire the Inngest event.
+ *
+ * Two failure modes, both fail-open (logged to Sentry but the webhook
+ * still returns 200):
+ *
+ *   - createJob throws: the order exists and the draft is converted
+ *     but no work will happen until manual admin intervention.
+ *     Orphan visible in the admin dashboard (Cycle A.4).
+ *
+ *   - inngest.send throws: the job row exists in 'pending' state but
+ *     no Inngest run is scheduled. Recoverable by a periodic sweeper
+ *     (Cycle A.4 / A.5) that re-dispatches stuck pendings.
+ *
+ * We fail-open because returning non-2xx would make Stripe retry the
+ * whole webhook — which would attempt duplicate order creation. The
+ * orders unique constraint on stripe_session_id catches the duplicate
+ * (createOrderFromDraft throws DatabaseError on the second attempt),
+ * but the resulting Sentry noise would obscure the real underlying
+ * failure (the dispatch problem).
+ *
+ * If a job already exists (idempotent re-entry after a prior webhook
+ * delivery succeeded all the way through), this is a no-op.
+ */
+async function dispatchPipelineJob(
+  order: OrderRow,
+  sessionId: string,
+): Promise<
+  | { dispatch: 'requested'; job: PipelineJobRow }
+  | { dispatch: 'idempotent-noop'; job: PipelineJobRow }
+  | { dispatch: 'failed-orphan-needs-manual' }
+  | { dispatch: 'failed-dispatch-job-pending'; job: PipelineJobRow }
+> {
+  // Belt-and-suspenders idempotency: the unique(order_id) index on
+  // pipeline_jobs would catch a duplicate at insert time, but
+  // pre-checking keeps the happy-path retry quiet — no exception
+  // bubbling into the createJob catch + Sentry capture.
+  const existingJob = await pipelineJobs.getJobByOrderId(order.id);
+  if (existingJob) {
+    return { dispatch: 'idempotent-noop', job: existingJob };
+  }
+
+  let job: PipelineJobRow;
+  try {
+    job = await pipelineJobs.createJob({ orderId: order.id });
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { component: 'stripe-webhook', failure: 'pipeline-job-create' },
+      extra: { orderId: order.id, stripeSessionId: sessionId },
+    });
+    return { dispatch: 'failed-orphan-needs-manual' };
+  }
+
+  try {
+    await inngest.send({
+      name: 'pipeline/job.requested',
+      data: { jobId: job.id, orderId: order.id },
+    });
+  } catch (err) {
+    Sentry.captureException(err, {
+      tags: { component: 'stripe-webhook', failure: 'inngest-dispatch' },
+      extra: { jobId: job.id, orderId: order.id, stripeSessionId: sessionId },
+    });
+    return { dispatch: 'failed-dispatch-job-pending', job };
+  }
+
+  return { dispatch: 'requested', job };
+}
 
 // Force the route to run on Node runtime — the Stripe SDK's webhook
 // signature verification uses Node crypto, which the Edge runtime
@@ -99,11 +178,30 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (draft.status === 'active') {
       await markDraftConverted(draft.id, existing.id);
     }
-    return NextResponse.json({ received: true, alreadyProcessed: true });
+    // Same reconciliation for pipeline_jobs: a prior attempt may
+    // have died between createOrder and createJob. If so, finish
+    // the job creation + dispatch now. dispatchPipelineJob is
+    // idempotent — if the job already exists it returns
+    // idempotent-noop without touching Inngest.
+    const result = await dispatchPipelineJob(existing, session.id);
+    return NextResponse.json({
+      received: true,
+      alreadyProcessed: true,
+      pipelineDispatch: result.dispatch,
+    });
   }
 
   const order = await createOrderFromDraft({ draft, stripeSession: session });
   await markDraftConverted(draft.id, order.id);
 
-  return NextResponse.json({ received: true, orderId: order.id });
+  const result = await dispatchPipelineJob(order, session.id);
+
+  return NextResponse.json({
+    received: true,
+    orderId: order.id,
+    pipelineDispatch: result.dispatch,
+    ...(result.dispatch === 'requested' || result.dispatch === 'idempotent-noop'
+      ? { jobId: result.job.id }
+      : {}),
+  });
 }
