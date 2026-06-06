@@ -41,19 +41,23 @@ export function createTestClient(): TuataleSupabaseClient {
 }
 
 /**
- * Wipe every row from the three application tables. Called from
- * `beforeEach` in each suite so tests start from a known empty state.
+ * Wipe every row from the application tables. Called from `beforeEach`
+ * in each suite so tests start from a known empty state.
  *
  * We use bulk delete with an impossible-id .neq() filter rather than
  * TRUNCATE because Supabase's REST client requires a WHERE clause on
- * destructive ops. preview_events first because it has the loose
- * draft_id reference; then orders (loose converted_from_draft_id); then
- * drafts last.
+ * destructive ops.
+ *
+ * Order matters — FK constraints:
+ *   pipeline_jobs  (FK -> orders, ON DELETE RESTRICT)
+ *   preview_events (loose draft_id reference, no FK)
+ *   orders         (loose converted_from_draft_id, no FK)
+ *   drafts         (root)
  */
 const IMPOSSIBLE_UUID = '00000000-0000-0000-0000-000000000000';
 
 export async function truncateAll(client: TuataleSupabaseClient): Promise<void> {
-  for (const table of ['preview_events', 'orders', 'drafts'] as const) {
+  for (const table of ['pipeline_jobs', 'preview_events', 'orders', 'drafts'] as const) {
     const { error } = await client.from(table).delete().neq('id', IMPOSSIBLE_UUID);
     if (error) {
       throw new Error(`truncateAll: failed on ${table}: ${error.message}`);

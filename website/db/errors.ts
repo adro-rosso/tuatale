@@ -28,3 +28,27 @@ export class DatabaseError extends Error {
     this.cause = cause;
   }
 }
+
+/**
+ * Thrown by pipeline_jobs per-transition helpers (markRunning,
+ * markShipped, etc.) when the caller tries to move a job from a
+ * state that doesn't allow the target. The CHECK constraint on the
+ * status column would catch a totally bogus value at the DB; this
+ * error catches the more interesting case of a legal value reached
+ * from an illegal predecessor (e.g. pending -> shipped without
+ * going through running + awaiting_review).
+ *
+ * Carries the from + to states so callers can render specific UI or
+ * surface the actual transition that was attempted in logs.
+ */
+export class InvalidStatusTransitionError extends Error {
+  public readonly from: string;
+  public readonly to: string;
+
+  constructor(from: string, to: string) {
+    super(`Invalid pipeline_jobs status transition: "${from}" -> "${to}"`);
+    this.name = 'InvalidStatusTransitionError';
+    this.from = from;
+    this.to = to;
+  }
+}
