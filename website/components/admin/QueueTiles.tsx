@@ -18,10 +18,7 @@ interface QueueTilesProps {
 
 export function QueueTiles({ counts }: QueueTilesProps) {
   return (
-    <nav
-      aria-label="Queue summary"
-      className="gap-sm flex flex-wrap items-stretch"
-    >
+    <nav aria-label="Queue summary" className="gap-sm flex flex-wrap items-stretch">
       {PIPELINE_JOB_STATUSES.map((status) => {
         const isPriority = status === 'awaiting_review';
         const tileClasses = isPriority
@@ -31,12 +28,12 @@ export function QueueTiles({ counts }: QueueTilesProps) {
           <Link
             key={status}
             href={`/admin/orders?status=${status}`}
-            className={`font-body min-w-[110px] flex-1 rounded-md border px-md py-sm transition-colors ${tileClasses}`}
+            className={`font-body px-md py-sm min-w-[110px] flex-1 rounded-md border transition-colors ${tileClasses}`}
           >
             <span className="text-caption block tracking-wider uppercase opacity-80">
               {statusLabel(status)}
             </span>
-            <span className="font-heading text-h2 block tabular-nums not-italic">
+            <span className="font-heading text-h2 block not-italic tabular-nums">
               {counts[status]}
             </span>
           </Link>

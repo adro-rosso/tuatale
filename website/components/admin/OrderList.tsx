@@ -53,9 +53,7 @@ export function OrderList({ rows, filterStatus }: OrderListProps) {
         <tbody>
           {rows.map(({ job, order }) => {
             const shortId = order?.id.slice(0, 8) ?? '—';
-            const customerName = order?.child_name
-              ? `${order.child_name}'s parent`
-              : '—';
+            const customerName = order?.child_name ? `${order.child_name}'s parent` : '—';
             const themeExcerpt = order?.theme
               ? order.theme.length > 60
                 ? `${order.theme.slice(0, 60)}…`
@@ -112,7 +110,5 @@ function Th({ children, className = '' }: { children: React.ReactNode; className
 }
 
 function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return (
-    <td className={`font-body text-body px-md py-sm align-top ${className}`}>{children}</td>
-  );
+  return <td className={`font-body text-body px-md py-sm align-top ${className}`}>{children}</td>;
 }

@@ -30,7 +30,7 @@ export function StatusBadge({ status }: { status: PipelineJobStatus }) {
   const classes = STATUS_CLASSES[status];
   return (
     <span
-      className={`font-body text-caption inline-flex items-center rounded-full px-sm py-xs font-medium ${classes}`}
+      className={`font-body text-caption px-sm py-xs inline-flex items-center rounded-full font-medium ${classes}`}
     >
       {STATUS_LABELS[status]}
     </span>

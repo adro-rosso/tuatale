@@ -65,18 +65,13 @@ function fakeOrder(over: Partial<OrderRow> = {}): OrderRow {
 
 describe('OrderList', () => {
   it('renders empty state when no rows match the filter', () => {
-    const html = renderToStaticMarkup(
-      <OrderList rows={[]} filterStatus="awaiting_review" />,
-    );
+    const html = renderToStaticMarkup(<OrderList rows={[]} filterStatus="awaiting_review" />);
     expect(html).toContain('No orders awaiting review.');
   });
 
   it('renders a row per job with order summary fields + Review link', () => {
     const html = renderToStaticMarkup(
-      <OrderList
-        rows={[{ job: fakeJob(), order: fakeOrder() }]}
-        filterStatus="awaiting_review"
-      />,
+      <OrderList rows={[{ job: fakeJob(), order: fakeOrder() }]} filterStatus="awaiting_review" />,
     );
     // Short order id (first 8 chars).
     expect(html).toContain('order-uu');

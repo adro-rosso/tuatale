@@ -29,6 +29,7 @@ import {
   markCancelled,
   retry,
   incrementAttemptCount,
+  updateReviewNotes,
   isValidStatusTransition,
   PIPELINE_JOB_STATUSES,
   type PipelineJobStatus,
@@ -365,6 +366,18 @@ describeIntegration('pipeline_jobs integration', () => {
   });
 
   // ---- incrementAttemptCount ----
+
+  it('updateReviewNotes patches notes without touching status', async () => {
+    const job = await createJob({ orderId }, client);
+    await markRunning(job.id, {}, client);
+    const updated = await updateReviewNotes(job.id, 'in-progress notes', client);
+    expect(updated.status).toBe('running');
+    expect(updated.review_notes).toBe('in-progress notes');
+    // Clearing via null also works.
+    const cleared = await updateReviewNotes(job.id, null, client);
+    expect(cleared.review_notes).toBeNull();
+    expect(cleared.status).toBe('running');
+  });
 
   it('incrementAttemptCount bumps the counter without touching status', async () => {
     const job = await createJob({ orderId }, client);

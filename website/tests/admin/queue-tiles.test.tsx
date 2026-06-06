@@ -55,9 +55,7 @@ describe('QueueTiles', () => {
     expect(reviewTag).toBeDefined();
     expect(reviewTag).toMatch(/bg-iron-oxide/);
     // And a non-priority tile (pending) should NOT carry bg-iron-oxide.
-    const pendingTag = html.match(
-      /<a[^>]*href="\/admin\/orders\?status=pending"[^>]*>/,
-    )?.[0];
+    const pendingTag = html.match(/<a[^>]*href="\/admin\/orders\?status=pending"[^>]*>/)?.[0];
     expect(pendingTag).toBeDefined();
     expect(pendingTag).not.toMatch(/bg-iron-oxide/);
   });

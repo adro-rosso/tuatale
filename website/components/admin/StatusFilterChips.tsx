@@ -41,7 +41,7 @@ export function StatusFilterChips({ active }: StatusFilterChipsProps) {
             <Link
               key={status}
               href={`/admin/orders?status=${status}`}
-              className={`font-body text-caption inline-flex items-center rounded-full border px-md py-xs font-medium transition-colors ${classes}`}
+              className={`font-body text-caption px-md py-xs inline-flex items-center rounded-full border font-medium transition-colors ${classes}`}
               aria-current={isActive ? 'page' : undefined}
             >
               {statusLabel(status)}

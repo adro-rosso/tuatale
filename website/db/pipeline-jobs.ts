@@ -400,3 +400,27 @@ export async function incrementAttemptCount(
   if (error) throw new DatabaseError('pipelineJobs.incrementAttemptCount', error);
   return data;
 }
+
+/**
+ * Patch review_notes without touching status or any other field.
+ * Used by the admin "Save notes" action so the admin can capture
+ * work-in-progress thoughts without committing to a Ship / Cancel /
+ * Retry.
+ *
+ * Empty string is allowed (clears the notes). Pass `null` to unset
+ * explicitly.
+ */
+export async function updateReviewNotes(
+  id: string,
+  notes: string | null,
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<PipelineJobRow> {
+  const { data, error } = await client
+    .from('pipeline_jobs')
+    .update({ review_notes: notes })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw new DatabaseError('pipelineJobs.updateReviewNotes', error);
+  return data;
+}
