@@ -2,6 +2,7 @@ import type { Tables } from '@/types/database';
 import type { PipelineJobStatus } from '@/db/pipeline-jobs';
 import { StatusBadge } from './StatusBadge';
 import { RelativeTime } from './RelativeTime';
+import { EmailStatusIndicator, hasEmailActivity } from './EmailStatusIndicator';
 
 type PipelineJobRow = Tables<'pipeline_jobs'>;
 
@@ -90,6 +91,15 @@ export function JobExecutionDetail({ job }: { job: PipelineJobRow }) {
           {job.reviewed_by && (
             <p className="font-body text-warm-grey text-caption">— {job.reviewed_by}</p>
           )}
+        </div>
+      )}
+
+      {hasEmailActivity(job) && (
+        <div className="space-y-xs">
+          <h3 className="font-body text-warm-grey text-caption tracking-wider uppercase">
+            Customer email
+          </h3>
+          <EmailStatusIndicator job={job} />
         </div>
       )}
     </section>

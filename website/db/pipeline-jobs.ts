@@ -451,9 +451,7 @@ export async function updateJobNotificationStatus(
   const { data, error } = await client
     .from('pipeline_jobs')
     .update({
-      notification_sent_at: args.notificationSentAt
-        ? args.notificationSentAt.toISOString()
-        : null,
+      notification_sent_at: args.notificationSentAt ? args.notificationSentAt.toISOString() : null,
       notification_message_id: args.notificationMessageId,
       notification_error: args.notificationError,
     })

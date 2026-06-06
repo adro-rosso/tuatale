@@ -38,7 +38,7 @@ describe('buildShipNotification', () => {
     expect(html).toContain('Download the book');
   });
 
-  it("html escapes special characters in the child name (XSS prevention)", () => {
+  it('html escapes special characters in the child name (XSS prevention)', () => {
     const html = buildShipNotification({
       ...baseInput,
       childName: '<script>alert(1)</script>',
@@ -48,7 +48,7 @@ describe('buildShipNotification', () => {
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
   });
 
-  it("escapes attribute-breaking characters in the pdfUrl", () => {
+  it('escapes attribute-breaking characters in the pdfUrl', () => {
     // A maliciously-crafted URL with a stray quote would break out of
     // the href attribute and rewrite subsequent attributes. Escape
     // turns it into an entity.

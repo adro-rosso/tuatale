@@ -52,9 +52,7 @@ describe('sendEmail', () => {
     process.env.EMAIL_FROM = 'hello@tuatale.com.au';
     sendSpy.mockResolvedValue({ data: { id: 'msg_x' }, error: null });
     await sendEmail(validContent);
-    expect(sendSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ from: 'hello@tuatale.com.au' }),
-    );
+    expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ from: 'hello@tuatale.com.au' }));
   });
 
   it('falls back to onboarding@resend.dev when EMAIL_FROM is unset', async () => {

@@ -21,10 +21,6 @@ const skipSuite = !ADMIN_USERNAME || !ADMIN_PASSWORD;
 
 const describe = skipSuite ? test.describe.skip : test.describe;
 
-const VALID_HEADER = ADMIN_USERNAME && ADMIN_PASSWORD
-  ? `Basic ${Buffer.from(`${ADMIN_USERNAME}:${ADMIN_PASSWORD}`).toString('base64')}`
-  : '';
-
 describe('admin dashboard', () => {
   test.use({
     httpCredentials: {
@@ -51,7 +47,9 @@ describe('admin dashboard', () => {
   test('Filter chips link to the right status', async ({ page }) => {
     await page.goto('/admin/orders');
     // The "Failed" chip is a link to ?status=failed.
-    const failedLink = page.getByRole('navigation', { name: 'Filter by status' }).getByRole('link', { name: 'Failed' });
+    const failedLink = page
+      .getByRole('navigation', { name: 'Filter by status' })
+      .getByRole('link', { name: 'Failed' });
     await failedLink.click();
     await expect(page).toHaveURL(/\?status=failed$/);
     await expect(page.getByRole('heading', { name: 'Failed' })).toBeVisible();
