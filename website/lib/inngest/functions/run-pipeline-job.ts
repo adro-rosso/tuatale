@@ -41,9 +41,13 @@
 import { inngest } from '@/lib/inngest/client';
 import { pipelineJobRequested, pipelineJobRetried } from '@/lib/inngest/events';
 import * as pipelineJobs from '@/db/pipeline-jobs';
+import { STUB_PDF_URL, STUB_SLEEP_MS } from '@/lib/pipeline-constants';
 
-export const STUB_SLEEP_MS = 20_000;
-export const STUB_PDF_URL = 'https://placeholder.tuatale.com/stub-book.pdf';
+// Re-export so existing call sites that imported these from this
+// module keep working. New code should import from
+// @/lib/pipeline-constants directly to avoid pulling the Inngest
+// client transitively.
+export { STUB_PDF_URL, STUB_SLEEP_MS };
 
 interface PipelineEventData {
   jobId: string;

@@ -13,6 +13,11 @@ const {
   markCancelledSpy,
   retrySpy,
   updateReviewNotesSpy,
+  updateJobNotificationStatusSpy,
+  getOrderByIdSpy,
+  sendEmailSpy,
+  sentryCaptureExceptionSpy,
+  sentryCaptureMessageSpy,
   adminUsernameSpy,
   inngestSendSpy,
   revalidatePathSpy,
@@ -22,6 +27,11 @@ const {
   markCancelledSpy: vi.fn(),
   retrySpy: vi.fn(),
   updateReviewNotesSpy: vi.fn(),
+  updateJobNotificationStatusSpy: vi.fn(),
+  getOrderByIdSpy: vi.fn(),
+  sendEmailSpy: vi.fn(),
+  sentryCaptureExceptionSpy: vi.fn(),
+  sentryCaptureMessageSpy: vi.fn(),
   adminUsernameSpy: vi.fn(),
   inngestSendSpy: vi.fn(),
   revalidatePathSpy: vi.fn(),
@@ -40,6 +50,20 @@ vi.mock('@/db/pipeline-jobs', () => ({
   markCancelled: markCancelledSpy,
   retry: retrySpy,
   updateReviewNotes: updateReviewNotesSpy,
+  updateJobNotificationStatus: updateJobNotificationStatusSpy,
+}));
+
+vi.mock('@/db/orders', () => ({
+  getOrderById: getOrderByIdSpy,
+}));
+
+vi.mock('@/lib/email/send', () => ({
+  sendEmail: sendEmailSpy,
+}));
+
+vi.mock('@sentry/nextjs', () => ({
+  captureException: sentryCaptureExceptionSpy,
+  captureMessage: sentryCaptureMessageSpy,
 }));
 
 vi.mock('@/lib/admin-auth', () => ({
@@ -95,16 +119,47 @@ describe('saveNotesAction', () => {
 });
 
 describe('shipJobAction', () => {
+  const REAL_PDF = 'https://r2.tuatale.com/orders/abc/book.pdf';
+  const STUB_PDF = 'https://placeholder.tuatale.com/stub-book.pdf';
+
+  function shippedJob(over: Record<string, unknown> = {}) {
+    return {
+      id: 'job-1',
+      order_id: 'order-1',
+      status: 'shipped',
+      pdf_url: REAL_PDF,
+      ...over,
+    };
+  }
+
+  function fakeOrder(over: Record<string, unknown> = {}) {
+    return {
+      id: 'order-1',
+      customer_email: 'parent@example.com',
+      child_name: 'Iris',
+      ...over,
+    };
+  }
+
   beforeEach(() => {
     markShippedSpy.mockReset();
+    updateJobNotificationStatusSpy.mockReset();
+    getOrderByIdSpy.mockReset();
+    sendEmailSpy.mockReset();
+    sentryCaptureExceptionSpy.mockReset();
+    sentryCaptureMessageSpy.mockReset();
     revalidatePathSpy.mockReset();
     redirectSpy.mockReset();
     adminUsernameSpy.mockReset();
     adminUsernameSpy.mockReturnValue('adro');
-    markShippedSpy.mockResolvedValue({ id: 'job-1', status: 'shipped' });
+    // Defaults: real PDF, order found, email sent successfully.
+    markShippedSpy.mockResolvedValue(shippedJob());
+    getOrderByIdSpy.mockResolvedValue(fakeOrder());
+    sendEmailSpy.mockResolvedValue({ success: true, messageId: 'msg_xyz' });
+    updateJobNotificationStatusSpy.mockResolvedValue({});
   });
 
-  it('calls markShipped with the admin username + trimmed notes + redirects to list', async () => {
+  it('happy path: markShipped + send email + records notification_sent + redirects', async () => {
     await expect(
       shipJobAction('job-1', fd({ review_notes: '  looks good  ' })),
     ).rejects.toBeInstanceOf(RedirectSentinel);
@@ -112,8 +167,26 @@ describe('shipJobAction', () => {
       reviewedBy: 'adro',
       reviewNotes: 'looks good',
     });
+    expect(getOrderByIdSpy).toHaveBeenCalledWith('order-1');
+    expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+    expect(sendEmailSpy.mock.calls[0]![0]!).toMatchObject({
+      to: 'parent@example.com',
+      subject: "Iris's book is ready",
+    });
+    expect(updateJobNotificationStatusSpy).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({
+        notificationMessageId: 'msg_xyz',
+        notificationError: null,
+      }),
+    );
+    expect(updateJobNotificationStatusSpy.mock.calls[0]![1]!.notificationSentAt).toBeInstanceOf(
+      Date,
+    );
     expect(revalidatePathSpy).toHaveBeenCalledWith('/admin/orders', 'layout');
+    expect(revalidatePathSpy).toHaveBeenCalledWith('/admin/orders/job-1');
     expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
+    expect(sentryCaptureExceptionSpy).not.toHaveBeenCalled();
   });
 
   it('passes reviewNotes=undefined when textarea is empty', async () => {
@@ -130,6 +203,96 @@ describe('shipJobAction', () => {
     adminUsernameSpy.mockReturnValue(null);
     await expect(shipJobAction('job-1', fd())).rejects.toThrow(/ADMIN_USERNAME/);
     expect(markShippedSpy).not.toHaveBeenCalled();
+  });
+
+  it('stub PDF: skips sendEmail, records skip reason, still redirects', async () => {
+    markShippedSpy.mockResolvedValue(shippedJob({ pdf_url: STUB_PDF }));
+    await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(sendEmailSpy).not.toHaveBeenCalled();
+    expect(updateJobNotificationStatusSpy).toHaveBeenCalledWith('job-1', {
+      notificationSentAt: null,
+      notificationMessageId: null,
+      notificationError: expect.stringMatching(/stub PDF/i),
+    });
+    // Audit-trail: Sentry sees an info-level message (not exception).
+    expect(sentryCaptureMessageSpy).toHaveBeenCalledWith(
+      'Ship notification skipped for stub PDF',
+      expect.objectContaining({
+        level: 'info',
+        tags: expect.objectContaining({ skip: 'stub-pdf' }),
+      }),
+    );
+    expect(sentryCaptureExceptionSpy).not.toHaveBeenCalled();
+    expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
+  });
+
+  it('null pdf_url: treated as stub-style skip (defensive)', async () => {
+    markShippedSpy.mockResolvedValue(shippedJob({ pdf_url: null }));
+    await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(sendEmailSpy).not.toHaveBeenCalled();
+    expect(updateJobNotificationStatusSpy).toHaveBeenCalledWith(
+      'job-1',
+      expect.objectContaining({ notificationError: expect.stringMatching(/stub PDF/i) }),
+    );
+  });
+
+  it('order missing: Sentry-captures + records "order not found" + skips send + redirects', async () => {
+    getOrderByIdSpy.mockResolvedValue(null);
+    await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(sendEmailSpy).not.toHaveBeenCalled();
+    expect(updateJobNotificationStatusSpy).toHaveBeenCalledWith('job-1', {
+      notificationSentAt: null,
+      notificationMessageId: null,
+      notificationError: expect.stringMatching(/order not found/i),
+    });
+    expect(sentryCaptureExceptionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/order not found/i) }),
+      expect.objectContaining({
+        tags: expect.objectContaining({ failure: 'order-missing' }),
+      }),
+    );
+    expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
+  });
+
+  it('sendEmail failure: records notification_error, no Sentry capture from action (send.ts already did)', async () => {
+    sendEmailSpy.mockResolvedValue({
+      success: false,
+      error: 'Resend rejected: invalid recipient',
+    });
+    await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(updateJobNotificationStatusSpy).toHaveBeenCalledWith('job-1', {
+      notificationSentAt: null,
+      notificationMessageId: null,
+      notificationError: 'Resend rejected: invalid recipient',
+    });
+    // shipJobAction does NOT capture — sendEmail() already captured
+    // with full context. Double-capture would just be noise.
+    expect(sentryCaptureExceptionSpy).not.toHaveBeenCalled();
+    expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
+  });
+
+  it('updateJobNotificationStatus failure: Sentry captures + redirect still happens', async () => {
+    updateJobNotificationStatusSpy.mockRejectedValue(new Error('PG connection dropped'));
+    await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(sentryCaptureExceptionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringMatching(/PG connection/) }),
+      expect.objectContaining({
+        tags: expect.objectContaining({ failure: 'notification-status-persist' }),
+      }),
+    );
+    // Ship + email steps still ran.
+    expect(markShippedSpy).toHaveBeenCalled();
+    expect(sendEmailSpy).toHaveBeenCalled();
+    expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
+  });
+
+  it('markShipped failure: nothing downstream runs, error propagates', async () => {
+    markShippedSpy.mockRejectedValue(new Error('Invalid status transition'));
+    await expect(shipJobAction('job-1', fd())).rejects.toThrow(/Invalid status transition/);
+    expect(getOrderByIdSpy).not.toHaveBeenCalled();
+    expect(sendEmailSpy).not.toHaveBeenCalled();
+    expect(updateJobNotificationStatusSpy).not.toHaveBeenCalled();
+    expect(redirectSpy).not.toHaveBeenCalled();
   });
 });
 
