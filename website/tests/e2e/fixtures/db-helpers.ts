@@ -40,9 +40,7 @@ export async function getOrderByIdFromDb(id: string): Promise<OrderRow | null> {
   return data;
 }
 
-export async function getOrderByStripeSessionIdFromDb(
-  sessionId: string,
-): Promise<OrderRow | null> {
+export async function getOrderByStripeSessionIdFromDb(sessionId: string): Promise<OrderRow | null> {
   const { data, error } = await client()
     .from('orders')
     .select('*')
@@ -62,9 +60,7 @@ export async function getJobByIdFromDb(id: string): Promise<PipelineJobRow | nul
   return data;
 }
 
-export async function getJobByOrderIdFromDb(
-  orderId: string,
-): Promise<PipelineJobRow | null> {
+export async function getJobByOrderIdFromDb(orderId: string): Promise<PipelineJobRow | null> {
   const { data, error } = await client()
     .from('pipeline_jobs')
     .select('*')
@@ -81,9 +77,6 @@ export async function getJobByOrderIdFromDb(
  * real email-send code path.
  */
 export async function updateJobPdfUrlInDb(id: string, pdfUrl: string): Promise<void> {
-  const { error } = await client()
-    .from('pipeline_jobs')
-    .update({ pdf_url: pdfUrl })
-    .eq('id', id);
+  const { error } = await client().from('pipeline_jobs').update({ pdf_url: pdfUrl }).eq('id', id);
   if (error) throw new Error(`db-helpers.updateJobPdfUrl: ${error.message}`);
 }

@@ -44,9 +44,7 @@ const fixtureSecondary: SecondaryFixture = {
   extra_care: false,
 };
 
-export async function createCompletedDraft(
-  input: DraftFixtureInput = {},
-): Promise<DraftFixture> {
+export async function createCompletedDraft(input: DraftFixtureInput = {}): Promise<DraftFixture> {
   const customerEmail = input.customerEmail ?? 'e2e-test@tuatale.test';
   const childName = input.childName ?? 'Iris';
   const cookieId = randomUUID();
@@ -74,11 +72,7 @@ export async function createCompletedDraft(
   };
 
   const client = createTestClient();
-  const { data, error } = await client
-    .from('drafts')
-    .insert(payload)
-    .select()
-    .single();
+  const { data, error } = await client.from('drafts').insert(payload).select().single();
   if (error) throw new Error(`draft-fixture.createCompletedDraft: ${error.message}`);
 
   return {

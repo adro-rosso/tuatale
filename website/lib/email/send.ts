@@ -36,7 +36,6 @@ const FAKE_EMAIL_FLAG = 'E2E_TEST_MODE_FAKE_EMAIL_SEND';
 // playwright config only sets it for the e2e dev server — but the
 // safety net is cheap.
 if (process.env[FAKE_EMAIL_FLAG] === 'true' && process.env.NODE_ENV === 'production') {
-  // eslint-disable-next-line no-console
   console.error(
     `[email/send] DANGER: ${FAKE_EMAIL_FLAG}=true with NODE_ENV=production — emails will NOT be delivered.`,
   );
