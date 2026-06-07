@@ -1,0 +1,19 @@
+{
+  "name": "tuatale-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Track B pipeline worker — runs the DaBookTing book pipeline and uploads the PDF to Supabase Storage. The HTTP server + Inngest endpoint land in B.5.",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0",
+    "@vitest/coverage-v8": "^3.0.0"
+  }
+}
