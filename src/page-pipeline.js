@@ -166,7 +166,14 @@ async function renderPdfWithDynamicCss({
 
   let browser;
   try {
-    browser = await puppeteer.launch({ headless: true });
+    // PUPPETEER_LAUNCH_ARGS lets the container pass Chrome flags it needs —
+    // notably --no-sandbox, required when running in Docker without the
+    // SYS_ADMIN capability (Fly.io can't grant it). Unset locally → args:[],
+    // i.e. byte-for-byte the historical behavior (verified by the B.3 harness).
+    const launchArgs = process.env.PUPPETEER_LAUNCH_ARGS
+      ? process.env.PUPPETEER_LAUNCH_ARGS.split(/\s+/).filter(Boolean)
+      : [];
+    browser = await puppeteer.launch({ headless: true, args: launchArgs });
     const page = await browser.newPage();
     await page.setViewport({ width: viewportPxW, height: viewportPxH });
     await page.goto(pathToFileURL(tempHtmlPath).href, { waitUntil: "networkidle0" });
