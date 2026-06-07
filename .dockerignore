@@ -1,0 +1,36 @@
+# Build context is the repo ROOT (see worker/Dockerfile). This .dockerignore
+# must live here, at the context root — a worker/.dockerignore would be ignored
+# by a root-context build. Keep the context small + secret-free.
+
+# Dependencies (reinstalled in-image via npm ci)
+**/node_modules
+
+# Generated pipeline output — gigabytes; never ship
+output
+output-run*
+recraft-spike
+research-notes
+
+# The entire website (Vercel-deployed; not part of the worker image)
+website
+
+# Secrets + local env
+**/.env
+**/.env.*
+
+# VCS + tooling
+.git
+.github
+.sixth
+
+# Test + iteration artifacts the runtime pipeline doesn't read
+worker/tests
+scripts/verify-*
+scripts/test-*
+scripts/probe-*
+scripts/prototype-*
+templates/**/*.pdf
+templates/**/*.png
+SESSION_NOTES.md
+planning.docx
+*.log
