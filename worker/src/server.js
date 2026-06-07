@@ -126,9 +126,14 @@ app.get("/health", (req, res) => {
   res.status(200).json({ ok: true, version: process.env.SENTRY_RELEASE ?? null });
 });
 
+// Inngest's express adapter reads the PARSED request body (req.body), so a JSON
+// body parser MUST run before the mount — without it, sync/invoke requests fail
+// with "Missing body when syncing, possibly due to missing request body
+// middleware". 10mb accommodates large Inngest event/replay payloads (the
+// default 100kb is too small for some replay scenarios).
+app.use(express.json({ limit: "10mb" }));
+
 // Inngest endpoint — GET (introspection/sync), POST (invocation), PUT (register).
-// No global body parser before this: Inngest needs the raw body for signature
-// verification, and its adapter handles parsing itself.
 app.use(
   "/api/inngest",
   serve({ client: inngest, functions: [runPipelineJob] }),

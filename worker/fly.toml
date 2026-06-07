@@ -1,39 +1,29 @@
-# fly.toml — Tuatale pipeline worker (Track B B.2 runtime decision).
-# shared-cpu-2x / 2 GB / Sydney, always-warm single machine, serial books.
+# fly.toml app configuration file generated for tuatale-worker on 2026-06-07T20:31:42+10:00
 #
-# DEPLOY FROM THE REPO ROOT so the Docker build context is the repo root (the
-# image COPYs root package.json + src/ + templates/). The dockerfile path below
-# is resolved relative to THIS file (worker/):
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
-#   fly launch --no-deploy --copy-config   # from worker/ (creates the app)
-#   fly secrets set ...                     # from worker/ (see runbook)
-#   fly deploy --config worker/fly.toml     # from REPO ROOT (build context = root)
 
-app = "tuatale-worker"
-primary_region = "syd"          # Sydney — near customers + the Supabase project
+app = 'tuatale-worker'
+primary_region = 'syd'
 
 [build]
-  dockerfile = "Dockerfile"     # → worker/Dockerfile (relative to this config)
+  dockerfile = 'Dockerfile'
 
 [http_service]
-  internal_port = 8080          # matches ENV PORT + EXPOSE in the Dockerfile
+  internal_port = 8080
   force_https = true
-  auto_stop_machines = false    # always warm — a 30-min book must never be
-                                # stopped mid-run (B.2 decision)
+  auto_stop_machines = 'off'
   auto_start_machines = true
-  min_machines_running = 1      # exactly one machine; serial throughput
+  min_machines_running = 1
 
-  # Liveness check — Fly restarts the machine if /health stops responding.
   [[http_service.checks]]
-    grace_period = "30s"
-    interval = "30s"
-    method = "GET"
-    timeout = "10s"
-    path = "/health"
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '30s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = 'shared'
   cpus = 2
-  memory_mb = 2048              # 2 GB — holds Chromium + sharp for one book.
-                               # Upgrade path if OOM/saturation: dedicated-cpu-2x
-                               # / 4 GB (cpu_kind="performance", memory_mb=4096).
+  memory_mb = 2048
