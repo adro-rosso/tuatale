@@ -9,10 +9,14 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@sentry/node": "^10.55.0",
     "@supabase/supabase-js": "^2.106.2",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "inngest": "^4.5.0"
   },
   "devDependencies": {
+    "supertest": "^7.1.1",
     "vitest": "^3.0.0",
     "@vitest/coverage-v8": "^3.0.0"
   }

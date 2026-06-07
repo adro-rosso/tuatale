@@ -13,6 +13,11 @@
 import { config as loadEnv } from "dotenv";
 loadEnv({ path: ".env.local" });
 
+// Force Inngest into dev mode for tests: without a signing key, the SDK
+// otherwise assumes cloud mode and 500s the /api/inngest introspection route.
+// Production sets INNGEST_SIGNING_KEY (Fly secret) and runs in cloud mode.
+process.env.INNGEST_DEV = "1";
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
