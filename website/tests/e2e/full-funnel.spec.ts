@@ -20,8 +20,8 @@
  *   - E2E_TEST_MODE_FAKE_EMAIL_SEND = true (Resend never called)
  *
  * The test process and the dev server therefore write to the same DB,
- * and the test's direct invocations of runPipelineJobHandler land in
- * the same place as the webhook's createOrderFromDraft.
+ * and the test's simulated pipeline transitions (see inngest-fixture)
+ * land in the same place as the webhook's createOrderFromDraft.
  *
  * Runs only on chromium-desktop; mobile / tablet projects would exercise
  * identical code paths.
@@ -102,14 +102,15 @@ describe('full funnel', () => {
     expect(initialJob!.status).toBe('pending');
     expect(initialJob!.attempt_count).toBe(0);
 
-    // ---- 4. Invoke the Inngest handler directly (skip the 20s stub sleep) --
+    // ---- 4. Simulate the worker's pipeline completion (DB transitions only) -
+    // The real pipeline runs on the Fly.io worker (~30 min, real cost) and is
+    // covered by the worker's own tests; here we reproduce just its
+    // pending → running → awaiting_review transitions so the funnel stays fast.
     const handlerResult = await invokeRunPipelineJob({
       jobId: initialJob!.id,
       orderId: order!.id,
-      skipSleep: true,
     });
     expect(handlerResult.status).toBe('awaiting_review');
-    expect(handlerResult.stubbed).toBe(true);
 
     // ---- 5. Assert: job transitioned through the lifecycle ------------------
     const jobAfterInngest = await getJobByIdFromDb(initialJob!.id);
@@ -118,10 +119,9 @@ describe('full funnel', () => {
     expect(jobAfterInngest!.completed_at).not.toBeNull();
     expect(jobAfterInngest!.pdf_url).toBeDefined();
 
-    // ---- 6. Patch to a non-stub PDF so the email-send path triggers --------
-    // The shipJobAction guards against sending customers links to the
-    // placeholder.tuatale.com stub domain. For the full-funnel test we
-    // want to exercise the email path, so we patch in a real-shaped URL.
+    // ---- 6. Pin a deterministic PDF URL before shipping --------------------
+    // The simulated worker already set a real-shaped pdf_url; we pin a known
+    // value here so the ship + email path runs against a deterministic URL.
     const REAL_PDF_URL = `https://r2.tuatale.test/orders/${order!.id}/book.pdf`;
     await updateJobPdfUrlInDb(initialJob!.id, REAL_PDF_URL);
 

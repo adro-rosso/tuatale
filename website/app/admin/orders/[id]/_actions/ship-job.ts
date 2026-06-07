@@ -8,9 +8,8 @@ import { getOrderById } from '@/db/orders';
 import { adminUsername } from '@/lib/admin-auth';
 import { sendEmail } from '@/lib/email/send';
 import { buildShipNotification } from '@/lib/email/templates/ship-notification';
-import { STUB_PDF_URL } from '@/lib/pipeline-constants';
 
-const STUB_SKIP_REASON = 'stub PDF — email skipped (pre-Track-B pipeline integration)';
+const NO_PDF_REASON = 'no PDF URL on shipped job — email skipped';
 const ORDER_MISSING_REASON = 'order not found at ship time — email skipped';
 
 /**
@@ -24,14 +23,14 @@ const ORDER_MISSING_REASON = 'order not found at ship time — email skipped';
  *      defence-in-depth): Sentry-capture, record notification_error,
  *      no email send.
  *
- *   2. PDF is the Cycle A.2 stub URL: skip the email so customers
- *      don't receive a link to a placeholder.tuatale.com domain we
- *      don't own. Record a clear `notification_error` so the admin
- *      detail view shows "skipped" rather than "sent". Sentry log
- *      so the team sees the audit trail.
+ *   2. PDF URL missing (shouldn't happen — awaiting_review always
+ *      carries a real pdf_url from the worker — but defence-in-depth):
+ *      skip the email, record a clear `notification_error` so the admin
+ *      detail view shows "skipped" rather than "sent".
  *
- *   3. Real PDF: build the template, call sendEmail, persist the
- *      outcome (sent_at + message_id on success, error on failure).
+ *   3. Real PDF (the normal path now Track B is live): build the
+ *      template, call sendEmail, persist the outcome (sent_at +
+ *      message_id on success, error on failure).
  *
  * Email send is best-effort: a failure does NOT roll back the ship
  * transition. The job is shipped from the pipeline's perspective;
@@ -92,19 +91,19 @@ async function dispatchShipNotification(
     return;
   }
 
-  if (pdfUrl === STUB_PDF_URL || pdfUrl === null) {
-    // Skip the send for stub jobs (and the defensive null case). The
-    // admin detail page surfaces this so it's visible without
-    // grepping logs.
-    Sentry.captureMessage('Ship notification skipped for stub PDF', {
-      level: 'info',
-      tags: { component: 'ship-job-action', skip: 'stub-pdf' },
+  if (!pdfUrl) {
+    // Defensive: an awaiting_review job should always carry a real
+    // pdf_url from the worker. If it's somehow missing, skip the send
+    // rather than email a null link, and surface it on the detail page.
+    Sentry.captureMessage('Ship notification skipped — no PDF URL', {
+      level: 'warning',
+      tags: { component: 'ship-job-action', skip: 'no-pdf-url' },
       extra: { jobId, orderId, pdfUrl },
     });
     await updateJobNotificationStatus(jobId, {
       notificationSentAt: null,
       notificationMessageId: null,
-      notificationError: STUB_SKIP_REASON,
+      notificationError: NO_PDF_REASON,
     });
     return;
   }

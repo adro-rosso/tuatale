@@ -120,7 +120,6 @@ describe('saveNotesAction', () => {
 
 describe('shipJobAction', () => {
   const REAL_PDF = 'https://r2.tuatale.com/orders/abc/book.pdf';
-  const STUB_PDF = 'https://placeholder.tuatale.com/stub-book.pdf';
 
   function shippedJob(over: Record<string, unknown> = {}) {
     return {
@@ -205,35 +204,27 @@ describe('shipJobAction', () => {
     expect(markShippedSpy).not.toHaveBeenCalled();
   });
 
-  it('stub PDF: skips sendEmail, records skip reason, still redirects', async () => {
-    markShippedSpy.mockResolvedValue(shippedJob({ pdf_url: STUB_PDF }));
+  // Track B removed the stub-PDF concept (real PDFs now flow from the worker).
+  // The only remaining skip path is the defensive null-pdf_url case.
+  it('null pdf_url: skips sendEmail, records skip reason, still redirects (defensive)', async () => {
+    markShippedSpy.mockResolvedValue(shippedJob({ pdf_url: null }));
     await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
     expect(sendEmailSpy).not.toHaveBeenCalled();
     expect(updateJobNotificationStatusSpy).toHaveBeenCalledWith('job-1', {
       notificationSentAt: null,
       notificationMessageId: null,
-      notificationError: expect.stringMatching(/stub PDF/i),
+      notificationError: expect.stringMatching(/no PDF URL/i),
     });
-    // Audit-trail: Sentry sees an info-level message (not exception).
+    // Audit-trail: Sentry sees a warning-level message (not exception).
     expect(sentryCaptureMessageSpy).toHaveBeenCalledWith(
-      'Ship notification skipped for stub PDF',
+      'Ship notification skipped — no PDF URL',
       expect.objectContaining({
-        level: 'info',
-        tags: expect.objectContaining({ skip: 'stub-pdf' }),
+        level: 'warning',
+        tags: expect.objectContaining({ skip: 'no-pdf-url' }),
       }),
     );
     expect(sentryCaptureExceptionSpy).not.toHaveBeenCalled();
     expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
-  });
-
-  it('null pdf_url: treated as stub-style skip (defensive)', async () => {
-    markShippedSpy.mockResolvedValue(shippedJob({ pdf_url: null }));
-    await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
-    expect(sendEmailSpy).not.toHaveBeenCalled();
-    expect(updateJobNotificationStatusSpy).toHaveBeenCalledWith(
-      'job-1',
-      expect.objectContaining({ notificationError: expect.stringMatching(/stub PDF/i) }),
-    );
   });
 
   it('order missing: Sentry-captures + records "order not found" + skips send + redirects', async () => {
