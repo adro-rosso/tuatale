@@ -12,7 +12,6 @@
     "@sentry/node": "^10.55.0",
     "@supabase/supabase-js": "^2.106.2",
     "dotenv": "^17.4.2",
-    "express": "^4.21.2",
     "inngest": "^4.5.0"
   },
   "devDependencies": {
