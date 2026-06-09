@@ -103,6 +103,24 @@ function injectShirtColour(description, subject) {
   return `${description ?? ""} ${pronoun} t-shirt is a solid ${colour}.`;
 }
 
+// Bike-colour extraction (Spec D-B). The bike is an action-prose prop (no sheet),
+// and story-gen already names its colour ("red bike"). Derive ONE canonical
+// colour per book by counting "<colour> bike/bicycle" across the prose and taking
+// the most frequent — the single source of truth the render-stage buildBikeLock
+// restates on every page. Returns null if the book has no coloured bike.
+const BIKE_COLOUR_RE = /\b(red|crimson|scarlet|maroon|blue|navy|teal|turquoise|green|olive|lime|yellow|gold|orange|purple|violet|pink|black|silver|grey|gray|white|brown)\s+(bike|bicycle)\b/gi;
+function extractBikeColour(story) {
+  const corpus = [story?.cover_concept || "", ...((story?.scenes) || []).map((s) => `${s.action || ""} ${s.narrative_text || ""}`)].join(" ");
+  const counts = {};
+  for (const m of corpus.matchAll(BIKE_COLOUR_RE)) {
+    const c = m[1].toLowerCase();
+    counts[c] = (counts[c] || 0) + 1;
+  }
+  let best = null, bestN = 0;
+  for (const [c, n] of Object.entries(counts)) if (n > bestN) { best = c; bestN = n; }
+  return best;
+}
+
 // Sheet-gen prompt for ONE subject (protagonist OR a secondary). Gender signal
 // rides inside the masked appearance block (F-approach), not as a separate
 // marker.
@@ -781,6 +799,10 @@ export async function generateBook({
     return { subjects, allocation, dropped };
   }
 
+  // Spec D-B: derive the book's canonical bike colour once; the render restates
+  // it on every page (conditionally) so it can't drift on pages whose prose omits it.
+  const bikeColour = process.env.BIKE_COLOUR_LOCK === "off" ? null : extractBikeColour(story);
+
   async function tryRender(scene, templateId) {
     const template = findTemplate(registry, templateId);
     const { subjects, dropped } = resolveSceneSubjects(scene);
@@ -798,6 +820,7 @@ export async function generateBook({
       outputDir: pagesDir,
       imagePathOverride,
       callContext: { callKind: "page_render", pageNumber: scene.page, onSlowCall },
+      bikeColour,
     });
   }
 
@@ -999,6 +1022,7 @@ export async function generateBook({
     escalation_entries: escalationEntries.length,
     total_cost_usd: Number(totalCost.toFixed(4)),
     total_gemini_calls: totalCalls,
+    locked_bike_colour: bikeColour ?? null, // Spec D-B: canonical bike colour (audit)
   };
 
   return {
