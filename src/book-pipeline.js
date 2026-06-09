@@ -77,6 +77,32 @@ function formatMarkers(name, markersStr) {
   return `DEFINING IDENTITY MARKERS — ${name} has: ${markersStr.trim()}.`;
 }
 
+// Secondary-character shirt-colour lock (Spec D-R, 2026-06-08). B.8's render
+// outfit-lock works, but human SECONDARIES drift colour because nothing upstream
+// pins one (Sonnet's outfit prose is colourless and the model under-honours a
+// secondary's reference sheet vs the protagonist's). Fix: pin a deterministic
+// shirt colour per human secondary and inject it into the masked Appearance text
+// — so it appears in the (re-minted) sheet AND in the Appearance line the
+// existing buildWardrobeLock already enforces (no new render directive). The
+// injected colour also changes the fingerprint, which forces the re-mint.
+// Env-gated SHIRT_COLOUR_LOCK=off for the A/B baseline. Protagonist untouched.
+const SECONDARY_SHIRT_PALETTE = ["denim blue", "burgundy", "mustard", "forest teal"];
+function secondaryShirtColour(subject) {
+  if (process.env.SHIRT_COLOUR_LOCK === "off") return null;
+  if (!subject || subject.isProtagonist || subject.subject_type !== "human") return null;
+  const m = /companion-(\d+)/.exec(subject.id || "");
+  const idx = m ? parseInt(m[1], 10) - 1 : 0;
+  const len = SECONDARY_SHIRT_PALETTE.length;
+  return SECONDARY_SHIRT_PALETTE[((idx % len) + len) % len];
+}
+// Append the pinned colour to a (masked) description, gender-appropriate pronoun.
+function injectShirtColour(description, subject) {
+  const colour = secondaryShirtColour(subject);
+  if (!colour) return description ?? "";
+  const pronoun = subject.gender === "girl" ? "Her" : subject.gender === "non_binary" ? "Their" : "His";
+  return `${description ?? ""} ${pronoun} t-shirt is a solid ${colour}.`;
+}
+
 // Sheet-gen prompt for ONE subject (protagonist OR a secondary). Gender signal
 // rides inside the masked appearance block (F-approach), not as a separate
 // marker.
@@ -161,7 +187,12 @@ function buildSubjectListForSheetGen(story, meta, protagonistName, protagonistAg
       id: ms.id,
       name: c.name,
       age: ms.age,
-      character_description: c.character_description,
+      // Spec D-R: pin the secondary's shirt colour into the description so it
+      // flows to the fingerprint (forces re-mint), the sheet-mint Appearance,
+      // and the render Appearance (via subj.character_description below).
+      character_description: injectShirtColour(c.character_description, {
+        id: ms.id, subject_type: ms.subject_type, isProtagonist: false, gender: isHuman ? ms.gender : null,
+      }),
       markers: ms.appearance_markers,
       subject_type: ms.subject_type,
       gender: isHuman ? ms.gender : null,
@@ -627,6 +658,7 @@ export async function generateBook({
         fingerprint: reuse.fingerprint,
         sheetPathPrefix: subject.sheetPathPrefix,
         presentViews,
+        lockedShirtColour: secondaryShirtColour(subject), // Spec D-R (null for protagonist/non-human)
         mintedAt: reuse.state === SheetState.PARTIAL_RESUME
           ? reuse.existingMeta?.minted_at
           : undefined,
@@ -688,7 +720,8 @@ export async function generateBook({
         id: subj.id,
         name: c.name,
         age: subj.age,
-        description: maskName(c.character_description, c.name),
+        // subj.character_description carries the Spec D-R colour injection.
+        description: maskName(subj.character_description, c.name),
         subjectType: subj.subject_type,
         isProtagonist: false,
         allSheets: sheets,

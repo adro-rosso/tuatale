@@ -135,6 +135,7 @@ export function buildSheetMeta({
   presentViews,        // [{ view_index, filename }, ...] — all views now present
   mintedAt,            // ISO; preserved from existing meta on partial resume
   mintedForBook,
+  lockedShirtColour,   // Spec D-R: pinned secondary shirt colour (or null/undefined)
 }) {
   return {
     subject_name: subjectName,
@@ -146,6 +147,7 @@ export function buildSheetMeta({
     sheet_path_prefix: sheetPathPrefix,
     minted_at: mintedAt ?? new Date().toISOString(),
     minted_for_book: mintedForBook,
+    locked_shirt_colour: lockedShirtColour ?? null,
     views: presentViews,
   };
 }
