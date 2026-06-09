@@ -52,6 +52,11 @@ export const CHARACTER_SHEET_PROMPTS = [
   "front-facing portrait, neutral expression, plain cream background",
   "three-quarter view, slight smile, plain cream background",
   "side profile, neutral expression, plain cream background",
+  // 4th view (B.9): minted only for subjects with an asymmetric facial mark.
+  // Shows the CLEAN cheek so Gemini gets a "this side has no mark" reference —
+  // B.7 found all 3 default views are mark-side-favouring, leaving no negative
+  // example. Side-agnostic (references "the marked cheek", not left/right).
+  "three-quarter view turned so the cheek WITHOUT the asymmetric facial mark faces the camera (the marked cheek is on the far side, so the mark is not visible), neutral expression, plain cream background",
 ];
 export const MIN_GEMINI_CALL_GAP_MS = 6000;
 // Template tagged with "default" in aesthetic_intent is the fallback when
@@ -63,6 +68,17 @@ export const FALLBACK_TAG = "default";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- Prompt-assembly helpers (verbatim) ------------------------------------
+
+// Asymmetric facial mark detection (B.9, 2026-06-08). Single-cheek marks (mole,
+// birthmark, scar) trigger: (a) an extra clean-cheek sheet view, and (b) a
+// "render once, on the stated side, hidden when turned away" directive in the
+// sheet prompt — mirroring the render-prompt directive in page-pipeline.js.
+// Env-gated (ASYMMETRY_LOCK=off → no extra view, no directive → pre-B.9 behaviour).
+const ASYMMETRIC_MARK_RE = /\b(mole|birthmark|scar)\b/i;
+function hasAsymmetricMark(...texts) {
+  if (process.env.ASYMMETRY_LOCK === "off") return false;
+  return ASYMMETRIC_MARK_RE.test(texts.filter(Boolean).join(" "));
+}
 
 // Format a "DEFINING IDENTITY MARKERS — <name> has: ..." emphasis line per
 // the Stage A/B-validated marker-emphasis pattern. Splits on semicolons for
@@ -96,6 +112,14 @@ function buildSubjectSheetBasePrompt(subject, story) {
   ];
   const markersLine = formatMarkers(subject.name, subject.markers);
   if (markersLine) lines.push(markersLine);
+  if (hasAsymmetricMark(subject.markers, subject.character_description)) {
+    lines.push(
+      `ASYMMETRIC MARK — render any small asymmetric facial mark (mole, birthmark, scar) ` +
+      `named above EXACTLY ONCE, on the one anatomical side the markers state; never on both ` +
+      `cheeks, never duplicated. When this view turns that side of the face away from the ` +
+      `camera, the mark is correctly hidden.`,
+    );
+  }
   lines.push(
     `Style: ${story.style}.`,
     `Composition: ${story.composition_rules}.`,
@@ -128,7 +152,7 @@ function buildSubjectListForSheetGen(story, meta, protagonistName, protagonistAg
     gender: protagonistGender,
     anchor: "tier2", // protagonist is always ref-anchored
     isProtagonist: true,
-    viewCount: 3,
+    viewCount: hasAsymmetricMark(meta?.inputs?.child?.appearance, story.character) ? 4 : 3,
     sheetPathPrefix: "sheet", // → sheet-NN.png (legacy convention; unchanged)
   });
   const companions = Array.isArray(story.companion_characters) ? story.companion_characters : [];
@@ -167,7 +191,7 @@ function buildSubjectListForSheetGen(story, meta, protagonistName, protagonistAg
       gender: isHuman ? ms.gender : null,
       anchor,
       isProtagonist: false,
-      viewCount: isHuman ? 2 : 1,
+      viewCount: isHuman ? (hasAsymmetricMark(ms.appearance_markers, c.character_description) ? 3 : 2) : 1,
       sheetPathPrefix: ms.id, // → <id>-NN.png (e.g. companion-1-01.png)
     });
   }
