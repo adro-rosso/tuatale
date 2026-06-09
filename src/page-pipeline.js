@@ -253,27 +253,6 @@ const COMPOSITION_RULE_V2 =
   "same horizon — they are all in ONE place together, not in separate views. " +
   "Each named subject appears exactly once in the scene.";
 
-// Asymmetric facial marks (B.9, 2026-06-08). B.7 issues 2/3/4: a single-cheek
-// mole drifts to the wrong cheek, appears on both cheeks, or follows whichever
-// cheek the camera reveals — a model-level limit Gemini has tracking an
-// asymmetric feature through head rotation. This directive is SIDE-AGNOSTIC: it
-// references the side already stated in the subject's Appearance rather than
-// hardcoding "left" (which would be wrong for a future right-cheek customer).
-// Fires only when a subject's Appearance actually names such a mark, so
-// symmetric-feature books are untouched. Env-gated (ASYMMETRY_LOCK=off) for A/B.
-const ASYMMETRIC_MARK_RE = /\b(mole|birthmark|scar)\b/i;
-function buildAsymmetryLock(subjects) {
-  if (process.env.ASYMMETRY_LOCK === "off") return "";
-  if (!subjects.some((s) => ASYMMETRIC_MARK_RE.test(s.description || ""))) return "";
-  return (
-    `FACIAL-MARK CONTINUITY: any small asymmetric facial mark named in a subject's ` +
-    `Appearance (a mole, birthmark, or scar) sits on ONE side of the face only, exactly ` +
-    `as the Appearance states. Render it EXACTLY ONCE — never on both cheeks, never ` +
-    `duplicated. When the head is turned so that side of the face is away from the camera, ` +
-    `the mark is hidden from view.\n\n`
-  );
-}
-
 /**
  * Build the user-facing prompt string for one page's Gemini call. Branches
  * on subjects.length: N=1 follows the legacy single-subject layout; N>1
@@ -367,7 +346,7 @@ export function buildScenePrompt({
       `Template composition: ${templateComposition}`,
       `Avoid: ${negativePrompt}.`,
     ].join("\n")
-      + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}${buildAsymmetryLock(subjects)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
+      + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
   }
 
   // ---- N>1: V2 canvas-seam defense is load-bearing here. -----------------
@@ -405,7 +384,7 @@ export function buildScenePrompt({
     `Template composition: ${templateCompositionV2}`,
     `Avoid: ${negativePrompt}.`,
   ].join("\n")
-    + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}${buildAsymmetryLock(subjects)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
+    + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
 }
 
 /**
