@@ -333,6 +333,22 @@ function buildBikeLock(bikeColour) {
   );
 }
 
+// Helmet-colour lock (Spec D-H, 2026-06-08). Same prop-lock shape as buildBikeLock.
+// The helmet colour is NOT extracted from prose (the prose has no consensus helmet
+// colour — it renders blue/grey/purple/rainbow/red across books); it is sourced from
+// the already-locked bike colour (helmet = bike colour) by the caller. This is a
+// COLOUR lock only — conditional phrasing so it never forces a helmet onto a
+// helmet-less page (presence is governed by the scene, not this directive).
+// Env-gated HELMET_COLOUR_LOCK=off. Returns directive + paragraph break, or "".
+function buildHelmetLock(helmetColour) {
+  if (!helmetColour || process.env.HELMET_COLOUR_LOCK === "off") return "";
+  return (
+    `PROP CONTINUITY: any safety helmet that appears in this scene is ${helmetColour} — the same ` +
+    `single ${helmetColour} helmet throughout the whole book. Do NOT recolour it, give it a ` +
+    `different pattern, or make it multicoloured. (If no helmet appears in this scene, ignore this.)\n\n`
+  );
+}
+
 export function buildScenePrompt({
   subjects,
   scene,
@@ -341,6 +357,7 @@ export function buildScenePrompt({
   templateComposition,
   negativePrompt,
   bikeColour = null,
+  helmetColour = null,
 }) {
   if (!Array.isArray(subjects) || subjects.length === 0) {
     throw new Error("buildScenePrompt: subjects must be a non-empty array");
@@ -364,7 +381,7 @@ export function buildScenePrompt({
       `Template composition: ${templateComposition}`,
       `Avoid: ${negativePrompt}.`,
     ].join("\n")
-      + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
+      + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
   }
 
   // ---- N>1: V2 canvas-seam defense is load-bearing here. -----------------
@@ -402,7 +419,7 @@ export function buildScenePrompt({
     `Template composition: ${templateCompositionV2}`,
     `Avoid: ${negativePrompt}.`,
   ].join("\n")
-    + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
+    + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
 }
 
 /**
@@ -446,6 +463,7 @@ export async function renderPageWithTemplate({
   imagePathOverride = null,
   callContext = null,
   bikeColour = null,        // Spec D-B: canonical bike colour for this book, or null
+  helmetColour = null,      // Spec D-H: helmet colour (= bike colour), or null
 }) {
   const timing = {
     imageGenMs: 0,
@@ -578,6 +596,7 @@ export async function renderPageWithTemplate({
         templateComposition,
         negativePrompt: sceneNegativePrompt,
         bikeColour,
+        helmetColour,
       });
 
       // Reference images: concatenate each subject's allocated sheets in

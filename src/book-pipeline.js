@@ -802,6 +802,10 @@ export async function generateBook({
   // Spec D-B: derive the book's canonical bike colour once; the render restates
   // it on every page (conditionally) so it can't drift on pages whose prose omits it.
   const bikeColour = process.env.BIKE_COLOUR_LOCK === "off" ? null : extractBikeColour(story);
+  // Spec D-H: the helmet colour IS the bike colour (not extracted from prose — the
+  // prose has no consensus helmet colour). Conditional COLOUR lock only; presence
+  // is governed by the scene, not this directive.
+  const helmetColour = process.env.HELMET_COLOUR_LOCK === "off" ? null : bikeColour;
 
   async function tryRender(scene, templateId) {
     const template = findTemplate(registry, templateId);
@@ -821,6 +825,7 @@ export async function generateBook({
       imagePathOverride,
       callContext: { callKind: "page_render", pageNumber: scene.page, onSlowCall },
       bikeColour,
+      helmetColour,
     });
   }
 
@@ -1023,6 +1028,7 @@ export async function generateBook({
     total_cost_usd: Number(totalCost.toFixed(4)),
     total_gemini_calls: totalCalls,
     locked_bike_colour: bikeColour ?? null, // Spec D-B: canonical bike colour (audit)
+    locked_helmet_colour: helmetColour ?? null, // Spec D-H: helmet colour = bike colour (audit)
   };
 
   return {
