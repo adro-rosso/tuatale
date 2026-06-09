@@ -287,6 +287,35 @@ const COMPOSITION_RULE_V2 =
  * @param {string} opts.negativePrompt         joined Avoid: text
  * @returns {string} the full prompt
  */
+// Outfit-anchoring directive (B.8, 2026-06-08). B.7 found that each subject's
+// outfit is ALREADY described in their Appearance block (Sonnet commits one
+// outfit per book) and shown in the reference sheets, yet multi-character
+// renders drift to a different outfit nearly every page. The fix is render-level
+// emphasis: a prominent "wear the identical reference outfit on every page"
+// directive. Pointing at the reference image + Appearance line (rather than
+// re-parsing the outfit string out of the prose) keeps it robust. Additive +
+// easy to revert (delete this fn + its two call sites). Tunable strength: this
+// is the B.8 "Option B+" — restate-and-lock without per-garment enumeration;
+// escalate to per-axis constraints (Option C) here if iteration shows drift.
+// Returns the directive followed by a paragraph break, or "" — so call sites can
+// inline it and, when disabled, reproduce the exact pre-B.8 prompt byte-for-byte.
+// WARDROBE_LOCK=off disables it (used for the B.8 A/B baseline render).
+function buildWardrobeLock(subjects) {
+  if (process.env.WARDROBE_LOCK === "off") return "";
+  const named = subjects.map((s) => s.name).filter(Boolean);
+  const who =
+    named.length > 1
+      ? `Each of ${named.join(" and ")} wears the exact outfit shown in their own reference image(s) and described in their Appearance line above`
+      : `The subject wears the exact outfit shown in the reference image(s) and described in the Appearance line above`;
+  return (
+    `WARDROBE CONTINUITY — CRITICAL: this is one page of a single continuous story, ` +
+    `and every subject must wear the IDENTICAL outfit on every page. ${who} — same garments, ` +
+    `same colours, same patterns, same footwear. Do NOT invent, substitute, recolour, add, or ` +
+    `remove any clothing item. The only permitted wardrobe change is one the Scene text explicitly ` +
+    `states (e.g. putting on a helmet).\n\n`
+  );
+}
+
 export function buildScenePrompt({
   subjects,
   scene,
@@ -317,7 +346,7 @@ export function buildScenePrompt({
       `Template composition: ${templateComposition}`,
       `Avoid: ${negativePrompt}.`,
     ].join("\n")
-      + `\n\nScene: ${scene.action}\n\nUse the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
+      + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
   }
 
   // ---- N>1: V2 canvas-seam defense is load-bearing here. -----------------
@@ -355,7 +384,7 @@ export function buildScenePrompt({
     `Template composition: ${templateCompositionV2}`,
     `Avoid: ${negativePrompt}.`,
   ].join("\n")
-    + `\n\nScene: ${scene.action}\n\nUse the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
+    + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
 }
 
 /**
