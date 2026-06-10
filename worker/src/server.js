@@ -23,7 +23,8 @@ import * as Sentry from "@sentry/node";
 import { Inngest } from "inngest";
 import { connect, ConnectionState } from "inngest/connect";
 import { runPipeline } from "./run-pipeline.js";
-import { markRunning, markAwaitingReview, markFailed } from "./db.js";
+import { markRunning, markAwaitingReview, markFailed, getJobById as realGetJobById } from "./db.js";
+import { regenerateSignedUrl as realRegenerateSignedUrl, bookPdfPath as realBookPdfPath } from "./storage.js";
 
 // ---- Sentry (optional; shared project, release-tagged) --------------------
 const sentryEnabled = Boolean(process.env.SENTRY_DSN);
@@ -62,6 +63,33 @@ async function runPipelineJobOnFailure({ event, error, runId }) {
   }
 }
 
+/**
+ * Stage 1a-i: detect a KNOWN-GOOD already-generated book so a re-fire / manual
+ * retry can short-circuit BEFORE mark-running clears the job's pdf_url + metadata.
+ * Returns { pdfUrl, metadata } with a FRESH signed URL (the stored one may be
+ * expired), or null when there's nothing safe to re-use. Known-good = the job has a
+ * pdf_url AND its recorded generation had zero failed pages (a degraded PDF is NOT
+ * re-served). Deps injectable for unit tests. Never re-charges the customer — the
+ * pipeline makes no Stripe call; this only avoids re-spending Sonnet+Gemini COGS.
+ */
+export async function findReusableBook(jobId, orderId, deps = {}) {
+  const {
+    getJobById = realGetJobById,
+    regenerateSignedUrl = realRegenerateSignedUrl,
+    bookPdfPath = realBookPdfPath,
+  } = deps;
+  let job;
+  try {
+    job = await getJobById(jobId);
+  } catch {
+    return null; // no row (getJobById uses .single()) / transient error → regenerate normally
+  }
+  if (!job?.pdf_url || job?.generation_metadata?.pages?.failed !== 0) return null;
+  const storagePath = bookPdfPath(orderId);
+  const pdfUrl = await regenerateSignedUrl(storagePath);
+  return { pdfUrl, metadata: { ...(job.generation_metadata ?? {}), storagePath, reused: true } };
+}
+
 export const runPipelineJob = inngest.createFunction(
   {
     id: "run-pipeline-job",
@@ -73,6 +101,20 @@ export const runPipelineJob = inngest.createFunction(
   },
   async ({ event, step, runId }) => {
     const { jobId, orderId } = event.data;
+
+    // Stage 1a-i: short-circuit a KNOWN-GOOD completed job BEFORE mark-running
+    // clears its pdf_url + generation_metadata. Recovers a stuck-but-good job
+    // (e.g. the B.6 false-failure on 28d052b6) straight to awaiting_review with a
+    // fresh signed URL — no mark-running, no re-mint, no Gemini/Sonnet spend.
+    const reuse = await step.run("idempotency-check", async () =>
+      findReusableBook(jobId, orderId),
+    );
+    if (reuse) {
+      await step.run("mark-awaiting-review-reused", async () =>
+        markAwaitingReview(jobId, { pdfUrl: reuse.pdfUrl, generationMetadata: reuse.metadata }),
+      );
+      return { jobId, orderId, status: "awaiting_review", pdfUrl: reuse.pdfUrl, reused: true };
+    }
 
     await step.run("mark-running", async () =>
       markRunning(jobId, { inngestEventId: event.id, inngestRunId: runId }),
