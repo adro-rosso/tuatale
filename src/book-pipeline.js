@@ -189,6 +189,23 @@ export function chainedSheetRefs(viewIndex, anchorBuf) {
   return [anchorBuf];
 }
 
+// Asymmetric-mark wording de-emphasis (Spec D-M Stage-3 lever 2, 2026-06-10;
+// AMENDED — placement/anatomical language backfired TWICE, the structural-failure
+// signature, so this is now pure SUBTRACTION). When enabled, rewrite a mole/
+// birthmark/scar clause to a BARE de-emphasised form: "a small faint <mark> on
+// <pronoun> <side> cheek" — dropping placement adverbs ("low"/"high"), any trailing
+// "just beneath the eye" phrase, and ALL anatomical/camera gloss. No placement
+// language whatsoever. Applied at every Appearance-line build point (fingerprint +
+// mint + render). Env-gated: only active under MOLE_WORDING_FIX=on — the mole
+// de-emphasis is NOT shipped to production by default (separate approval).
+export function deemphasiseMarkWording(appearance) {
+  if (!appearance || process.env.MOLE_WORDING_FIX !== "on") return appearance ?? "";
+  return appearance.replace(
+    /(?:a |an )?(?:faint |small |tiny |little |prominent )*\b(mole|birthmark|scar)\b\s*(?:low|high)?\s*(?:on|sits on)\s+(his|her|their|the)\s+(left|right)\s+cheek\b(?:,?\s*just\s+\w+\s+the\s+eye)?/i,
+    (_full, mark, pronoun, side) => `a small faint ${mark} on ${pronoun} ${side} cheek`,
+  );
+}
+
 // Build the subject list driving Section A. Protagonist always present;
 // companions sourced from story.companion_characters[] joined by name with
 // meta.inputs.secondaries[] (for id / subject_type / appearance_markers).
@@ -207,7 +224,7 @@ function buildSubjectListForSheetGen(story, meta, protagonistName, protagonistAg
     id: "protagonist",
     name: protagonistName,
     age: protagonistAge,
-    character_description: story.character,
+    character_description: deemphasiseMarkWording(story.character), // Spec D-M Stage-3 lever 2 (gated)
     markers: meta?.inputs?.child?.appearance ?? null,
     subject_type: "human",
     gender: protagonistGender,
@@ -249,9 +266,9 @@ function buildSubjectListForSheetGen(story, meta, protagonistName, protagonistAg
       // Spec D-R: pin the secondary's shirt colour into the description so it
       // flows to the fingerprint (forces re-mint), the sheet-mint Appearance,
       // and the render Appearance (via subj.character_description below).
-      character_description: injectShirtColour(c.character_description, {
+      character_description: deemphasiseMarkWording(injectShirtColour(c.character_description, {
         id: ms.id, subject_type: ms.subject_type, isProtagonist: false, gender: isHuman ? ms.gender : null,
-      }),
+      })),
       markers: ms.appearance_markers,
       subject_type: ms.subject_type,
       gender: isHuman ? ms.gender : null,
@@ -770,7 +787,7 @@ export async function generateBook({
       id: "protagonist",
       name: childName,
       age: childAge,
-      description: maskName(story.character, childName),
+      description: maskName(deemphasiseMarkWording(story.character), childName), // Spec D-M Stage-3 lever 2 (gated)
       subjectType: "human",
       isProtagonist: true,
       allSheets: sheetBuffers,
