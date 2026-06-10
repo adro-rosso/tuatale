@@ -59,6 +59,34 @@ export const MIN_GEMINI_CALL_GAP_MS = 6000;
 // template (validated in planBook).
 export const FALLBACK_TAG = "default";
 
+// Page-render failure taxonomy used by the Section-B escalation layer:
+//   "B" = detected region too small, "C" = no readable font fits — deterministic
+//         layout failures (skip the same-template retry).
+//   "F" = FATAL availability/billing (Item D2 fatal-stop, 2026-06-10): a Gemini
+//         quota/billing 429 ("RESOURCE_EXHAUSTED") or a 300s wall-ceiling. Retrying
+//         the same page or escalating to the fallback template just burns more
+//         guaranteed-to-fail calls, so the page fails immediately and the loop
+//         aborts the remaining pages. Match strings verified against REAL captured
+//         errors: the D-H escalations.log billing body ("...RESOURCE_EXHAUSTED...")
+//         and WallCeilingError.toJSON().kind === "wall_ceiling_exceeded".
+//         Env-gated: D2_FATAL_STOP=off → never returns "F" (byte-for-byte pre-fix).
+//   "A" = everything else — genuine transient; retry once + escalate to fallback.
+export function classifyFailure(result) {
+  const err = result?.error || "";
+  if (err.includes("detected region too small")) return "B";
+  if (err.includes("no readable font size fits")) return "C";
+  if (process.env.D2_FATAL_STOP !== "off") {
+    const se = result?.structuredError;
+    const fatal =
+      se?.kind === "wall_ceiling_exceeded" ||
+      err.includes("RESOURCE_EXHAUSTED") ||
+      se?.status === 429 ||
+      se?.last_error?.status === 429;
+    if (fatal) return "F";
+  }
+  return "A";
+}
+
 /** Pause execution for `ms` milliseconds. */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -829,13 +857,6 @@ export async function generateBook({
     });
   }
 
-  function classifyFailure(result) {
-    const err = result.error || "";
-    if (err.includes("detected region too small")) return "B";
-    if (err.includes("no readable font size fits")) return "C";
-    return "A";
-  }
-
   const perPageResults = [];
   let totalScenesCost = 0;
   let pagesCompletedCount = 0;
@@ -897,7 +918,7 @@ export async function generateBook({
         }
       }
 
-      if (!result.success && originalTemplateId !== fallbackTemplate.id) {
+      if (!result.success && failureType !== "F" && originalTemplateId !== fallbackTemplate.id) {
         log.log(`    Escalating to fallback: ${fallbackTemplate.id}`);
         emit({
           event: { kind: "page_render_escalated", page: scene.page, from_template: originalTemplateId, to_template: fallbackTemplate.id },
@@ -950,6 +971,25 @@ export async function generateBook({
       emit({
         event: { kind: "page_render_failed", page: scene.page, error: errorPayload },
       });
+    }
+
+    // Item D2 fatal-stop (2026-06-10): a fatal billing-429 / wall-ceiling failure
+    // means every remaining page fails the same way — abort instead of burning up
+    // to 300s/page on a doomed book. Remaining scenes are recorded as failed so
+    // counts.failed + the merge stay correct. classifyFailure is env-gated, so when
+    // D2_FATAL_STOP=off it never returns "F" and this never triggers (pre-fix path).
+    if (outcome === "failed" && classifyFailure(result) === "F") {
+      for (let j = i + 1; j < story.scenes.length; j++) {
+        perPageResults.push({
+          page: story.scenes[j].page,
+          originalTemplate: story.scenes[j].layout_intent.template_id,
+          finalTemplate: null,
+          outcome: "failed",
+          pdfPath: null,
+        });
+      }
+      log.log(`    ⛔ fatal failure — aborting ${story.scenes.length - 1 - i} remaining page(s).`);
+      break;
     }
 
     const iterMs = Date.now() - iterStart;
