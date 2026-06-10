@@ -176,6 +176,19 @@ function buildSubjectSheetBasePrompt(subject, story) {
   return lines.join("\n");
 }
 
+// Chained sheet minting (Spec D-M Stage-3 fix, 2026-06-10). View-1 (front) is the
+// anchor; views 2-3 are minted WITH view-1 passed as a reference image (the same
+// mechanism page renders use to consume sheets) so the 3 views agree on outfit +
+// facial-mark side instead of each inventing independently. Returns the reference
+// array for one view's mint call (empty for the anchor, or when chaining is
+// disabled / the anchor is unavailable). Env-gated: CHAINED_SHEET_MINT=off restores
+// independent reference-less mints (default ON — this is the fix).
+export function chainedSheetRefs(viewIndex, anchorBuf) {
+  if (process.env.CHAINED_SHEET_MINT === "off") return [];
+  if (viewIndex === 0 || !anchorBuf) return []; // view-1 is the anchor; need it to chain
+  return [anchorBuf];
+}
+
 // Build the subject list driving Section A. Protagonist always present;
 // companions sourced from story.companion_characters[] joined by name with
 // meta.inputs.secondaries[] (for id / subject_type / appearance_markers).
@@ -585,6 +598,7 @@ export async function generateBook({
     const basePrompt = buildSubjectSheetBasePrompt(subject, story);
     const subjectSucceededFiles = [];
     const subjectBufs = [];
+    let anchorBuf = null; // Spec D-M Stage-3: view-1 buffer (minted OR reused), ref for views 2-3
     for (let i = 0; i < subject.viewCount; i++) {
       const sheetNum = String(i + 1).padStart(2, "0");
       const filename = `${subject.sheetPathPrefix}-${sheetNum}.png`;
@@ -594,6 +608,7 @@ export async function generateBook({
       if (!indicesToMint.includes(i)) {
         const buf = fs.readFileSync(filePath);
         subjectBufs.push(buf);
+        if (i === 0) anchorBuf = buf; // reused view-1 anchors the chained mints of 2-3
         subjectSucceededFiles.push(filename);
         emit({
           event: { kind: "sheet_mint_skipped", subject: subject.name, view: i + 1, reason: "reused_partial_resume" },
@@ -602,19 +617,26 @@ export async function generateBook({
       }
       // Mint this view.
       const viewPrompt = CHARACTER_SHEET_PROMPTS[i];
-      const fullPrompt = `${basePrompt}\n\nView for this image: ${viewPrompt}.`;
+      const refs = chainedSheetRefs(i, anchorBuf); // [] for the anchor / gate-off; [view-1] for chained 2-3
+      const matchRef = refs.length
+        ? `\n\nThis is the SAME child as in the reference image — keep the IDENTICAL outfit ` +
+          `(same shirt, shorts, and shoes, same colours), the same face and hair, and any facial ` +
+          `mark on the SAME side of the face; only the camera angle changes from the reference.`
+        : "";
+      const fullPrompt = `${basePrompt}\n\nView for this image: ${viewPrompt}.${matchRef}`;
       const t0 = Date.now();
       emit({
-        event: { kind: "sheet_mint_start", subject: subject.name, view: i + 1 },
+        event: { kind: "sheet_mint_start", subject: subject.name, view: i + 1, chained: refs.length > 0 },
         currentStep: { kind: "sheet_mint", detail: `${subject.name} view ${i + 1}`, started_at: new Date().toISOString() },
       });
       try {
-        const buf = await generateImage(fullPrompt, [], {}, {
+        const buf = await generateImage(fullPrompt, refs, {}, {
           callKind: "sheet_mint", subjectName: subject.name, view: i + 1, onSlowCall,
         });
         const ms = Date.now() - t0;
         fs.writeFileSync(filePath, buf);
         subjectBufs.push(buf);
+        if (i === 0) anchorBuf = buf; // minted view-1 anchors the chained mints of 2-3
         subjectSucceededFiles.push(filename);
         sheetsActualCost += GEMINI_IMAGE_USD_PER_CALL;
         sheetResults.push({ subject: subject.id, filename, ms, status: "succeeded" });
