@@ -94,6 +94,22 @@ describeIntegration('drafts integration', () => {
     expect(new Date(updated.updated_at).getTime()).toBeGreaterThan(originalUpdated);
   });
 
+  it('persists + reads back a child_features blob (jsonb round-trip)', async () => {
+    const draft = await createDraft(freshUuid(), client);
+    const features = {
+      hair_colour: 'brown',
+      hair_style: 'tousled',
+      skin_tone: 'tan',
+      eye_colour: 'brown',
+      outfit: { tee: 'green', shorts: 'khaki', shoes: 'brown-boots' },
+      marks: [{ type: 'mole', side: 'left', region: 'cheek' }],
+    };
+    const updated = await updateDraft(draft.id, { child_features: features }, client);
+    expect(updated.child_features).toEqual(features);
+    const fetched = await getDraftById(draft.id, client);
+    expect(fetched?.child_features).toEqual(features);
+  });
+
   it('markDraftConverted sets status + records order id', async () => {
     const draft = await createDraft(freshUuid(), client);
     const orderId = freshUuid();

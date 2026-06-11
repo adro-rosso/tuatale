@@ -21,6 +21,7 @@ import type Stripe from 'stripe';
 import type { Tables, TablesInsert } from '@/types/database';
 import { createOrder } from '@/db/orders';
 import type { TuataleSupabaseClient } from '@/lib/supabase';
+import { isStructuredComplete } from '@/lib/validation/schemas';
 import { ageFromRange } from './draft-complete';
 
 type Draft = Tables<'drafts'>;
@@ -42,11 +43,14 @@ export async function createOrderFromDraft(
   // server-to-server — if anything got mutated between checkout and
   // webhook (race, manual DB tinkering), surface a clear error
   // rather than letting the DB CHECK throw a less-legible one.
+  // Appearance requirement mirrors the Zod rule: a 50+ char free-text description
+  // OR a structured-complete character (the 4 identity axes). One must be present.
+  const hasAppearance = !!draft.child_appearance || isStructuredComplete(draft.child_features);
   if (
     !draft.child_name ||
     !draft.age_range ||
     !draft.child_gender ||
-    !draft.child_appearance ||
+    !hasAppearance ||
     !draft.theme
   ) {
     throw new Error(`Draft ${draft.id} is missing required fields when creating order`);
@@ -83,6 +87,7 @@ export async function createOrderFromDraft(
     age_range: draft.age_range,
     child_gender: draft.child_gender,
     child_appearance: draft.child_appearance,
+    child_features: draft.child_features,
     secondaries: draft.secondaries,
     theme: draft.theme,
     theme_template_id: draft.theme_template_id,

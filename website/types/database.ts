@@ -39,6 +39,7 @@ export type Database = {
           character_generation_mode: string;
           child_age: number | null;
           child_appearance: string | null;
+          child_features: Json | null;
           child_gender: string | null;
           child_name: string | null;
           converted_to_order_id: string | null;
@@ -62,6 +63,7 @@ export type Database = {
           character_generation_mode?: string;
           child_age?: number | null;
           child_appearance?: string | null;
+          child_features?: Json | null;
           child_gender?: string | null;
           child_name?: string | null;
           converted_to_order_id?: string | null;
@@ -85,6 +87,7 @@ export type Database = {
           character_generation_mode?: string;
           child_age?: number | null;
           child_appearance?: string | null;
+          child_features?: Json | null;
           child_gender?: string | null;
           child_name?: string | null;
           converted_to_order_id?: string | null;
@@ -112,7 +115,8 @@ export type Database = {
           book_pdf_url: string | null;
           character_generation_mode: string;
           child_age: number;
-          child_appearance: string;
+          child_appearance: string | null;
+          child_features: Json | null;
           child_gender: string;
           child_name: string;
           converted_from_draft_id: string | null;
@@ -141,7 +145,8 @@ export type Database = {
           book_pdf_url?: string | null;
           character_generation_mode?: string;
           child_age: number;
-          child_appearance: string;
+          child_appearance?: string | null;
+          child_features?: Json | null;
           child_gender: string;
           child_name: string;
           converted_from_draft_id?: string | null;
@@ -170,7 +175,8 @@ export type Database = {
           book_pdf_url?: string | null;
           character_generation_mode?: string;
           child_age?: number;
-          child_appearance?: string;
+          child_appearance?: string | null;
+          child_features?: Json | null;
           child_gender?: string;
           child_name?: string;
           converted_from_draft_id?: string | null;

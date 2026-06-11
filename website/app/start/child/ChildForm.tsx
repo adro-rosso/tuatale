@@ -1,41 +1,49 @@
 'use client';
 
-import { useActionState } from 'react';
-import {
-  submitChildStep,
-  type ChildFormValues,
-  type SubmitChildState,
-} from '@/app/start/_actions/submit-child';
+import { useActionState, useState } from 'react';
+import { submitChildStep, type SubmitChildState } from '@/app/start/_actions/submit-child';
+import { type ChildFormValues } from '@/lib/child-form';
 import { Button } from '@/components/ui/Button';
-import { AGE_RANGES, GENDERS } from '@/lib/validation/schemas';
+import {
+  AGE_RANGES,
+  GENDERS,
+  HAIR_COLOURS,
+  HAIR_STYLES,
+  BOY_HAIR_STYLES,
+  SKIN_TONES,
+  EYE_COLOURS,
+  BUILDS,
+  GLASSES_VALUES,
+  TEE_COLOURS,
+  SHORTS_COLOURS,
+  SHOES,
+  MARK_TYPES,
+  MARK_SIDES,
+} from '@/lib/validation/schemas';
 
 interface ChildFormProps {
   initial: ChildFormValues;
 }
 
 const initialState: SubmitChildState = { errors: {} };
+const SELECT_CLASS =
+  'font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none';
+const labelize = (v: string) => v.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 
 export function ChildForm({ initial }: ChildFormProps) {
   const [state, formAction, isPending] = useActionState(submitChildStep, initialState);
   const errors = state.errors;
-  // Prefer values echoed back from a failed submit over the draft-derived
-  // initial values. React 19's `<form action={fn}>` auto-resets the form
-  // after the action returns; defaultValue wins on reset, so the field
-  // re-renders with whatever the customer last typed instead of the
-  // (still-empty) draft column.
   const fieldValue = (k: keyof ChildFormValues): string => state.values?.[k] ?? initial[k] ?? '';
-  // <select>'s defaultValue is React's one-shot prop — changing it
-  // post-mount has no effect on the rendered <option selected>. Same
-  // story for <input type="radio">'s defaultChecked. To make every
-  // field repopulate uniformly via defaultValue, we force a fresh
-  // mount of the form tree whenever the echoed values change. The
-  // input/textarea fields would preserve without the key (their
-  // defaultValue property is honoured by form.reset), but routing
-  // all fields through the same remount path keeps the contract
-  // legible.
-  const formKey = state.values
-    ? `submitted:${state.values.name}|${state.values.age_range}|${state.values.gender}|${state.values.appearance.length}`
-    : 'fresh';
+
+  // Gender drives the hair_style options (renderability gate: boys get the
+  // restricted set). Held in client state so the dropdown filters reactively;
+  // the radio stays the source of truth for the submitted value.
+  const [gender, setGender] = useState<string>(fieldValue('gender'));
+  const hairStyles = gender === 'boy' ? BOY_HAIR_STYLES : HAIR_STYLES;
+
+  // Remount the whole tree when echoed values change, so every uncontrolled
+  // field repopulates from its defaultValue (matches the existing pattern).
+  const formKey = state.values ? `submitted:${JSON.stringify(state.values)}` : 'fresh';
 
   return (
     <form action={formAction} className="space-y-lg" key={formKey}>
@@ -45,17 +53,13 @@ export function ChildForm({ initial }: ChildFormProps) {
           name="name"
           defaultValue={fieldValue('name')}
           maxLength={50}
-          className="font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none"
+          className={SELECT_CLASS}
           autoComplete="off"
         />
       </Field>
 
       <Field label="How old are they?" error={errors['age_range']}>
-        <select
-          name="age_range"
-          defaultValue={fieldValue('age_range')}
-          className="font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none"
-        >
+        <select name="age_range" defaultValue={fieldValue('age_range')} className={SELECT_CLASS}>
           <option value="">Pick an age range…</option>
           {AGE_RANGES.map((r) => (
             <option key={r} value={r}>
@@ -77,6 +81,7 @@ export function ChildForm({ initial }: ChildFormProps) {
                 name="gender"
                 value={g}
                 defaultChecked={fieldValue('gender') === g}
+                onChange={() => setGender(g)}
                 className="sr-only"
               />
               {g.replace('_', ' ')}
@@ -85,17 +90,59 @@ export function ChildForm({ initial }: ChildFormProps) {
         </fieldset>
       </Field>
 
-      <Field label="What do they look like?" error={errors['appearance']}>
+      {/* ---- Optional structured "build your character" ---- */}
+      <fieldset className="space-y-md border-warm-grey-light rounded border-2 border-dashed p-md">
+        <legend className="font-heading text-near-black text-h3 px-sm italic">
+          Build your character <span className="font-body text-warm-grey text-caption not-italic">— optional</span>
+        </legend>
+
+        <div className="gap-md grid grid-cols-1 sm:grid-cols-2">
+          <Select name="hair_colour" label="Hair colour" value={fieldValue('hair_colour')} options={HAIR_COLOURS} />
+          <Select
+            name="hair_style"
+            label="Hair style"
+            value={fieldValue('hair_style')}
+            options={hairStyles}
+            error={errors['features.hair_style']}
+          />
+          <Select name="skin_tone" label="Skin tone" value={fieldValue('skin_tone')} options={SKIN_TONES} />
+          <Select name="eye_colour" label="Eye colour" value={fieldValue('eye_colour')} options={EYE_COLOURS} />
+          <Select name="build" label="Build" value={fieldValue('build')} options={BUILDS} />
+          <Select name="glasses" label="Glasses?" value={fieldValue('glasses')} options={GLASSES_VALUES} />
+        </div>
+
+        <div className="space-y-sm">
+          <p className="font-body text-near-black text-body">Outfit</p>
+          <p className="font-body text-warm-grey text-caption">
+            Choosing an outfit keeps it the same on every page.
+          </p>
+          <div className="gap-md grid grid-cols-1 sm:grid-cols-3">
+            <Select name="outfit_tee" label="T-shirt" value={fieldValue('outfit_tee')} options={TEE_COLOURS} />
+            <Select name="outfit_shorts" label="Shorts" value={fieldValue('outfit_shorts')} options={SHORTS_COLOURS} />
+            <Select name="outfit_shoes" label="Shoes" value={fieldValue('outfit_shoes')} options={SHOES} />
+          </div>
+        </div>
+
+        <div className="space-y-sm">
+          <p className="font-body text-near-black text-body">A distinctive mark (optional)</p>
+          <div className="gap-md grid grid-cols-1 sm:grid-cols-2">
+            <Select name="mark_type" label="Type" value={fieldValue('mark_type')} options={MARK_TYPES} />
+            <Select name="mark_side" label="Which cheek" value={fieldValue('mark_side')} options={MARK_SIDES} />
+          </div>
+        </div>
+      </fieldset>
+
+      <Field label="Anything else about them?" error={errors['appearance']}>
         <textarea
           name="appearance"
           defaultValue={fieldValue('appearance')}
-          rows={5}
+          rows={4}
           maxLength={500}
-          placeholder="Hair, eyes, what they like to wear. The more specific, the better the book."
-          className="font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full resize-y rounded border-2 transition-colors outline-none"
+          placeholder="Freckles, dimples, a favourite expression, a dress instead of shorts… anything the pickers above don't cover."
+          className={`${SELECT_CLASS} resize-y`}
         />
         <p className="font-body text-warm-grey text-caption mt-xs">
-          We&apos;re working from your written description for now. Photo upload is coming soon.
+          Build the character above, or just describe them here in 50+ characters — either works.
         </p>
       </Field>
 
@@ -105,6 +152,29 @@ export function ChildForm({ initial }: ChildFormProps) {
         </Button>
       </div>
     </form>
+  );
+}
+
+interface SelectProps {
+  name: string;
+  label: string;
+  value: string;
+  options: readonly string[];
+  error?: string;
+}
+
+function Select({ name, label, value, options, error }: SelectProps) {
+  return (
+    <Field label={label} error={error}>
+      <select name={name} defaultValue={value} className={SELECT_CLASS}>
+        <option value="">—</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {labelize(o)}
+          </option>
+        ))}
+      </select>
+    </Field>
   );
 }
 

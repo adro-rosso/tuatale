@@ -42,6 +42,7 @@ function fakeOrder(over: Partial<OrderRow> = {}): OrderRow {
     age_range: '5-7',
     child_age: 6,
     child_appearance: 'curly brown hair',
+    child_features: null,
     child_gender: 'girl',
     amount_paid_cents: 7900,
     currency: 'aud',

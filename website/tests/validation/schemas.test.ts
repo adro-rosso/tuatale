@@ -88,14 +88,14 @@ describe('childSchema', () => {
     }
   });
 
-  it('rejects 49-char appearance as too short', () => {
+  it('rejects 49-char appearance with no structured features', () => {
     const result = childSchema.safeParse({
       ...validChild,
       appearance: 'x'.repeat(49),
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0]?.message).toBe(VALIDATION_COPY.TOO_SHORT);
+      expect(result.error.issues[0]?.message).toBe(VALIDATION_COPY.APPEARANCE_OR_BUILD);
     }
   });
 

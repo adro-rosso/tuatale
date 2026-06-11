@@ -32,7 +32,9 @@ describe('validateChild', () => {
       expect(result.errors['name']).toBe(VALIDATION_COPY.REQUIRED);
       expect(result.errors['age_range']).toBe(VALIDATION_COPY.CHOOSE_ONE);
       expect(result.errors['gender']).toBe(VALIDATION_COPY.CHOOSE_ONE);
-      expect(result.errors['appearance']).toBe(VALIDATION_COPY.TOO_SHORT);
+      // appearance is now governed by a cross-field superRefine (structured-OR-
+      // free-text), which Zod skips when sibling fields fail — so no appearance
+      // error here. The appearance rule is covered in schemas/child-features tests.
     }
   });
 

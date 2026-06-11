@@ -1,10 +1,12 @@
 import { getDraft } from '@/lib/draft-fetch';
 import { ChildForm } from './ChildForm';
+import { featuresToFormValues } from '@/lib/child-form';
 
 /**
- * Step 1 — about your child. Phase 2.C: real form with four fields
- * (name, age range, gender, appearance). Pre-fills from the draft so
- * a returning customer sees what they previously typed.
+ * Step 1 — about your child. Real form: name, age range, gender, an optional
+ * structured "build your character" section, and a free-text additive note.
+ * Pre-fills from the draft (incl. the structured features blob) so a returning
+ * customer sees what they previously chose.
  */
 export default async function ChildStepPage() {
   const result = await getDraft();
@@ -17,6 +19,7 @@ export default async function ChildStepPage() {
         age_range: draft?.age_range ?? '',
         gender: draft?.child_gender ?? '',
         appearance: draft?.child_appearance ?? '',
+        ...featuresToFormValues(draft?.child_features),
       }}
     />
   );

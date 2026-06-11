@@ -19,18 +19,99 @@ const COPY = {
   AT_UPPER: "That's plenty.",
   CHOOSE_ONE: 'Please choose one.',
   RELATIONSHIP_REQUIRED: 'Who are they to your child?',
+  APPEARANCE_OR_BUILD: 'Build their character above, or tell us in 50+ characters.',
+  HAIR_STYLE_NOT_FOR_BOYS: "That style isn't available for boys yet.",
 } as const;
 
 export const AGE_RANGES = ['3-5', '5-7', '7-9'] as const;
 export const GENDERS = ['boy', 'girl', 'non_binary'] as const;
 export const SUBJECT_TYPES = ['human', 'non_human'] as const;
 
-export const childSchema = z.object({
-  name: z.string().min(1, COPY.REQUIRED).max(50, COPY.TOO_LONG),
-  age_range: z.enum(AGE_RANGES, { message: COPY.CHOOSE_ONE }),
-  gender: z.enum(GENDERS, { message: COPY.CHOOSE_ONE }),
-  appearance: z.string().min(50, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
+// ---- Structured character features (Spec: structured inputs, 2026-06-11) -------
+// These enums MIRROR the canonical contract in src/character-features.js
+// (FEATURE_VALUES / OUTFIT_VALUES / MARK_VALUES / HAIR_STYLE_BY_GENDER). The
+// production Zod can't import the root src/ module without breaking the website's
+// build (cross-rootDir), so the values are mirrored here and a vitest parity test
+// (feature-contract-parity.test.ts) imports the canonical constants and asserts
+// EXACT equality — any drift fails CI.
+export const HAIR_COLOURS = ['black', 'dark-brown', 'brown', 'light-brown', 'dark-blonde', 'blonde', 'auburn', 'red'] as const;
+export const HAIR_STYLES = ['buzzed', 'short', 'short-curly', 'tousled', 'coily-afro', 'shoulder-length', 'long', 'ponytail', 'pigtails', 'braids', 'bun', 'bald'] as const;
+export const BOY_HAIR_STYLES = ['buzzed', 'short', 'short-curly', 'tousled', 'coily-afro', 'bald'] as const;
+export const SKIN_TONES = ['porcelain', 'fair', 'light', 'medium-olive', 'tan', 'brown', 'deep-brown'] as const;
+export const EYE_COLOURS = ['dark-brown', 'brown', 'hazel', 'green', 'blue', 'grey'] as const;
+export const BUILDS = ['slight', 'average', 'sturdy'] as const;
+export const GLASSES_VALUES = ['yes', 'no'] as const;
+export const TEE_COLOURS = ['red', 'blue', 'green', 'yellow', 'orange', 'purple', 'white', 'grey'] as const;
+export const SHORTS_COLOURS = ['denim-blue', 'navy', 'khaki', 'grey', 'black', 'forest'] as const;
+export const SHOES = ['white-sneakers', 'red-sneakers', 'blue-sneakers', 'black', 'brown-boots'] as const;
+export const MARK_TYPES = ['mole', 'birthmark', 'scar'] as const;
+export const MARK_SIDES = ['left', 'right'] as const;
+
+// The 4 identity axes that make a character "structured-complete" (Adro 2026-06-11).
+export const STRUCTURED_COMPLETE_AXES = ['hair_colour', 'hair_style', 'skin_tone', 'eye_colour'] as const;
+
+export const markSchema = z.object({
+  type: z.enum(MARK_TYPES, { message: COPY.CHOOSE_ONE }),
+  side: z.enum(MARK_SIDES, { message: COPY.CHOOSE_ONE }),
+  region: z.literal('cheek').default('cheek'), // v1: cheek only
 });
+
+export const childFeaturesSchema = z.object({
+  hair_colour: z.enum(HAIR_COLOURS).optional(),
+  hair_style: z.enum(HAIR_STYLES).optional(),
+  skin_tone: z.enum(SKIN_TONES).optional(),
+  eye_colour: z.enum(EYE_COLOURS).optional(),
+  glasses: z.enum(GLASSES_VALUES).optional(),
+  build: z.enum(BUILDS).optional(),
+  outfit: z
+    .object({
+      tee: z.enum(TEE_COLOURS).optional(),
+      shorts: z.enum(SHORTS_COLOURS).optional(),
+      shoes: z.enum(SHOES).optional(),
+    })
+    .optional(),
+  marks: z.array(markSchema).max(1).optional(), // v1: at most one mark
+});
+
+export type ChildFeaturesInput = z.infer<typeof childFeaturesSchema>;
+
+// "Structured-complete" = the 4 identity axes present. Accepts a loose shape so
+// callers can pass a stored child_features blob (Json) as well as a parsed input.
+export function isStructuredComplete(f: unknown): boolean {
+  const ff = f as Record<string, unknown> | null | undefined;
+  return !!(ff && ff.hair_colour && ff.hair_style && ff.skin_tone && ff.eye_colour);
+}
+
+export const childSchema = z
+  .object({
+    name: z.string().min(1, COPY.REQUIRED).max(50, COPY.TOO_LONG),
+    age_range: z.enum(AGE_RANGES, { message: COPY.CHOOSE_ONE }),
+    gender: z.enum(GENDERS, { message: COPY.CHOOSE_ONE }),
+    // Free text is now OPTIONAL + additive — the requirement is satisfied by EITHER
+    // a structured-complete character OR a 50+ char description (see superRefine).
+    appearance: z.string().max(500, COPY.AT_UPPER).optional(),
+    features: childFeaturesSchema.optional(),
+  })
+  .superRefine((data, ctx) => {
+    // Gender-gate (renderability): boys may only use the restricted hair_style set.
+    const hs = data.features?.hair_style;
+    if (hs && data.gender === 'boy' && !(BOY_HAIR_STYLES as readonly string[]).includes(hs)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['features', 'hair_style'],
+        message: COPY.HAIR_STYLE_NOT_FOR_BOYS,
+      });
+    }
+    // Requirement: structured-complete OR free-text >= 50 chars.
+    const freeOk = (data.appearance?.trim().length ?? 0) >= 50;
+    if (!isStructuredComplete(data.features) && !freeOk) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['appearance'],
+        message: COPY.APPEARANCE_OR_BUILD,
+      });
+    }
+  });
 
 export type ChildInput = z.infer<typeof childSchema>;
 

@@ -139,6 +139,37 @@ describe('createOrderFromDraft', () => {
     expect(createOrderSpy).not.toHaveBeenCalled();
   });
 
+  it('copies child_features into the order payload', async () => {
+    const features = { hair_colour: 'brown', hair_style: 'tousled', skin_tone: 'tan', eye_colour: 'brown' };
+    await createOrderFromDraft({
+      draft: fakeDraft({ child_features: features }) as never,
+      stripeSession: fakeStripeSession(),
+    });
+    expect(createOrderSpy.mock.calls[0]![0]!.child_features).toEqual(features);
+  });
+
+  it('structured-complete draft with NO free-text appearance passes the guard', async () => {
+    await createOrderFromDraft({
+      draft: fakeDraft({
+        child_appearance: null,
+        child_features: { hair_colour: 'blonde', hair_style: 'long', skin_tone: 'fair', eye_colour: 'blue' },
+      }) as never,
+      stripeSession: fakeStripeSession(),
+    });
+    expect(createOrderSpy).toHaveBeenCalledTimes(1);
+    expect(createOrderSpy.mock.calls[0]![0]!.child_appearance).toBeNull();
+  });
+
+  it('throws when NEITHER appearance NOR a structured-complete character is present', async () => {
+    await expect(
+      createOrderFromDraft({
+        draft: fakeDraft({ child_appearance: null, child_features: null }) as never,
+        stripeSession: fakeStripeSession(),
+      }),
+    ).rejects.toThrow(/missing required fields/i);
+    expect(createOrderSpy).not.toHaveBeenCalled();
+  });
+
   it('handles payment_intent as either a string or an expanded object', async () => {
     await createOrderFromDraft({
       draft: fakeDraft() as never,
