@@ -196,10 +196,12 @@ export function chainedSheetRefs(viewIndex, anchorBuf) {
 // <pronoun> <side> cheek" — dropping placement adverbs ("low"/"high"), any trailing
 // "just beneath the eye" phrase, and ALL anatomical/camera gloss. No placement
 // language whatsoever. Applied at every Appearance-line build point (fingerprint +
-// mint + render). Env-gated: only active under MOLE_WORDING_FIX=on — the mole
-// de-emphasis is NOT shipped to production by default (separate approval).
+// mint + render). SHIPPED default-ON (2026-06-11) after a full 12-page render
+// review confirmed subtle beats prominent for any free-text mark; opt out with
+// MOLE_WORDING_FIX=off. (Deterministic mole compositing stays shelved — no
+// viable per-page face localizer; see the D-M Stage-5/6 probe reports.)
 export function deemphasiseMarkWording(appearance) {
-  if (!appearance || process.env.MOLE_WORDING_FIX !== "on") return appearance ?? "";
+  if (!appearance || process.env.MOLE_WORDING_FIX === "off") return appearance ?? "";
   return appearance.replace(
     /(?:a |an )?(?:faint |small |tiny |little |prominent )*\b(mole|birthmark|scar)\b\s*(?:low|high)?\s*(?:on|sits on)\s+(his|her|their|the)\s+(left|right)\s+cheek\b(?:,?\s*just\s+\w+\s+the\s+eye)?/i,
     (_full, mark, pronoun, side) => `a small faint ${mark} on ${pronoun} ${side} cheek`,

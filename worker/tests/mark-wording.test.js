@@ -2,20 +2,22 @@
 // deemphasiseMarkWording rewrites a mole/birthmark/scar clause to a BARE form
 // ("a small faint <mark> on <pronoun> <side> cheek") — pure subtraction: no "low",
 // no "just beneath the eye", no anatomical/camera gloss (placement language
-// backfired twice). Gated: only active under MOLE_WORDING_FIX=on.
+// backfired twice). SHIPPED default-ON (2026-06-11); opt out with
+// MOLE_WORDING_FIX=off.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { deemphasiseMarkWording } from "../../src/book-pipeline.js";
 
-describe("deemphasiseMarkWording — gated off (production default)", () => {
-  beforeEach(() => { delete process.env.MOLE_WORDING_FIX; });
-  it("returns the text unchanged when the flag is unset", () => {
+describe("deemphasiseMarkWording — MOLE_WORDING_FIX=off (opt-out)", () => {
+  beforeEach(() => { process.env.MOLE_WORDING_FIX = "off"; });
+  afterEach(() => { delete process.env.MOLE_WORDING_FIX; });
+  it("returns the text unchanged when opted out", () => {
     const t = "He has a faint small mole low on his left cheek.";
     expect(deemphasiseMarkWording(t)).toBe(t);
   });
 });
 
-describe("deemphasiseMarkWording — MOLE_WORDING_FIX=on (bare, subtraction only)", () => {
-  beforeEach(() => { process.env.MOLE_WORDING_FIX = "on"; });
+describe("deemphasiseMarkWording — default ON (production default, bare)", () => {
+  beforeEach(() => { delete process.env.MOLE_WORDING_FIX; });
   afterEach(() => { delete process.env.MOLE_WORDING_FIX; });
 
   it("drops 'low' and adds NO gloss — bare left-cheek clause", () => {
