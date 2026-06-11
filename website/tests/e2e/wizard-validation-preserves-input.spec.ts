@@ -38,8 +38,12 @@ test('child step preserves typed input on validation failure', async ({ page }) 
 
   // Stayed on /start/child — validation failed, no redirect.
   await expect(page).toHaveURL(/\/start\/child$/);
-  // Brand-voice error surfaced inline on the appearance field.
-  await expect(page.getByText('A little more detail would help.').first()).toBeVisible();
+  // Brand-voice error surfaced inline on the appearance field. With structured
+  // inputs the appearance requirement moved to the structured-OR-free-text rule,
+  // so a too-short, feature-less submission now surfaces this message.
+  await expect(
+    page.getByText('Build their character above, or tell us in 50+ characters.').first(),
+  ).toBeVisible();
 
   // Every typed field — including the failing one — must be preserved.
   await expect(page.locator('input[name="name"]')).toHaveValue(CHILD_NAME);
