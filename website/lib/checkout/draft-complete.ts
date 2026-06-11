@@ -14,29 +14,30 @@
  * defaults on orders, so an empty draft is fine for those.
  */
 import type { Tables } from '@/types/database';
+import { isStructuredComplete } from '@/lib/validation/schemas';
 
 type Draft = Tables<'drafts'>;
 
-const REQUIRED_FIELDS = [
-  'child_name',
-  'age_range',
-  'child_gender',
-  'child_appearance',
-  'theme',
-] as const;
+// Always-required (orders NOT NULL) — appearance is handled separately below
+// because it's now satisfied by EITHER free-text OR a structured-complete
+// character (the 4 identity axes), mirroring the Zod rule + create-order guard.
+const REQUIRED_FIELDS = ['child_name', 'age_range', 'child_gender', 'theme'] as const;
 
-export type RequiredDraftField = (typeof REQUIRED_FIELDS)[number];
+export type RequiredDraftField = (typeof REQUIRED_FIELDS)[number] | 'child_appearance';
 
 export interface DraftCompletenessResult {
   complete: boolean;
   missing: ReadonlyArray<RequiredDraftField>;
 }
 
+const isEmpty = (v: unknown) => v === null || v === undefined || v === '';
+
 export function checkDraftCompleteness(draft: Draft): DraftCompletenessResult {
-  const missing = REQUIRED_FIELDS.filter((f) => {
-    const value = draft[f];
-    return value === null || value === undefined || value === '';
-  });
+  const missing: RequiredDraftField[] = REQUIRED_FIELDS.filter((f) => isEmpty(draft[f]));
+  // Appearance requirement: free-text OR a structured-complete character.
+  if (isEmpty(draft.child_appearance) && !isStructuredComplete(draft.child_features)) {
+    missing.push('child_appearance');
+  }
   return { complete: missing.length === 0, missing };
 }
 
