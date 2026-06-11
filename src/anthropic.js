@@ -583,6 +583,8 @@ CHARACTER DESCRIPTION
 
 One paragraph (3-5 sentences) describing the protagonist as the parent gave you. Lead with name and age. Describe the protagonist the way a children's book illustrator describes a character to themselves before drawing: visually specific, warm, no editorializing. Their hair, their eyes, their clothes, the way they hold themselves — concrete details that help an illustrator render them consistently across 12 pages. Do not editorialize about identity, family structure, or background — the parent provides what they want included; you render it without commentary.
 
+Structured selections are authoritative. The Appearance input may contain a structured marker spine (the parent's preset choices) optionally followed by \`also:\` and free-text notes. Where the structured spine and the free-text notes conflict on any concrete attribute (hair, skin, eyes, build, outfit), render the STRUCTURED value — the free text is additive detail, not an override. Keep every structured marker exactly as given.
+
 Pronouns: refer to the protagonist throughout the character description and the narrative with the pronouns matching the \`Gender\` field in the input — he/him for boy, she/her for girl, they/them for non_binary. Do not infer gender from the name; honor the field as given.
 
 Gender-coded styling (driven by the same \`Gender\` field): the character description's STYLING VOCABULARY must reflect the gender, not just the pronouns. When gender is \`boy\` or \`girl\`, weave gender-coded styling cues directly into the appearance prose — WITHOUT changing or contradicting any customer-provided marker. Every color, length, item, and texture the customer specified stays exactly as given; you only inflect the gender coding AROUND those markers:
