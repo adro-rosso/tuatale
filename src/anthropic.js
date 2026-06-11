@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
+import { composeAppearance, composeMarkClause } from "./character-features.js";
 import { loadTemplateRegistry, buildTemplateMetadataForPrompt } from "./template-registry.js";
 import { callWithRetry as sharedCallWithRetry } from "./wall-ceiling.js";
 
@@ -1171,6 +1172,21 @@ const VALID_GENDERS = new Set(["boy", "girl", "non_binary"]);
 //           behavior for all secondaries. Required for humans.
 const VALID_ANCHORS = new Set(["tier1", "tier2"]);
 
+// Build the story-gen seed appearance line. Default (FEATURES_COMPOSE off, or no
+// structured features) = the raw free-text appearance, unchanged. When on: the
+// descriptive features spine merged with free text, plus the bare mark clause
+// (de-emphasis bares it in the resulting prose). Outfit is intentionally excluded
+// (deterministic post-Sonnet injection).
+function composeStorySeedAppearance(child) {
+  if (process.env.FEATURES_COMPOSE !== "on" || !child.features) {
+    return child.appearance || "";
+  }
+  const spine = composeAppearance(child.features, child.appearance);
+  const mark = composeMarkClause(child.features.marks);
+  if (spine && mark) return `${spine}, with ${mark}`;
+  return spine || mark || "";
+}
+
 function formatUserMessage(input) {
   const { child, theme } = input ?? {};
   const secondaries = input?.secondaries ?? [];
@@ -1261,8 +1277,16 @@ function formatUserMessage(input) {
   // If appearance is omitted, Sonnet invents visual details from name/age
   // alone. Acceptable for MVP but worth knowing — appearance is the main
   // personalisation lever.
-  if (child.appearance) {
-    lines.push(`  Appearance: ${child.appearance}`);
+  //
+  // Structured-inputs (FEATURES_COMPOSE, default off): compose the seed from the
+  // descriptive features spine + free text + the bare mark clause, so the prose
+  // reflects the parent's presets even when free-text appearance is empty. Mirrors
+  // the markers wiring in book-pipeline.js (both compose from the same raw
+  // features+appearance → identical spine, no double-compose). Outfit is NOT seeded
+  // here — it's injected deterministically post-Sonnet (injectOutfit).
+  const seedAppearance = composeStorySeedAppearance(child);
+  if (seedAppearance) {
+    lines.push(`  Appearance: ${seedAppearance}`);
   }
   lines.push(``);
   // Companions block — only emitted when secondaries are present, so the

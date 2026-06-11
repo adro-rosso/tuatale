@@ -28,6 +28,8 @@
 // The wizard does NOT capture a secondary `id`, so we synthesize `companion-N`
 // by position (1-based) — matching the convention generate-story.js used.
 
+import { validateChildFeatures } from "../../src/character-features.js";
+
 const HUMAN = "human";
 
 /**
@@ -84,13 +86,20 @@ export function adaptSecondary(s, index) {
  * @returns {{ child: object, secondaries: object[], theme: string, ageRange: string }}
  */
 export function adaptOrderToPipelineInput(order) {
+  const child = {
+    name: order.child_name,
+    age: order.child_age,
+    gender: order.child_gender,
+    appearance: order.child_appearance,
+  };
+  // Hard boundary for structured features: validate against the contract (enum
+  // values + gender-gated hair_style). Out-of-contract / unknown values THROW
+  // here — bad data must fail loud, not reach the pipeline silently. null/absent
+  // (legacy orders, free-text path) -> undefined -> features omitted (no change).
+  const features = validateChildFeatures(order.child_features, order.child_gender);
+  if (features) child.features = features;
   return {
-    child: {
-      name: order.child_name,
-      age: order.child_age,
-      gender: order.child_gender,
-      appearance: order.child_appearance,
-    },
+    child,
     secondaries: (order.secondaries ?? []).map(adaptSecondary),
     theme: order.theme,
     // ageRange is carried for completeness; generateStory does not read it, but

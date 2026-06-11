@@ -34,6 +34,7 @@ import { PDFDocument } from "pdf-lib";
 import { generateImage } from "./gemini.js";
 import { loadTemplateRegistry, findTemplate } from "./template-registry.js";
 import { renderPageWithTemplate } from "./page-pipeline.js";
+import { composeAppearance, injectOutfit, composeMarkClause } from "./character-features.js";
 import { allocate } from "./allocator.js";
 import { WallCeilingError } from "./wall-ceiling.js";
 import {
@@ -131,85 +132,13 @@ function injectShirtColour(description, subject) {
   return `${description ?? ""} ${pronoun} t-shirt is a solid ${colour}.`;
 }
 
-// ---- Structured character features (Spec: structured inputs, 2026-06-11) ------
-// Preset/dropdown features compose deterministically into the appearance the
-// pipeline already consumes — the upstream form of the D-R injection pattern:
-//   - DESCRIPTIVE axes (hair/skin/eye/glasses/build) -> composeAppearance() ->
-//     the identity-markers string (the Sonnet seed AND the DEFINING IDENTITY
-//     MARKERS emphasis line). Sonnet's marker-preservation rule (anthropic.js)
-//     keeps these exact while gender-inflecting the prose.
-//   - OUTFIT (tee/shorts/shoes) -> injectOutfit(): a deterministic appended
-//     sentence (the injectShirtColour pattern, value-driven, PROTAGONIST only —
-//     secondaries keep their id-derived palette path untouched). Outfit colour is
-//     the proven render-drift class, so it gets a deterministic lock, not prose.
-//   - MARKS -> composeMarkClause(): a BARE clause for the Sonnet seed, rendered
-//     subtle by the shipped de-emphasis. Deliberately NOT placed in the markers
-//     emphasis line — emphasising a mole would undo the shipped de-emphasis.
-// All three are PURE; the FEATURES_COMPOSE gate (default off) lives at the wiring.
-const HAIR_STYLE_PHRASE = {
-  buzzed: (c) => `buzzed ${c} hair`,
-  short: (c) => `short ${c} hair`,
-  "short-curly": (c) => `short curly ${c} hair`,
-  tousled: (c) => `tousled ${c} hair`,
-  "coily-afro": (c) => `coily ${c} afro-textured hair`,
-  "shoulder-length": (c) => `shoulder-length ${c} hair`,
-  long: (c) => `long ${c} hair`,
-  ponytail: (c) => `${c} hair in a ponytail`,
-  pigtails: (c) => `${c} hair in pigtails`,
-  braids: (c) => `${c} hair in braids`,
-  bun: (c) => `${c} hair in a bun`,
-  bald: () => "bald",
-};
-const kebabToWords = (v) => String(v ?? "").replace(/-/g, " ").trim();
-
-// Compose the DESCRIPTIVE identity-marker spine from structured features, merged
-// with optional free text. Four cases: free-text-only -> verbatim; structured-only
-// -> "; "-joined spine; both -> "<spine>; also: <freeText>"; neither -> "".
-// Marks + outfit are handled on their own channels (composeMarkClause/injectOutfit).
-export function composeAppearance(features, freeText) {
-  const f = features || {};
-  const parts = [];
-  if (f.hair_style || f.hair_colour) {
-    const c = kebabToWords(f.hair_colour);
-    const phrase = f.hair_style && HAIR_STYLE_PHRASE[f.hair_style];
-    const hair = phrase ? phrase(c) : (c ? `${c} hair` : null);
-    if (hair) parts.push(hair.replace(/\s+/g, " ").trim());
-  }
-  if (f.skin_tone) parts.push(`${kebabToWords(f.skin_tone)} skin`);
-  if (f.eye_colour) parts.push(`${kebabToWords(f.eye_colour)} eyes`);
-  if (f.glasses === "yes" || f.glasses === true) parts.push("glasses");
-  if (f.build) parts.push(`${kebabToWords(f.build)} build`);
-  const spine = parts.filter(Boolean).join("; ");
-  const ft = (freeText ?? "").trim();
-  if (spine && ft) return `${spine}; also: ${ft}`;
-  return spine || ft;
-}
-
-// Deterministic outfit injection — protagonist only, value-driven from the
-// customer's chosen tee/shorts/shoes. Mirrors injectShirtColour (which stays the
-// secondary-only id-derived path). Pure; caller gates on FEATURES_COMPOSE.
-export function injectOutfit(description, subject, features) {
-  const outfit = features?.outfit;
-  if (!outfit) return description ?? "";
-  const g = subject?.gender;
-  const p = g === "girl" ? "Her" : g === "non_binary" ? "Their" : "His";
-  const parts = [];
-  if (outfit.tee) parts.push(`${p} t-shirt is a solid ${kebabToWords(outfit.tee)}.`);
-  if (outfit.shorts) parts.push(`${p} shorts are ${kebabToWords(outfit.shorts)}.`);
-  if (outfit.shoes) parts.push(`${p} shoes are ${kebabToWords(outfit.shoes)}.`);
-  if (!parts.length) return description ?? "";
-  return `${(description ?? "").trim()} ${parts.join(" ")}`.trim();
-}
-
-// Bare mark clause for the Sonnet seed (real orders) — de-emphasis bares it in the
-// prose; the deterministic stamp/composite stays shelved (no localizer), so scars
-// are carried but never rendered as a stamp. Returns "" when no stampable/known mark.
-export function composeMarkClause(marks) {
-  if (!Array.isArray(marks)) return "";
-  const m = marks.find((x) => x && ["mole", "birthmark", "scar"].includes(x.type) && x.side);
-  if (!m) return "";
-  return `a ${m.type} on the ${m.side} ${m.region || "cheek"}`;
-}
+// Structured character features (Spec: structured inputs, 2026-06-11). The pure
+// compose/inject functions + the value contract now live in ./character-features.js
+// (single source of truth, also imported by anthropic.js for the story-gen seed
+// and by the worker adapter for boundary validation). Re-exported here so existing
+// call sites + tests that import from book-pipeline.js keep working. Used at the
+// FEATURES_COMPOSE-gated wiring in buildSubjectListForSheetGen below.
+export { composeAppearance, injectOutfit, composeMarkClause };
 
 // Bike-colour extraction (Spec D-B). The bike is an action-prose prop (no sheet),
 // and story-gen already names its colour ("red bike"). Derive ONE canonical
