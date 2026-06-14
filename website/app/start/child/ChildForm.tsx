@@ -14,11 +14,6 @@ import {
   EYE_COLOURS,
   BUILDS,
   GLASSES_VALUES,
-  TEE_COLOURS,
-  SHORTS_COLOURS,
-  SHOES,
-  MARK_TYPES,
-  MARK_SIDES,
 } from '@/lib/validation/schemas';
 
 interface ChildFormProps {
@@ -109,26 +104,6 @@ export function ChildForm({ initial }: ChildFormProps) {
           <Select name="eye_colour" label="Eye colour" value={fieldValue('eye_colour')} options={EYE_COLOURS} />
           <Select name="build" label="Build" value={fieldValue('build')} options={BUILDS} />
           <Select name="glasses" label="Glasses?" value={fieldValue('glasses')} options={GLASSES_VALUES} />
-        </div>
-
-        <div className="space-y-sm">
-          <p className="font-body text-near-black text-body">Outfit</p>
-          <p className="font-body text-warm-grey text-caption">
-            Choosing an outfit keeps it the same on every page.
-          </p>
-          <div className="gap-md grid grid-cols-1 sm:grid-cols-3">
-            <Select name="outfit_tee" label="T-shirt" value={fieldValue('outfit_tee')} options={TEE_COLOURS} />
-            <Select name="outfit_shorts" label="Shorts" value={fieldValue('outfit_shorts')} options={SHORTS_COLOURS} />
-            <Select name="outfit_shoes" label="Shoes" value={fieldValue('outfit_shoes')} options={SHOES} />
-          </div>
-        </div>
-
-        <div className="space-y-sm">
-          <p className="font-body text-near-black text-body">A distinctive mark (optional)</p>
-          <div className="gap-md grid grid-cols-1 sm:grid-cols-2">
-            <Select name="mark_type" label="Type" value={fieldValue('mark_type')} options={MARK_TYPES} />
-            <Select name="mark_side" label="Which cheek" value={fieldValue('mark_side')} options={MARK_SIDES} />
-          </div>
         </div>
       </fieldset>
 

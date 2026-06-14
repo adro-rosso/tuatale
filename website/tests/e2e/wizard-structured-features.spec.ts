@@ -32,10 +32,9 @@ test('structured-complete character with no free text advances past the child st
   await page.locator('select[name="hair_style"]').selectOption('tousled');
   await page.locator('select[name="skin_tone"]').selectOption('tan');
   await page.locator('select[name="eye_colour"]').selectOption('brown');
-  // Optional extras exercised too.
-  await page.locator('select[name="outfit_tee"]').selectOption('green');
-  await page.locator('select[name="mark_type"]').selectOption('mole');
-  await page.locator('select[name="mark_side"]').selectOption('left');
+  // Extra identity axes too.
+  await page.locator('select[name="build"]').selectOption('sturdy');
+  await page.locator('select[name="glasses"]').selectOption('yes');
 
   // Deliberately leave the free-text appearance EMPTY.
   await expect(page.locator('textarea[name="appearance"]')).toHaveValue('');
@@ -48,8 +47,8 @@ test('structured-complete character with no free text advances past the child st
   await expect(page.locator('select[name="hair_colour"]')).toHaveValue('brown');
   await expect(page.locator('select[name="hair_style"]')).toHaveValue('tousled');
   await expect(page.locator('select[name="eye_colour"]')).toHaveValue('brown');
-  await expect(page.locator('select[name="outfit_tee"]')).toHaveValue('green');
-  await expect(page.locator('select[name="mark_side"]')).toHaveValue('left');
+  await expect(page.locator('select[name="build"]')).toHaveValue('sturdy');
+  await expect(page.locator('select[name="glasses"]')).toHaveValue('yes');
 });
 
 test('gender gates the hair_style options (renderability constraint)', async ({ page }) => {
