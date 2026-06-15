@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import { submitChildStep, type SubmitChildState } from '@/app/start/_actions/submit-child';
 import { type ChildFormValues } from '@/lib/child-form';
+import { ImagePicker } from './ImagePicker';
 import { Button } from '@/components/ui/Button';
 import {
   AGE_RANGES,
@@ -91,17 +92,12 @@ export function ChildForm({ initial }: ChildFormProps) {
           Build your character <span className="font-body text-warm-grey text-caption not-italic">— optional</span>
         </legend>
 
-        <div className="gap-md grid grid-cols-1 sm:grid-cols-2">
-          <Select name="hair_colour" label="Hair colour" value={fieldValue('hair_colour')} options={HAIR_COLOURS} />
-          <Select
-            name="hair_style"
-            label="Hair style"
-            value={fieldValue('hair_style')}
-            options={hairStyles}
-            error={errors['features.hair_style']}
-          />
-          <Select name="skin_tone" label="Skin tone" value={fieldValue('skin_tone')} options={SKIN_TONES} />
-          <Select name="eye_colour" label="Eye colour" value={fieldValue('eye_colour')} options={EYE_COLOURS} />
+        <ImagePicker name="hair_colour" label="Hair colour" axis="hair_colour" value={fieldValue('hair_colour')} options={HAIR_COLOURS} gender={gender} />
+        <ImagePicker name="hair_style" label="Hair style" axis="hair_style" value={fieldValue('hair_style')} options={hairStyles} gender={gender} error={errors['features.hair_style']} />
+        <ImagePicker name="skin_tone" label="Skin tone" axis="skin_tone" value={fieldValue('skin_tone')} options={SKIN_TONES} gender={gender} />
+        <ImagePicker name="eye_colour" label="Eye colour" axis="eye_colour" value={fieldValue('eye_colour')} options={EYE_COLOURS} gender={gender} />
+
+        <div className="gap-md grid grid-cols-2">
           <Select name="build" label="Build" value={fieldValue('build')} options={BUILDS} />
           <Select name="glasses" label="Glasses?" value={fieldValue('glasses')} options={GLASSES_VALUES} />
         </div>
@@ -152,6 +148,7 @@ function Select({ name, label, value, options, error }: SelectProps) {
     </Field>
   );
 }
+
 
 interface FieldProps {
   label: string;

@@ -27,12 +27,13 @@ test('structured-complete character with no free text advances past the child st
   await page.locator('select[name="age_range"]').selectOption('5-7');
   await page.locator('input[name="gender"][value="boy"]').check({ force: true });
 
-  // The 4 identity axes = structured-complete. hair_style 'tousled' is in the boy set.
-  await page.locator('select[name="hair_colour"]').selectOption('brown');
-  await page.locator('select[name="hair_style"]').selectOption('tousled');
-  await page.locator('select[name="skin_tone"]').selectOption('tan');
-  await page.locator('select[name="eye_colour"]').selectOption('brown');
-  // Extra identity axes too.
+  // The 4 identity axes = structured-complete — now image-picker radio cards
+  // (sr-only radios, force-checked like the gender field). 'tousled' ∈ boy set.
+  await page.locator('input[name="hair_colour"][value="brown"]').check({ force: true });
+  await page.locator('input[name="hair_style"][value="tousled"]').check({ force: true });
+  await page.locator('input[name="skin_tone"][value="tan"]').check({ force: true });
+  await page.locator('input[name="eye_colour"][value="brown"]').check({ force: true });
+  // build + glasses stay simple selects.
   await page.locator('select[name="build"]').selectOption('sturdy');
   await page.locator('select[name="glasses"]').selectOption('yes');
 
@@ -42,11 +43,11 @@ test('structured-complete character with no free text advances past the child st
   await page.getByRole('button', { name: /continue/i }).click();
   await expect(page).toHaveURL(/\/start\/secondaries$/);
 
-  // Returning to the child step shows the structured selections repopulated.
+  // Returning to the child step shows the selections repopulated.
   await page.goto('/start/child');
-  await expect(page.locator('select[name="hair_colour"]')).toHaveValue('brown');
-  await expect(page.locator('select[name="hair_style"]')).toHaveValue('tousled');
-  await expect(page.locator('select[name="eye_colour"]')).toHaveValue('brown');
+  await expect(page.locator('input[name="hair_colour"][value="brown"]')).toBeChecked();
+  await expect(page.locator('input[name="hair_style"][value="tousled"]')).toBeChecked();
+  await expect(page.locator('input[name="eye_colour"][value="brown"]')).toBeChecked();
   await expect(page.locator('select[name="build"]')).toHaveValue('sturdy');
   await expect(page.locator('select[name="glasses"]')).toHaveValue('yes');
 });
@@ -56,8 +57,8 @@ test('gender gates the hair_style options (renderability constraint)', async ({ 
   await expect(page).toHaveURL(/\/start\/child$/);
 
   const hairStyleValues = async () =>
-    page.locator('select[name="hair_style"] option').evaluateAll((opts) =>
-      opts.map((o) => (o as HTMLOptionElement).value).filter(Boolean),
+    page.locator('input[name="hair_style"]').evaluateAll((els) =>
+      els.map((o) => (o as HTMLInputElement).value).filter(Boolean),
     );
 
   // Boy → restricted set (no long/ponytail/pigtails/braids/bun/shoulder-length).
