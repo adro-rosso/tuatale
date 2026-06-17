@@ -31,6 +31,7 @@ import {
   pushCheckpoint as realPushCheckpoint,
   clearCheckpoint as realClearCheckpoint,
 } from "./checkpoint.js";
+import { dominantCause } from "./resume-policy.js";
 
 /**
  * R1 completeness gate. STRICT: a book is shippable only if it has PDF bytes,
@@ -47,13 +48,18 @@ import {
  *   subjectSheetStatus: Record<string,{sheetFiles:string[],skipped:boolean}>|undefined,
  *   subjectList: Array<{id:string,name:string,viewCount:number}>|undefined }} result
  */
-export function assertBookComplete({ bookPdfBytes, counts, subjectSheetStatus, subjectList }) {
+export function assertBookComplete({ bookPdfBytes, counts, subjectSheetStatus, subjectList, failureCause = null }) {
+  // R3b: bake the underlying cause (RESOURCE_EXHAUSTED / wall_ceiling, from
+  // result.perPageResults) into the message so the resume classifier can route
+  // credit→park vs latency→resume (onFailure only sees the serialized message).
+  const causeSuffix = failureCause ? `; cause: ${failureCause}` : "";
+
   // Floor: no bytes at all (the sheets-only / protagonist-throw path returns null).
   if (!bookPdfBytes || bookPdfBytes.length === 0) {
     throw new IncompletePipelineError({
       failedPages: counts?.failed ?? null,
       missingSheets: [],
-      reason: "no PDF bytes produced",
+      reason: `no PDF bytes produced${causeSuffix}`,
     });
   }
 
@@ -75,7 +81,7 @@ export function assertBookComplete({ bookPdfBytes, counts, subjectSheetStatus, s
     if (missingSheets.length > 0) {
       parts.push(`${missingSheets.length} subject(s) missing required sheets (${missingSheets.map((m) => m.name).join(", ")})`);
     }
-    throw new IncompletePipelineError({ failedPages, missingSheets, reason: parts.join("; ") });
+    throw new IncompletePipelineError({ failedPages, missingSheets, reason: parts.join("; ") + causeSuffix });
   }
 }
 
@@ -142,6 +148,7 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
   let story = restored?.story ?? null;
   let meta = restored?.meta ?? null;
   let usage = restored?.meta?.usage ?? null;
+  let spendThisRun = 0; // R3b: this attempt's Gemini cost, accumulated into the checkpoint
   try {
     // 4. Story (Sonnet) — skipped on resume (reuse the checkpointed story).
     if (!restored) {
@@ -161,14 +168,17 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
       outputDir: scratchDir,
       resolveImageOverride,
     });
+    spendThisRun = result.totalCost ?? 0;
 
     // 6. R1 completeness gate — INSIDE the try (R3a) so a degraded book throws
-    //    while scratch still holds the completed sheets for checkpointing.
+    //    while scratch still holds the completed sheets for checkpointing. R3b:
+    //    bake the dominant failure cause in so onFailure routes credit vs latency.
     assertBookComplete({
       bookPdfBytes: result.bookPdfBytes,
       counts: result.counts,
       subjectSheetStatus: result.subjectSheetStatus,
       subjectList: result.subjectList,
+      failureCause: dominantCause(result.perPageResults),
     });
 
     // 7. Complete → upload + drop the checkpoint (work is done).
@@ -183,7 +193,7 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
     // R3a just preserves the work.)
     if (story && meta) {
       try {
-        await pushCheckpoint({ jobId, scratchDir, story, meta });
+        await pushCheckpoint({ jobId, scratchDir, story, meta, spendDelta: spendThisRun });
       } catch (ckptErr) {
         console.warn(`pushCheckpoint failed (${jobId}): ${ckptErr.message}`);
       }

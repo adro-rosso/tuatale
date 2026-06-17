@@ -29,7 +29,7 @@ async function downloadBuf(sb, key) {
  * Push story + meta + completed sheets to Storage and write the manifest. Called
  * on a (potentially resumable) failure, BEFORE the scratch dir is deleted.
  */
-export async function pushCheckpoint({ jobId, scratchDir, story, meta }, deps = {}) {
+export async function pushCheckpoint({ jobId, scratchDir, story, meta, spendDelta = 0 }, deps = {}) {
   const sb = deps.client ?? getClient();
   const prefix = prefixFor(jobId);
   const up = (key, buf, ct) => sb.storage.from(BUCKET).upload(`${prefix}/${key}`, buf, { contentType: ct, upsert: true });
@@ -45,7 +45,11 @@ export async function pushCheckpoint({ jobId, scratchDir, story, meta }, deps = 
     if (error) throw new Error(`checkpoint sheet upload failed (${f}): ${error.message}`);
   }
 
-  const manifest = { storage_prefix: prefix, sheet_files: sheetFiles, checkpointed_at: new Date().toISOString() };
+  // R3b: accumulate cumulative Gemini spend across resume attempts (the $2 cap).
+  const { data: prior } = await sb.from("pipeline_jobs").select("checkpoint").eq("id", jobId).maybeSingle();
+  const spend = Number(((prior?.checkpoint?.spend ?? 0) + (spendDelta ?? 0)).toFixed(4));
+
+  const manifest = { storage_prefix: prefix, sheet_files: sheetFiles, spend, checkpointed_at: new Date().toISOString() };
   const { error } = await sb.from("pipeline_jobs").update({ checkpoint: manifest }).eq("id", jobId);
   if (error) throw new Error(`checkpoint manifest write failed: ${error.message}`);
   return manifest;

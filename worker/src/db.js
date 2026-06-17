@@ -142,3 +142,66 @@ export async function markFailed(jobId, { errorMessage, errorDetails } = {}) {
   if (error) throw new Error(`markFailed(${jobId}) failed: ${error.message}`);
   return data;
 }
+
+// ---- R3b resume-state transitions ------------------------------------------
+
+/** running/failed -> resumable: parked for the cron to re-enqueue at next_retry_at. */
+export async function markResumable(jobId, { nextRetryAt } = {}) {
+  const { data, error } = await getClient()
+    .from("pipeline_jobs")
+    .update({ status: "resumable", next_retry_at: nextRetryAt ?? null })
+    .eq("id", jobId)
+    .select()
+    .single();
+  if (error) throw new Error(`markResumable(${jobId}) failed: ${error.message}`);
+  return data;
+}
+
+/** running -> blocked_on_credits: RESOURCE_EXHAUSTED; the cron probe-flips it back. */
+export async function markBlockedOnCredits(jobId) {
+  const { data, error } = await getClient()
+    .from("pipeline_jobs")
+    .update({ status: "blocked_on_credits", next_retry_at: null })
+    .eq("id", jobId)
+    .select()
+    .single();
+  if (error) throw new Error(`markBlockedOnCredits(${jobId}) failed: ${error.message}`);
+  return data;
+}
+
+/** Resumable jobs whose backoff has elapsed and that are under the attempt cap. */
+export async function listDueResumable(nowIso, maxAttempts) {
+  const { data, error } = await getClient()
+    .from("pipeline_jobs")
+    .select("*")
+    .eq("status", "resumable")
+    .lte("next_retry_at", nowIso)
+    .lt("attempt_count", maxAttempts);
+  if (error) throw new Error(`listDueResumable failed: ${error.message}`);
+  return data ?? [];
+}
+
+/** Jobs parked on credit depletion (the cron probe-flips these when the API recovers). */
+export async function listBlockedOnCredits() {
+  const { data, error } = await getClient()
+    .from("pipeline_jobs")
+    .select("*")
+    .eq("status", "blocked_on_credits");
+  if (error) throw new Error(`listBlockedOnCredits failed: ${error.message}`);
+  return data ?? [];
+}
+
+/**
+ * Cron re-enqueue bookkeeping: bump attempt_count and clear next_retry_at (so the
+ * job isn't re-selected before runPipelineJob's markRunning flips it to 'running').
+ */
+export async function requeueResumable(jobId, attemptCount) {
+  const { data, error } = await getClient()
+    .from("pipeline_jobs")
+    .update({ attempt_count: attemptCount, next_retry_at: null })
+    .eq("id", jobId)
+    .select()
+    .single();
+  if (error) throw new Error(`requeueResumable(${jobId}) failed: ${error.message}`);
+  return data;
+}
