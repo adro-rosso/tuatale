@@ -165,3 +165,30 @@ after R1+R2:      charged → alerted + told + refunded   (non-disaster)
 after R3:         charged → book just completes later     (non-event, latency)
                   charged → parked + topup + delivered    (credit; refund backstop)
 ```
+
+---
+
+## Post-deploy update (2026-06-17) — R1+R2 SHIPPED + prod-validated; R3 policy sharpened
+
+**R1+R2 are live on prod and validated end-to-end.** Branch-split (Option c): `feature/wizard-revamp`
+holds the parked wizard/builder/preview/photo/art-style work; `main` got R1+R2 + dormant pipeline +
+docs (`d713b54`, `dde8588`). Website (Vercel) ships only the internal `/api/internal/recover` route
+(no customer-facing change, `/start/style` 404s); worker (Fly) runs R1+R2 (`/health` version `dde8588`).
+A synthetic prod test (refundable test-mode PI + service-role order insert, no pipeline → zero gen)
+proved the whole chain: status→`failed` + `pipeline_error.recovery` marker, customer refund email,
+ops credit-depletion alert, real Stripe test refund, and idempotency (repeat → `skipped`, no double
+refund/email). Test-DB note: `add_style_step` was reverted on `tuatale-test` to match main — **re-apply
+it when `feature/wizard-revamp` resumes.**
+
+**R3 POLICY (Adro, locked) — refund is TERMINAL-ONLY, after resume is exhausted.**
+The physical book has a **days-to-weeks print + delivery window**, so a generation **DELAY is NOT a
+failure-to-deliver.** Therefore R3 must:
+- **RESUME on API recovery** for transient incidents (latency/5xx AND credit-depletion-after-topup) —
+  **wait, don't refund.** A multi-hour or even multi-day delay is acceptable against the fulfilment window.
+- **REFUND only when terminal** — i.e. *after* the resume policy is exhausted (N attempts / M-hours/days
+  cap, or a deterministic non-recoverable failure), not on first failure.
+- **R2's current refund-on-failure is a SAFETY-NET PLACEHOLDER** — correct while there's no resume, but
+  R3 must move the refund/customer-email behind the resume gate so a transient incident resumes silently
+  instead of refunding a book that would have completed. (Keep ops-alert firing immediately regardless.)
+- Implication for the credit-depletion path: park + alert (already designed), and on top-up **resume**
+  rather than treating it as terminal — the customer still gets the book, just late.
