@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>title-iter-1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  @page { size: 11in 8.5in; margin: 0; }
+  html, body { margin: 0; padding: 0; width: 11in; height: 8.5in; overflow: hidden; background-color: #FAF9F0; }
+  /* PROVISIONAL safe inset: keep content within the central ~80% of the page
+     (10% padding all sides). The true trim/bleed/safe-area is vendor-gated
+     (Stage B.2) — this inset gets relocked to the vendor spec then. */
+  .page {
+    box-sizing: border-box;
+    width: 11in; height: 8.5in;
+    padding: 10%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    color: #1F1A14;
+    font-variant-numeric: oldstyle-nums;
+  }
+  .title {
+    font-size: 40pt; font-weight: 500; line-height: 1.15;
+    letter-spacing: 0.01em; max-width: 80%; margin: 0;
+  }
+  .subtitle {
+    font-style: italic; font-weight: 400; font-size: 22pt;
+    color: #3D2418; margin: 0.5in 0 0 0; letter-spacing: 0.02em;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <h1 class="title">{{TITLE}}</h1>
+    <p class="subtitle">{{SUBTITLE}}</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>colophon-iter-1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  @page { size: 11in 8.5in; margin: 0; }
+  html, body { margin: 0; padding: 0; width: 11in; height: 8.5in; overflow: hidden; background-color: #FAF9F0; }
+  /* PROVISIONAL safe inset (central ~80%); true margins + printer imprint line
+     are vendor-gated (B.2). */
+  .page {
+    box-sizing: border-box;
+    width: 11in; height: 8.5in;
+    padding: 10%;
+    display: flex; align-items: center; justify-content: center; text-align: center;
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+  }
+  .colophon {
+    font-size: 13pt; line-height: 1.9; color: #3D2418;
+    letter-spacing: 0.01em; font-variant-numeric: oldstyle-nums;
+  }
+  .colophon p { margin: 0; }
+  .colophon .mark { font-size: 15pt; letter-spacing: 0.04em; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="colophon">
+      <p class="mark">{{COPYRIGHT}}</p>
+      <p>{{MADE_FOR}}</p>
+      <p>{{GENERATED}}</p>
+    </div>
+  </div>
+</body>
+</html>

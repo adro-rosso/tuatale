@@ -1,0 +1,9 @@
+{
+  "id": "title-iter-1",
+  "kind": "front-matter",
+  "description": "Interior TITLE page (Stage B.1). Book title + 'A story for {name}' on cream, EB Garamond. $0 (no image). kind:'front-matter' excludes it from the story-template picker (registry skips kind!=='page'). PROVISIONAL safe inset (content in central ~80%); true trim/bleed/safe-area is vendor-gated (B.2).",
+  "rendering": {
+    "templateHtmlPath": "template.html",
+    "pageSize": { "width": "11in", "height": "8.5in" }
+  }
+}

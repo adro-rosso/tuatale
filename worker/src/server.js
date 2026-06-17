@@ -205,7 +205,13 @@ export function createHealthServer(getState) {
       const state = getState();
       const dead = state === ConnectionState.CLOSED || state === ConnectionState.CLOSING;
       res.writeHead(dead ? 503 : 200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: !dead, state, version: process.env.SENTRY_RELEASE ?? null }));
+      res.end(JSON.stringify({
+        ok: !dead,
+        state,
+        version: process.env.SENTRY_RELEASE ?? null,
+        // B.1: surface the front-matter flag so its live state is verifiable in prod.
+        frontMatter: process.env.FEATURES_FRONTMATTER === "on",
+      }));
     } else {
       res.writeHead(404);
       res.end();

@@ -1,0 +1,9 @@
+{
+  "id": "colophon-iter-1",
+  "kind": "front-matter",
+  "description": "COLOPHON / copyright page (Stage B.1). '© {year} Tuatale' + 'Made for {name}' + 'Generated {date}' on cream, EB Garamond small print. $0 (no image). NO printer imprint line (vendor-gated, B.2). kind:'front-matter' excludes it from the picker. PROVISIONAL safe inset; true margins vendor-gated (B.2).",
+  "rendering": {
+    "templateHtmlPath": "template.html",
+    "pageSize": { "width": "11in", "height": "8.5in" }
+  }
+}

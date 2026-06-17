@@ -25,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadTemplateRegistry } from "../src/template-registry.js";
 import { renderPageWithTemplate } from "../src/page-pipeline.js";
 import { renderCover } from "./render-cover.mjs";
+import { renderFrontMatterPage, buildTitleSubs, buildDedicationSubs, buildColophonSubs } from "../src/front-matter.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
@@ -95,6 +96,32 @@ async function main() {
     } catch (e) {
       entry = { ...entry, success: false, error: e.message };
       console.log(`  00  cover-iter-1        ✗  ${e.message}`);
+    }
+    manifest.pages.push(entry);
+  }
+
+  // ---- Front matter (title / dedication / colophon) — $0 text pages (B.1) ----
+  // Sequence in the delivered book: cover(00) → title(00b) → [story ×12] →
+  // dedication(97) → colophon(98). Here we render each artifact for review.
+  const fmName = (story.cover_subjects && story.cover_subjects[0]) || "the reader";
+  let generatedAtIso = "";
+  try { generatedAtIso = JSON.parse(fs.readFileSync(path.join(BOOK, "meta.json"), "utf8")).generatedAt || ""; } catch {}
+  const frontMatter = [
+    { kind: "title", out: "00b-title", subs: buildTitleSubs({ title: story.title, childName: fmName }) },
+    { kind: "dedication", out: "97-dedication", subs: buildDedicationSubs({ childName: fmName }) },
+    { kind: "colophon", out: "98-colophon", subs: buildColophonSubs({ childName: fmName, generatedAtIso }) },
+  ];
+  for (const fm of frontMatter) {
+    let entry = { slot: fm.out, kind: "front-matter", template: `${fm.kind}-iter-1` };
+    try {
+      const r = await renderFrontMatterPage({ kind: fm.kind, subs: fm.subs, outputDir: path.join(RAW_DIR, fm.kind), outName: fm.kind });
+      fs.copyFileSync(r.pngPath, path.join(REVIEW_DIR, `${fm.out}.png`));
+      fs.copyFileSync(r.pdfPath, path.join(REVIEW_DIR, `${fm.out}.pdf`));
+      entry = { ...entry, success: true, out: `${fm.out}.png` };
+      console.log(`  ${fm.out.padEnd(13)} ${(fm.kind + "-iter-1").padEnd(18)} ✓`);
+    } catch (e) {
+      entry = { ...entry, success: false, error: e.message };
+      console.log(`  ${fm.out.padEnd(13)} ${(fm.kind + "-iter-1").padEnd(18)} ✗  ${e.message}`);
     }
     manifest.pages.push(entry);
   }
