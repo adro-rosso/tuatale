@@ -4,19 +4,17 @@
 <meta charset="utf-8">
 <title>template — prompt-3-iter-2</title>
 
-<!-- Google Fonts: Architects Daughter primary (hand-lettered print with
-     slight curl — closest free match to the reference's casual-serif /
-     storybook-handwriting character). Patrick Hand + Caveat preloaded as
-     fallbacks for quick swap if the primary reads wrong on first render. -->
+<!-- Google Fonts: EB Garamond (Stage A, 2026-06-17). Brand warm humanist
+     oldstyle serif, unifying this template with the cover + other page
+     templates. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;500;600&family=Patrick+Hand&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 
 <style>
   /* ---- Page size + reset ---------------------------------------------
-     Landscape letter. Cream is warmer than prompt-2's #F0EADB (#F0E8D8
-     per the spec for this template). No page margin — the image bleeds
-     edge-to-edge. */
+     Landscape letter. Solid cream page background — this is what guarantees
+     the text strip is clean cream regardless of the illustration. */
   @page {
     size: 11in 8.5in;
     margin: 0;
@@ -27,7 +25,6 @@
     width: 11in;
     height: 8.5in;
     overflow: hidden;
-    /* Unified cream 2026-05-24 — was #F0E8D8; now #FAF9F0 (rim-match). */
     background-color: #FAF9F0;
   }
 
@@ -38,96 +35,62 @@
     height: 8.5in;
   }
 
-  /* ---- Image layer --------------------------------------------------
-     Fills the entire page. The image's INTERNAL composition (scene in
-     upper ~65% + cream clearing with painted framing in lower ~30%) does
-     the architectural work — see SESSION_NOTES "Template architecture
-     finding." No CSS mask in v1: the painter-vocab style override should
-     produce organic painted edges natively. If first render shows a hard
-     scene-to-clearing transition, add a subtle vertical mask in v2. */
+  /* ---- Image band (top 64%) -----------------------------------------
+     REBUILT 2026-06-17. The illustration is a wide band across the TOP of
+     the page, NOT full-bleed. The bottom 36% of the page is left as the
+     solid cream body background — a CSS-GUARANTEED cream strip the text
+     sits on, so legibility never depends on the illustration leaving a
+     painted clearing (the failure of the old full-page version). The
+     band's lower edge feathers into the cream so the painting melts into
+     paper rather than ending on a hard line. object-position:center top
+     anchors the subject (upper two-thirds of the source) and crops the
+     calm bottom of the source under the feather. */
   .image-layer {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
+    height: 64%;
   }
   .image-layer img {
     width: 100%;
     height: 100%;
-    /* object-fit: cover preserves aspect ratio. Source 1408×768 (1.83:1)
-       into page 792×612 (1.29:1) → cover scales by height, cropping ~15%
-       from each horizontal edge. The v5_prompt3_clearing composition
-       constraints in scripts/regen-image-template-aware.js account for
-       this (framing elements positioned in the central 70% of source). */
     object-fit: cover;
-    object-position: center center;
+    object-position: center top;
     display: block;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 80%, transparent 100%);
+            mask-image: linear-gradient(to bottom, black 0%, black 80%, transparent 100%);
   }
 
   /* ---- Text layer (Type C — fixed config-declared box) --------------
-     Migrated 2026-05-21 from region-detection (Type A) to a fixed text
-     box. page-pipeline injects top/left/width/height from
-     config.textRegion + the auto-fit font-size. The static values here
-     are a fallback matching config.textRegion {x:0.10, y:0.70, w:0.80,
-     h:0.25}. Box repositioned down 2026-05-21 (y 0.63 → 0.70) so the
-     first line clears standing-figure vignettes (feet ~72% page height)
-     and sits on clean cream. Flex-centers the narrative within the box. */
+     page-pipeline injects top/left/width/height from config.textRegion +
+     the auto-fit font-size. Static values mirror config.textRegion
+     {x:0.11, y:0.70, w:0.78, h:0.25} — a box that sits entirely in the
+     bottom cream strip (below the 64% image band). Flex-centers the
+     narrative within the box. No backdrop / halo needed: the strip is
+     solid cream by construction. */
   .text-layer {
     position: absolute;
     top: 70%;
-    left: 10%;
-    width: 80%;
+    left: 11%;
+    width: 78%;
     height: 25%;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-  /* ---- Text backdrop ------------------------------------------------
-     Feathered translucent cream behind the text. Cream (now #FAF9F0, was
-     #F0E8D8 pre-unification 2026-05-24) over the page's cream area is
-     invisible regardless of opacity — the compound feather mask (no hard
-     rectangular edge) is what keeps it invisible on clean-cream pages.
-     It only becomes a legibility aid when a painted vignette intrudes
-     into the text box. Opacity 0.30 — tuned 2026-05-21 via $0 override
-     validation: 0.55 left a faintly visible band on clean-cream pages;
-     0.30 keeps clean pages pristine while the strengthened text-halo
-     carries per-glyph legibility on the rare intrusion. */
-  .text-backdrop {
-    position: absolute;
-    inset: 0;
-    /* Match body bg — unified to #FAF9F0 2026-05-24 alongside body. */
-    background-color: #FAF9F0;
-    opacity: 0.30;
-    z-index: 0;
-    -webkit-mask-image:
-      linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
-    -webkit-mask-composite: source-in;
-    mask-image:
-      linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
-    mask-composite: intersect;
-  }
   .narrative {
-    position: relative;
-    z-index: 1;
-    font-family: "Architects Daughter", "Patrick Hand", "Caveat", cursive, serif;
-    font-size: 16pt;
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    /* Fallback size; Type C auto-fit injects the actual size (config maxFontSize). */
+    font-size: 20pt;
     font-weight: 400;
-    line-height: 1.6;
+    line-height: 1.5;
     /* Warm ink-brown — warmer than prompt-2's #1F1A14, per the spec. */
     color: #3D2418;
-    /* Hand-lettered fonts benefit from a tiny letter-spacing relax. */
-    letter-spacing: 0.01em;
+    /* Refined serif tracking + EB Garamond's old-style figures. */
+    letter-spacing: 0.005em;
+    font-variant-numeric: oldstyle-nums;
     text-align: center;
-    /* Cream halo — invisible on cream (cream glow on cream), crisps each
-       glyph against any painted vignette intrusion. Triple-stacked for
-       density: it carries per-glyph legibility now that the backdrop is
-       light (0.30). Unified to #FAF9F0 alongside body bg 2026-05-24
-       (was #F0E8D8) — keeps the cream-on-cream invariant after the
-       rim-match unification. */
-    text-shadow: 0 0 5px #FAF9F0, 0 0 5px #FAF9F0, 0 0 3px #FAF9F0;
   }
 </style>
 </head>
@@ -137,7 +100,6 @@
       <img src="{{IMAGE_URL}}" alt="">
     </div>
     <div class="text-layer">
-      <div class="text-backdrop"></div>
       <div class="narrative">{{NARRATIVE_TEXT}}</div>
     </div>
   </div>

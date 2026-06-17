@@ -14,8 +14,8 @@
   },
   "typography": {
     "fontFamily": "EB Garamond",
-    "fontSize": 18,
-    "lineHeight": 1.7,
+    "fontSize": 20,
+    "lineHeight": 1.5,
     "letterSpacing": "0.005em",
     "color": "#1F1A14",
     "fontVariantNumeric": "oldstyle-nums"
