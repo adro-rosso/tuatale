@@ -11,7 +11,7 @@ const MIN = 60 * 1000;
 // Backoff by attempt_count (0-based): 1st retry waits 5m, then 15m, 45m, 2h, 4h…
 export const BACKOFF_MS = [5 * MIN, 15 * MIN, 45 * MIN, 120 * MIN, 240 * MIN];
 export const REPEAT_MS = 6 * 60 * MIN; // …then every 6h
-export const TERMINAL_WINDOW_DAYS = 5; // give-up window — Adro's recommended working value (not yet hard-confirmed; may adjust)
+export const TERMINAL_WINDOW_DAYS = 5; // give-up window — Adro's working value, adjustable
 export const TERMINAL_WINDOW_MS = TERMINAL_WINDOW_DAYS * 24 * 60 * MIN;
 export const SPEND_CAP_USD = 2; // per-job cumulative Gemini cap until page-resume (R3d)
 export const MAX_ATTEMPTS = 60; // backstop; the window/spend caps are the real terminals

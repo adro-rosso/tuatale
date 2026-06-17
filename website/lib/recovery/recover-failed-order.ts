@@ -33,6 +33,13 @@ export interface FailureInput {
   previewId?: string;
   jobId?: string;
   error: { message?: string; kind?: string };
+  /**
+   * R3c: the worker's resume controller sets this. true = the failure is TERMINAL
+   * (resume exhausted / deterministic) → run customer-recovery (refund + email).
+   * false/undefined = transient (resumable or credit-parked) → ops-alert ONLY; the
+   * job will resume, so we must NOT refund a book that may still complete.
+   */
+  terminal?: boolean;
 }
 
 export interface RecoveryDeps {
@@ -51,6 +58,8 @@ export interface RecoveryResult {
   recovered: boolean;
   refundId: string | null;
   skipped?: 'already-recovered';
+  /** R3c: a non-terminal (resumable/parked) order failure — alerted, recovery deferred. */
+  deferred?: 'non-terminal';
 }
 
 const CREDIT_RE = /RESOURCE_EXHAUSTED|exceeded your current quota|insufficient|quota/i;
@@ -78,21 +87,30 @@ export async function handleFailure(input: FailureInput, deps: RecoveryDeps = {}
     return { source: 'preview', alerted, creditDepleted, recovered: false, refundId: null };
   }
 
-  // ---- ORDER (paid): idempotency gate, then A + B. ----
+  // ---- ORDER (paid). ----
   if (!input.orderId) throw new Error('handleFailure: source=order requires orderId');
+
+  // B. ops-alert ALWAYS — every failure, terminal or not (ops must never be blind).
+  const alerted = await alertOps({ adminEmail, source: 'order', reference: input.orderId, reason, creditDepleted, sendEmail });
+
+  // R3c: customer-recovery (refund + email + 'failed' status) ONLY when TERMINAL.
+  // A transient failure (resumable / credit-parked) will resume — refunding a book
+  // that may still complete would be wrong. Leave orders.pipeline_status untouched
+  // (still in-progress); the worker's resume cron carries the job.
+  if (!input.terminal) {
+    return { source: 'order', alerted, creditDepleted, recovered: false, refundId: null, deferred: 'non-terminal' };
+  }
+
+  // A. TERMINAL → idempotent refund → customer email → 'failed' status + recovery marker.
   const order = await getOrderById(input.orderId);
   if (!order) throw new Error(`handleFailure: order ${input.orderId} not found`);
 
   const existingError = (order.pipeline_error ?? {}) as Record<string, unknown>;
   if (existingError.recovery) {
-    // Already recovered on a prior fire — skip everything (no double refund/email/alert).
-    return { source: 'order', alerted: false, creditDepleted, recovered: false, refundId: null, skipped: 'already-recovered' };
+    // Already recovered on a prior fire — don't double-refund/email.
+    return { source: 'order', alerted, creditDepleted, recovered: false, refundId: null, skipped: 'already-recovered' };
   }
 
-  // B. ops-alert.
-  const alerted = await alertOps({ adminEmail, source: 'order', reference: input.orderId, reason, creditDepleted, sendEmail });
-
-  // A. refund → customer email → status sync (with recovery marker).
   const refundId = await issueRefund(order, getStripe);
   await sendEmail(
     buildCustomerFailureEmail({

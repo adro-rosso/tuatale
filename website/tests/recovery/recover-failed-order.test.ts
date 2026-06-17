@@ -45,7 +45,7 @@ describe('handleFailure — paid order recovery (A + B)', () => {
     const { deps, refundCreate } = makeDeps(order);
 
     const r = await handleFailure(
-      { source: 'order', orderId: 'order-123', jobId: 'job-1', error: { message: 'render exploded' } },
+      { source: 'order', orderId: 'order-123', jobId: 'job-1', terminal: true, error: { message: 'render exploded' } },
       deps,
     );
 
@@ -78,22 +78,43 @@ describe('handleFailure — paid order recovery (A + B)', () => {
     const order = makeOrder({ pipeline_error: { recovery: { recovered_at: 'x', refund_id: 're_prev' } } });
     const { deps, refundCreate } = makeDeps(order);
 
-    const r = await handleFailure({ source: 'order', orderId: 'order-123', error: { message: 'x' } }, deps);
+    const r = await handleFailure({ source: 'order', orderId: 'order-123', terminal: true, error: { message: 'x' } }, deps);
 
     expect(r.skipped).toBe('already-recovered');
     expect(r.recovered).toBe(false);
     expect(refundCreate).not.toHaveBeenCalled();
-    expect(deps.sendEmail).not.toHaveBeenCalled();
+    // R3c: ops-alert always fires (1 call, before the idempotency check); the
+    // customer email + status write are what's guarded.
+    const sendEmail = deps.sendEmail as ReturnType<typeof vi.fn>;
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    expect(sendEmail.mock.calls[0]![0].to).toBe('ops@tuatale.com');
     expect(deps.updateOrderPipelineStatus).not.toHaveBeenCalled();
   });
 
-  it('RESOURCE_EXHAUSTED → credits-depleted ops alert (distinct subject)', async () => {
-    const { deps } = makeDeps(makeOrder());
+  it('R3c: NON-TERMINAL order (resumable) → ops-alert ONLY, no refund/customer-email/status', async () => {
+    const { deps, refundCreate } = makeDeps(makeOrder());
     const r = await handleFailure(
-      { source: 'order', orderId: 'order-123', error: { message: 'Gemini RESOURCE_EXHAUSTED: quota' } },
+      { source: 'order', orderId: 'order-123', terminal: false, error: { message: '503 transient' } },
+      deps,
+    );
+    expect(r).toMatchObject({ source: 'order', recovered: false, refundId: null, deferred: 'non-terminal' });
+    expect(refundCreate).not.toHaveBeenCalled();
+    expect(deps.updateOrderPipelineStatus).not.toHaveBeenCalled();
+    expect(deps.getOrderById).not.toHaveBeenCalled(); // defers before the order fetch
+    const sendEmail = deps.sendEmail as ReturnType<typeof vi.fn>;
+    expect(sendEmail).toHaveBeenCalledTimes(1); // ops-alert only
+    expect(sendEmail.mock.calls[0]![0].to).toBe('ops@tuatale.com');
+  });
+
+  it('R3c: credit-park (terminal:false, RESOURCE_EXHAUSTED) → credits-depleted ops alert, NO refund', async () => {
+    const { deps, refundCreate } = makeDeps(makeOrder());
+    const r = await handleFailure(
+      { source: 'order', orderId: 'order-123', terminal: false, error: { message: 'Gemini RESOURCE_EXHAUSTED: quota' } },
       deps,
     );
     expect(r.creditDepleted).toBe(true);
+    expect(r.deferred).toBe('non-terminal');
+    expect(refundCreate).not.toHaveBeenCalled();
     const sendEmail = deps.sendEmail as ReturnType<typeof vi.fn>;
     const opsCall = sendEmail.mock.calls.find((c) => c[0].to === 'ops@tuatale.com');
     expect(opsCall![0].subject).toMatch(/CREDITS DEPLETED/);
