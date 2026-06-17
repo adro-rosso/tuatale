@@ -470,7 +470,7 @@ export function buildStorySchema(registry) {
             },
             narrative_text: {
               type: "string",
-              description: "3-5 sentences of read-aloud prose for this page.",
+              description: "3-5 sentences of read-aloud prose for this page. Do not use em dashes (—) or en dashes (–) in this text; use a comma, or a separate sentence, instead.",
             },
             subjects_present: {
               type: "array",
@@ -520,13 +520,15 @@ export function buildStorySchema(registry) {
 //
 // The {{TEMPLATE_REGISTRY_DESCRIPTION}} placeholder is substituted at
 // generateStory() call time from the on-disk template registry.
-const SYSTEM_PROMPT_TEMPLATE = `You are a children's picture-book author writing personalised bedtime stories for parents to read aloud to their 4-7-year-old children.
+export const SYSTEM_PROMPT_TEMPLATE = `You are a children's picture-book author writing personalised bedtime stories for parents to read aloud to their 4-7-year-old children.
 
 Your job is to produce ONE complete 12-page story per request. You generate: a title; a character description for the protagonist; companion-character descriptions (one paragraph each) for any companions listed in the input (empty array if none); 12 numbered scenes (each declaring which subjects are present); a cover concept; and the cover subjects list. The book's visual style, composition rules, and image-safety constraints are set elsewhere — focus entirely on title, character(s), story, and cover.
 
 VOICE AND AUDIENCE
 
 Write for 4-7-year-olds in third-person, present-tense narration. Vocabulary should be accessible to that age — concrete nouns, active verbs, simple sentence structures — but never condescending. "She looked up at the moon" beats "Sarah observed the lunar orb." Warmth in tone: like a kind narrator who likes the protagonist. Avoid talking down. Avoid quirky-adult-narrator self-awareness ("little did she know...", "but that's a story for another day...").
+
+PUNCTUATION: do NOT use em dashes (—) or en dashes (–) in narrative_text or the title. Where you would reach for a dash, use a comma, or end the sentence and begin a new one. The em dash reads as machine-written and breaks the read-aloud cadence of picture-book prose.
 
 STORY ARC
 
@@ -584,6 +586,8 @@ CHARACTER DESCRIPTION
 
 One paragraph (3-5 sentences) describing the protagonist as the parent gave you. Lead with name and age. Describe the protagonist the way a children's book illustrator describes a character to themselves before drawing: visually specific, warm, no editorializing. Their hair, their eyes, their clothes, the way they hold themselves — concrete details that help an illustrator render them consistently across 12 pages. Do not editorialize about identity, family structure, or background — the parent provides what they want included; you render it without commentary.
 
+Persistent appearance is symmetric and intrinsic only. Describe the features that are the same on both sides and travel with the protagonist on every page: hair, eyes, skin, build, and bilateral clothing. Do NOT write asymmetric or single-sided items into the character description (a pencil behind one ear, a flower tucked on one side, a bag over one shoulder, an object held in one hand, a patch on one knee). Rendered from a reference sheet on all twelve pages, a one-sided item duplicates onto both sides or drifts from side to side between pages, the same failure mode as a single-cheek mole. If such an item matters to a particular moment, put it in that scene's \`action\` as a per-scene prop, where the illustrator paints it fresh for that page alone.
+
 Structured selections are authoritative. The Appearance input may contain a structured marker spine (the parent's preset choices) optionally followed by \`also:\` and free-text notes. Where the structured spine and the free-text notes conflict on any concrete attribute (hair, skin, eyes, build, outfit), render the STRUCTURED value — the free text is additive detail, not an override. Keep every structured marker exactly as given.
 
 Pronouns: refer to the protagonist throughout the character description and the narrative with the pronouns matching the \`Gender\` field in the input — he/him for boy, she/her for girl, they/them for non_binary. Do not infer gender from the name; honor the field as given.
@@ -617,6 +621,8 @@ REF-ANCHORED vs TEXT-ANCHORED companions: each companion entry in the input is t
 - INSTEAD: weave the entity's appearance markers DIRECTLY into the \`action\` description of every scene where it appears, the way you'd describe a vivid prop or signature object that the illustrator paints from prose alone. The customer's stated markers (color, shape, distinctive features) MUST appear in the action prose every time the entity is on the page — not just once — because the illustrator has no reference sheet to fall back on. Example: a [TEXT-ANCHORED] pet with markers "shaggy tan-and-white fur, floppy ears, stubby tail" must have those features described in each scene's action, e.g. "Bramble the shaggy tan-and-white terrier-mix sits beside Søren, his floppy ears drooping forward and stubby tail giving a single hopeful wag." This consistency-via-prose is load-bearing: it's what keeps the entity recognizable as the SAME pet across scenes.
 
 For each [REF-ANCHORED] companion listed in the input, write a paragraph in \`companion_characters[]\` describing them the same way you describe the protagonist (visually specific, warm, no editorializing). Lead with name and age. Keep the identity markers given in the input as DEFINING FEATURES so the illustrator can render them consistently across pages. The \`name\` field of each \`companion_characters[]\` entry MUST match EXACTLY the name given in the input — no nicknames, no spelling variants.
+
+The persistent-appearance rule from CHARACTER DESCRIPTION applies to companions too: keep asymmetric or single-sided accessories and held objects out of each companion's character_description. If such an item matters to a moment, place it in that scene's \`action\` as a per-scene prop.
 
 Pronouns: each human companion's input entry carries a \`gender\` tag (e.g. "gender boy"). Refer to that companion with matching pronouns — he/him for boy, she/her for girl, they/them for non_binary — throughout their character description AND throughout the narrative scenes. Do not infer gender from the companion's name; honor the tag as given. Non-human companions (pets, toys) have no gender tag — pick whatever pronouns or gendered language fits the story for them.
 
@@ -743,6 +749,35 @@ These rules ensure the engine's reference-budget ceiling is respected. They do n
 // ---- Public API ------------------------------------------------------------
 
 /**
+ * Strip em dashes (—) and en dashes (–) from a PRINTED-text field (narrative_text
+ * and title), replacing each with a comma + single space and tidying the spacing
+ * around it. The em dash is a strong "machine-written" tell and breaks read-aloud
+ * cadence; the system prompt already asks Sonnet to avoid it, and this is the
+ * deterministic guarantee layered on top (prompt rules are not 100%).
+ *
+ * Single hyphens (well-loved, tip-toe) are NEVER touched — only em dashes, en
+ * dashes, and the typed double-hyphen "--". A dash with a DIGIT on BOTH sides is
+ * left intact (a number range like "3–5" stays a range, not "3, 5"). Pure +
+ * idempotent. Applied to narrative_text + title ONLY, not to `action`/
+ * `cover_concept` (those are image-prompt text for Gemini, never printed in the
+ * book). Exported for the unit test (scripts/test-narrative-sanitizer.js).
+ */
+export function stripNarrativeDashes(text) {
+  if (typeof text !== "string" || text.length === 0) return text;
+  return text
+    // em/en/typed dash (+ neighbours) → ", ". The optional digit captures guard
+    // number ranges: when a digit sits on BOTH sides (a && b) the original match
+    // is kept verbatim; otherwise the dash collapses to a comma.
+    .replace(/(\d?)\s*(?:[—–]|--)\s*(\d?)/g, (m, a, b) => (a && b ? m : `${a}, ${b}`))
+    .replace(/\s+/g, " ")                  // collapse whitespace runs
+    .replace(/\s+([,.;:!?])/g, "$1")       // drop space before punctuation
+    .replace(/,\s*,/g, ",")                // dash beside a comma → a single comma
+    .replace(/,(\s*[.;:!?])/g, "$1")       // comma immediately before end punctuation → drop it
+    .replace(/^,\s*/, "")                  // no leading comma (dash at the very start)
+    .trim();
+}
+
+/**
  * Generate a structured 12-page story for a child.
  *
  * @param {object} input
@@ -835,7 +870,10 @@ export async function generateStory(input, options = {}) {
   // art_style (input.style); undefined/legacy → watercolour (byte-identical to the
   // old behaviour). composition_rules + negative_prompt are shared brand constants.
   const story = {
-    title: claudeOutput.title,
+    // Item 1 (book-polish): strip em/en dashes from the PRINTED fields only.
+    // title + each scene's narrative_text are rendered into the book; action /
+    // cover_concept stay untouched (image-prompt text, never printed).
+    title: stripNarrativeDashes(claudeOutput.title),
     character: claudeOutput.character,
     companion_characters: claudeOutput.companion_characters,
     style: resolveStyle(input.style).style,
@@ -844,7 +882,7 @@ export async function generateStory(input, options = {}) {
     pageStyle: resolveStyle(input.style).page,
     composition_rules: COMPOSITION_RULES,
     negative_prompt: NEGATIVE_PROMPT,
-    scenes: claudeOutput.scenes,
+    scenes: claudeOutput.scenes.map((s) => ({ ...s, narrative_text: stripNarrativeDashes(s.narrative_text) })),
     cover_concept: claudeOutput.cover_concept,
     cover_subjects: claudeOutput.cover_subjects,
   };
