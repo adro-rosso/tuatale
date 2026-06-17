@@ -578,6 +578,8 @@ Examples:
 
 Note: you control both the narrative_text length AND the layout_intent. If you want a scene to feel intimate and use prompt-3-iter-2, write the narrative shorter (under 300 chars) so it qualifies. The layout choice and the prose pacing are linked.
 
+PAGE RHYTHM: most pages are "banded" layouts where the illustration occupies one region and the story text sits on cream paper beside or below it (prompt-2-iter-2, prompt-3-iter-2, prompt-8-iter-1). This is the calm default reading rhythm; vary between them page to page. prompt-6-iter-1 is the ONLY full-bleed, edge-to-edge layout, and its immersive impact comes from being the single such page in the book, so reserve it for the one true emotional climax (never to add variety). As a soft arc, an expansive establishing opening (prompt-2-iter-2), intimate middle pages (prompt-3-iter-2), the full-bleed climax (prompt-6-iter-1), and an intimate close (prompt-3-iter-2) make a strong shape, but this is guidance, not a rule: let the story's pacing lead.
+
 TITLE
 
 Give the book a warm, evocative picture-book title — the kind you'd see on the cover of a real children's book. Lean on the protagonist and the heart of the story (e.g. "Iris and the Tall Oak Tree", "The Night Bo Couldn't Sleep", "Mia's Blue Cardigan"). Title Case. Keep it concise — aim for roughly 40 characters or fewer so it sits well on a cover; shorter is often stronger. This is a soft target, not a hard limit: a slightly longer title that genuinely sings beats a clipped one that doesn't. No subtitle, no author name, no surrounding quotation marks. The title should feel like it belongs to THIS story, not a generic template.
