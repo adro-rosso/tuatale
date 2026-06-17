@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { composeAppearance, composeMarkClause } from "./character-features.js";
+import { resolveStyle, COMPOSITION_RULES, NEGATIVE_PROMPT } from "./art-styles.js";
 import { loadTemplateRegistry, buildTemplateMetadataForPrompt } from "./template-registry.js";
 import { callWithRetry as sharedCallWithRetry } from "./wall-ceiling.js";
 
@@ -353,11 +354,10 @@ export class ShapeValidationError extends Error {
 // Sourced from Phase 1's test-script.json — the input that produced the
 // winning Gemini Run 3 spike. Reused as the MVP baseline so visual brand is
 // consistent across books. The Week 2 image pipeline consumes these via the
-// `story` object returned by generateStory(). Revisit if multi-style ever
-// becomes a feature.
-const STYLE = "soft watercolor children's book illustration, warm lighting, gentle shadows, storybook style, muted earthy palette";
-const COMPOSITION_RULES = "full body, centered subject, clean uncluttered background, consistent framing, face clearly visible";
-const NEGATIVE_PROMPT = "photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, watermark";
+// `story` object returned by generateStory(). Multi-style (W-B): the style string
+// now comes from the chosen art_style via resolveStyle(input.style) — defaulting to
+// watercolour, so this remains byte-identical for the default path. The style
+// constants moved to the shared src/art-styles.js source of truth (imported at top).
 
 // ---- Call parameters (single source of truth for scripts) -----------------
 // Exporting these means scripts can display the actual values in their
@@ -831,12 +831,17 @@ export async function generateStory(input, options = {}) {
   }
 
   // Merge Claude's output with the brand constants to produce the final
-  // test-script.json-shaped story object.
+  // test-script.json-shaped story object. The style string comes from the chosen
+  // art_style (input.style); undefined/legacy → watercolour (byte-identical to the
+  // old behaviour). composition_rules + negative_prompt are shared brand constants.
   const story = {
     title: claudeOutput.title,
     character: claudeOutput.character,
     companion_characters: claudeOutput.companion_characters,
-    style: STYLE,
+    style: resolveStyle(input.style).style,
+    // page-render vocab (W-D): the chosen style's `page` string, replacing the
+    // per-template styleOverride. watercolour → the rich Sophie-Blackall string.
+    pageStyle: resolveStyle(input.style).page,
     composition_rules: COMPOSITION_RULES,
     negative_prompt: NEGATIVE_PROMPT,
     scenes: claudeOutput.scenes,

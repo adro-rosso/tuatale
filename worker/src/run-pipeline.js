@@ -25,6 +25,54 @@ import { generateBook as realGenerateBook } from "../../src/book-pipeline.js";
 import { adaptOrderToPipelineInput } from "./adapter.js";
 import { uploadBookPdf as realUploadBookPdf } from "./storage.js";
 import { getOrderById as realGetOrderById } from "./db.js";
+import { IncompletePipelineError } from "./incomplete-pipeline-error.js";
+
+/**
+ * R1 completeness gate. STRICT: a book is shippable only if it has PDF bytes,
+ * zero failed pages, and every required subject (protagonist + each ref-anchored
+ * secondary, i.e. everything in subjectList) has its FULL sheet set and is not
+ * skipped. Throws a typed IncompletePipelineError otherwise — which propagates
+ * to the handler's onFailure → markFailed (job → failed, NOT awaiting_review),
+ * so a degraded/empty book never reaches admin review or a customer.
+ *
+ * Replaces the old existence-only `if (!bookPdfBytes) throw`. Exported for direct
+ * unit testing. Inputs come straight off the generateBook return.
+ *
+ * @param {{ bookPdfBytes: Buffer|null, counts: {failed:number}|undefined,
+ *   subjectSheetStatus: Record<string,{sheetFiles:string[],skipped:boolean}>|undefined,
+ *   subjectList: Array<{id:string,name:string,viewCount:number}>|undefined }} result
+ */
+export function assertBookComplete({ bookPdfBytes, counts, subjectSheetStatus, subjectList }) {
+  // Floor: no bytes at all (the sheets-only / protagonist-throw path returns null).
+  if (!bookPdfBytes || bookPdfBytes.length === 0) {
+    throw new IncompletePipelineError({
+      failedPages: counts?.failed ?? null,
+      missingSheets: [],
+      reason: "no PDF bytes produced",
+    });
+  }
+
+  // Every required subject must have its full sheet set and not be skipped.
+  const missingSheets = [];
+  for (const s of subjectList ?? []) {
+    const status = subjectSheetStatus?.[s.id];
+    const actual = status?.sheetFiles?.length ?? 0;
+    const skipped = status?.skipped === true;
+    if (skipped || actual < s.viewCount) {
+      missingSheets.push({ subjectId: s.id, name: s.name, expected: s.viewCount, actual, skipped });
+    }
+  }
+
+  const failedPages = counts?.failed ?? 0;
+  if (failedPages > 0 || missingSheets.length > 0) {
+    const parts = [];
+    if (failedPages > 0) parts.push(`${failedPages} page(s) failed to render`);
+    if (missingSheets.length > 0) {
+      parts.push(`${missingSheets.length} subject(s) missing required sheets (${missingSheets.map((m) => m.name).join(", ")})`);
+    }
+    throw new IncompletePipelineError({ failedPages, missingSheets, reason: parts.join("; ") });
+  }
+}
 
 /**
  * Build the `meta` object generateBook expects. generateBook reads
@@ -77,6 +125,9 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
 
   let bookPdfBytes;
   let summary;
+  let counts;              // R1 gate input (was discarded)
+  let subjectSheetStatus;  // R1 gate input (was discarded)
+  let subjectList;         // R1 gate input (was discarded)
   try {
     // 4. Story (Sonnet).
     const { story, usage } = await generateStory(input);
@@ -98,6 +149,9 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
 
     bookPdfBytes = result.bookPdfBytes;
     summary = { ...result.summary, tokens: usage };
+    counts = result.counts;
+    subjectSheetStatus = result.subjectSheetStatus;
+    subjectList = result.subjectList;
   } finally {
     // Always clean the scratch dir; never let a cleanup failure mask the real
     // outcome (the PDF bytes are already in memory by this point).
@@ -108,9 +162,10 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
     }
   }
 
-  if (!bookPdfBytes) {
-    throw new Error("Pipeline produced no PDF bytes");
-  }
+  // R1 completeness gate (replaces the bare `!bookPdfBytes` existence check).
+  // Throws IncompletePipelineError on a degraded/empty book → handler onFailure
+  // → markFailed. A book only proceeds to upload + awaiting_review if complete.
+  assertBookComplete({ bookPdfBytes, counts, subjectSheetStatus, subjectList });
 
   // 7. Upload to Storage → 7-day signed URL.
   const { pdfUrl, storagePath } = await uploadBookPdf({ orderId, pdfBytes: bookPdfBytes });

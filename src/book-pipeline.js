@@ -160,13 +160,16 @@ function extractBikeColour(story) {
 
 // Sheet-gen prompt for ONE subject (protagonist OR a secondary). Gender signal
 // rides inside the masked appearance block (F-approach), not as a separate
-// marker.
-function buildSubjectSheetBasePrompt(subject, story) {
+// marker. Exported so the whole-character PREVIEW wrapper builds the IDENTICAL
+// prompt the book uses (what-you-see ≈ what-you-get).
+export function buildSubjectSheetBasePrompt(subject, story) {
   let subjectLabel;
   if (subject.isProtagonist) {
     subjectLabel = `a ${subject.age}-year-old child`;
   } else if (subject.subject_type === "human") {
-    subjectLabel = `a ${subject.age}-year-old child named ${subject.name}`;
+    subjectLabel = subject.isAdult
+      ? `an adult named ${subject.name}`
+      : `a ${subject.age}-year-old child named ${subject.name}`;
   } else {
     subjectLabel = `${subject.name}, a handmade non-human subject`;
   }
@@ -252,6 +255,9 @@ export function buildSubjectListForSheetGen(story, meta, protagonistName, protag
     isProtagonist: true,
     viewCount: 3,
     sheetPathPrefix: "sheet", // → sheet-NN.png (legacy convention; unchanged)
+    // Photo-anchor (opt-in via meta; absent → unchanged behaviour). When set, the
+    // view-0 sheet mint uses this photo as its reference (the proven preview path).
+    photoPath: meta?.inputs?.child?.photoPath ?? null,
   });
   const companions = Array.isArray(story.companion_characters) ? story.companion_characters : [];
   const metaSecs = Array.isArray(meta?.inputs?.secondaries) ? meta.inputs.secondaries : [];
@@ -296,6 +302,11 @@ export function buildSubjectListForSheetGen(story, meta, protagonistName, protag
       isProtagonist: false,
       viewCount: isHuman ? 2 : 1,
       sheetPathPrefix: ms.id, // → <id>-NN.png (e.g. companion-1-01.png)
+      // Photo-anchor + adult labelling (opt-in via meta; absent → unchanged).
+      // is_adult lets a human secondary (e.g. a parent) be labelled an adult
+      // instead of the default child wording.
+      photoPath: ms.photoPath ?? null,
+      isAdult: ms.is_adult === true,
     });
   }
   return subjects;
@@ -635,6 +646,18 @@ export async function generateBook({
     const basePrompt = buildSubjectSheetBasePrompt(subject, story);
     const subjectSucceededFiles = [];
     const subjectBufs = [];
+    // Photo-anchor (opt-in): when the subject carries a photoPath, view-0 is minted
+    // WITH the photo as its reference (the proven preview path — photo → view-0,
+    // which then chains to views 2-3). Absent → unchanged reference-less anchor.
+    let photoBuf = null;
+    if (subject.photoPath) {
+      try {
+        photoBuf = fs.readFileSync(subject.photoPath);
+        log.log(`    ↳ ${subject.name}: photo-anchored view-0 (${subject.photoPath})`);
+      } catch (e) {
+        log.warn(`    ⚠ ${subject.name}: photoPath unreadable (${subject.photoPath}) — minting without photo anchor: ${e.message}`);
+      }
+    }
     let anchorBuf = null; // Spec D-M Stage-3: view-1 buffer (minted OR reused), ref for views 2-3
     for (let i = 0; i < subject.viewCount; i++) {
       const sheetNum = String(i + 1).padStart(2, "0");
@@ -654,13 +677,23 @@ export async function generateBook({
       }
       // Mint this view.
       const viewPrompt = CHARACTER_SHEET_PROMPTS[i];
-      const refs = chainedSheetRefs(i, anchorBuf); // [] for the anchor / gate-off; [view-1] for chained 2-3
-      const matchRef = refs.length
+      // Photo-anchor: view-0 mints WITH the photo as reference + a translate-the-
+      // photograph directive (the proven preview path). Views 2-3 still chain off
+      // the minted view-0 (anchorBuf) as before.
+      const usePhoto = i === 0 && photoBuf;
+      const refs = usePhoto ? [photoBuf] : chainedSheetRefs(i, anchorBuf);
+      const photoRef = usePhoto
+        ? `\n\nThe reference image is a PHOTOGRAPH of the person to depict. Translate them ` +
+          `into the illustration style above — same face shape, features, and hair as the ` +
+          `photo, recognisably the same person; do NOT reproduce photographic detail, ` +
+          `lighting, or background.`
+        : "";
+      const matchRef = !usePhoto && refs.length
         ? `\n\nThis is the SAME child as in the reference image — keep the IDENTICAL outfit ` +
           `(same shirt, shorts, and shoes, same colours), the same face and hair, and any facial ` +
           `mark on the SAME side of the face; only the camera angle changes from the reference.`
         : "";
-      const fullPrompt = `${basePrompt}\n\nView for this image: ${viewPrompt}.${matchRef}`;
+      const fullPrompt = `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${matchRef}`;
       const t0 = Date.now();
       emit({
         event: { kind: "sheet_mint_start", subject: subject.name, view: i + 1, chained: refs.length > 0 },
@@ -906,7 +939,7 @@ export async function generateBook({
       scene: { page: scene.page, action: scene.action },
       narrativeText: scene.narrative_text,
       subjects,
-      sceneStyle: story.style,
+      sceneStyle: story.pageStyle ?? story.style, // W-D: page-render uses the page vocab (replaces template styleOverride)
       sceneNegativePrompt: story.negative_prompt,
       outputDir: pagesDir,
       imagePathOverride,
@@ -1143,6 +1176,7 @@ export async function generateBook({
     totalCalls,
     summary,
     durationMs: totalMs,
+    subjectList, // R1: completeness gate needs per-subject expected viewCount
     subjectSheetStatus,
     sheetResults,
     sheetsExist,

@@ -64,3 +64,12 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 .idea/
+
+# ---------------------------------------------------------------------------
+# Dev scratch — one-off probes/scripts + scratch artifacts (NOT product code).
+# Underscore-prefixed only, so real tracked scripts (generate-book.js, etc.) stay.
+# ---------------------------------------------------------------------------
+/scripts/_*
+/website/_*.mjs
+/website/diff.txt
+/_order-*.png

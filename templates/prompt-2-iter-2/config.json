@@ -4,7 +4,14 @@
   "selection_metadata": {
     "summary": "Split-spread layout. Text in a dedicated left column at consistent 18pt typography; image with painted left-edge feather on the right. Works for any narrative length. Cinematic, spacious, expansive feel.",
     "max_narrative_chars": null,
-    "aesthetic_intent": ["expansive", "cinematic", "establishing", "action", "any-length", "default"]
+    "aesthetic_intent": [
+      "expansive",
+      "cinematic",
+      "establishing",
+      "action",
+      "any-length",
+      "default"
+    ]
   },
   "typography": {
     "fontFamily": "EB Garamond",
@@ -17,12 +24,14 @@
   "regionDetection": null,
   "autoFit": null,
   "imageGeneration": {
-    "styleOverride": "watercolor on cold-press paper, wet-on-wet wash technique, visible pigment granulation, organic uneven boundaries where wash absorbs into paper fiber. Loose, painterly, with intentional white space and atmospheric bleeding. Inspired by contemporary picture book illustration in the style of Sophie Blackall. Warm earthy palette.",
     "customCompositionRules": "full body, clean uncluttered background, consistent framing, face clearly visible.",
     "compositionPromptTemplate": "protagonist and main action positioned in the RIGHT 55% of the frame. The left 40% of the frame should be open sky, distant landscape, or atmospheric background — the kind of scene a watercolor painter would paint to give the page room to breathe. Compose with text-overlay space in mind. ALSO: the LEFT edge of the illustration should fade into the page like watercolor wash absorbing into paper — irregular, organic, with wet-edge bleeding rather than a clean rectangular boundary. The painting should feel like it's spreading across the page, not pasted onto it."
   },
   "rendering": {
     "templateHtmlPath": "template.html",
-    "pageSize": { "width": "11in", "height": "8.5in" }
+    "pageSize": {
+      "width": "11in",
+      "height": "8.5in"
+    }
   }
 }

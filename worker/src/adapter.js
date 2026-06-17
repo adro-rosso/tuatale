@@ -29,6 +29,7 @@
 // by position (1-based) — matching the convention generate-story.js used.
 
 import { validateChildFeatures } from "../../src/character-features.js";
+import { validateArtStyle } from "../../src/art-styles.js";
 
 const HUMAN = "human";
 
@@ -102,6 +103,10 @@ export function adaptOrderToPipelineInput(order) {
     child,
     secondaries: (order.secondaries ?? []).map(adaptSecondary),
     theme: order.theme,
+    // Chosen art style → generateStory reads input.style. Hard boundary:
+    // null/legacy → watercolour; a present-but-unknown value THROWS (bad data
+    // fails loud, like validateChildFeatures).
+    style: validateArtStyle(order.art_style),
     // ageRange is carried for completeness; generateStory does not read it, but
     // it documents the bucket the integer age came from.
     ageRange: order.age_range,

@@ -25,6 +25,8 @@ import { connect, ConnectionState } from "inngest/connect";
 import { runPipeline } from "./run-pipeline.js";
 import { markRunning, markAwaitingReview, markFailed, getJobById as realGetJobById } from "./db.js";
 import { regenerateSignedUrl as realRegenerateSignedUrl, bookPdfPath as realBookPdfPath } from "./storage.js";
+import { runPreview, markPreviewFailed } from "./preview.js";
+import { notifyRecovery } from "./notify-recovery.js";
 
 // ---- Sentry (optional; shared project, release-tagged) --------------------
 const sentryEnabled = Boolean(process.env.SENTRY_DSN);
@@ -46,6 +48,7 @@ export const inngest = new Inngest({ id: "tuatale" });
 /** onFailure — after retries exhaust. Original event is nested at event.data.event. */
 async function runPipelineJobOnFailure({ event, error, runId }) {
   const jobId = event?.data?.event?.data?.jobId;
+  const orderId = event?.data?.event?.data?.orderId;
   if (!jobId) {
     console.error("[runPipelineJob.onFailure] no jobId in original event", {
       runId,
@@ -61,6 +64,15 @@ async function runPipelineJobOnFailure({ event, error, runId }) {
   } catch (markErr) {
     console.error("[runPipelineJob.onFailure] markFailed threw", { jobId, runId, markErr });
   }
+  // R2: fan a PAID-order failure to the website recovery endpoint (refund +
+  // customer email + status sync) + ops-alert. Never throws (markFailed above is
+  // the durable record). Idempotent on the website side.
+  await notifyRecovery({
+    source: "order",
+    orderId,
+    jobId,
+    error: { message: error?.message, kind: error?.kind ?? error?.name },
+  });
 }
 
 /**
@@ -136,6 +148,46 @@ export const runPipelineJob = inngest.createFunction(
   },
 );
 
+// ---- Preview function (S-C: whole-character preview generation) ------------
+// Lightweight sibling of runPipelineJob: ONE mint (~10-15s), not the ~6.5-min
+// book. Higher concurrency (previews are cheap + interactive); 1 retry. runPreview
+// marks the preview_jobs row done/failed itself; onFailure is the terminal backstop.
+async function runPreviewJobOnFailure({ event, error, runId }) {
+  const previewId = event?.data?.event?.data?.previewId;
+  if (!previewId) {
+    console.error("[runPreviewJob.onFailure] no previewId", { runId });
+    return;
+  }
+  try {
+    await markPreviewFailed(previewId, { errorMessage: error?.message ?? "preview failed" });
+  } catch (markErr) {
+    console.error("[runPreviewJob.onFailure] markPreviewFailed threw", { previewId, runId, markErr });
+  }
+  // R2: preview = pre-purchase, no charge → OPS-ALERT ONLY (no refund/customer
+  // email). The credit-depletion flag here is what catches a RESOURCE_EXHAUSTED
+  // incident surfacing through previews.
+  await notifyRecovery({
+    source: "preview",
+    previewId,
+    error: { message: error?.message, kind: error?.kind ?? error?.name },
+  });
+}
+
+export const runPreviewJob = inngest.createFunction(
+  {
+    id: "run-preview-job",
+    name: "Run Character Preview",
+    retries: 1,
+    concurrency: { limit: 3 },
+    triggers: [{ event: "preview/requested" }],
+    onFailure: runPreviewJobOnFailure,
+  },
+  async ({ event }) =>
+    // Single step: the mint + upload + row-update. runPreview is self-contained and
+    // marks the row, so we don't split it (no expensive intermediate to cache).
+    runPreview(event.data),
+);
+
 // ---- Health server (liveness for Fly) -------------------------------------
 // Returns 200 unless the connection is terminally CLOSED/CLOSING, so transient
 // RECONNECTING/CONNECTING states (the SDK auto-reconnects) don't cause Fly to
@@ -158,7 +210,7 @@ export function createHealthServer(getState) {
 // ---- Entry point ----------------------------------------------------------
 export async function start() {
   const connection = await connect({
-    apps: [{ client: inngest, functions: [runPipelineJob] }],
+    apps: [{ client: inngest, functions: [runPipelineJob, runPreviewJob] }],
     instanceId: process.env.FLY_MACHINE_ID || process.env.HOSTNAME || "tuatale-worker",
     handleShutdownSignals: ["SIGTERM", "SIGINT"],
   });

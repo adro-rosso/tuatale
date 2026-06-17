@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { runPipeline } from "../src/run-pipeline.js";
+import { IncompletePipelineError } from "../src/incomplete-pipeline-error.js";
 import { BUCKET, bookPdfPath } from "../src/storage.js";
 import {
   insertTestOrder,
@@ -65,6 +66,12 @@ describe("runPipeline — happy path", () => {
           return {
             bookPdfBytes: pdf,
             summary: { pages: { success: 12, failed: 0 }, total_gemini_calls: 15, escalation_entries: 0 },
+            // R1 completeness-gate inputs (a complete book passes the gate).
+            counts: { success: 12, success_after_retry: 0, escalated: 0, failed: 0 },
+            subjectList: [{ id: "protagonist", name: "Elena", viewCount: 3 }],
+            subjectSheetStatus: {
+              protagonist: { sheetFiles: ["sheet-01.png", "sheet-02.png", "sheet-03.png"], skipped: false },
+            },
           };
         },
       },
@@ -123,5 +130,40 @@ describe("runPipeline — failure handling", () => {
         { generateStory: stubGenerateStory(), generateBook: async () => ({}) },
       ),
     ).rejects.toThrow();
+  });
+
+  // R1: a degraded book (PDF bytes present but a page failed) must be REJECTED by
+  // the completeness gate — typed error, scratch cleaned, and NO upload (the throw
+  // happens before uploadBookPdf, so the degraded PDF never reaches Storage/review).
+  it("rejects a degraded book (counts.failed>0) with IncompletePipelineError, before upload", async () => {
+    const scratchDir = path.join(os.tmpdir(), `tuatale-test-${crypto.randomUUID()}`);
+    const pdf = await makeTinyPdf("degraded book");
+    let uploadCalled = false;
+
+    await expect(
+      runPipeline(
+        { orderId: order.id, jobId: "job-degraded" },
+        {
+          scratchDir,
+          generateStory: stubGenerateStory(),
+          uploadBookPdf: async () => {
+            uploadCalled = true;
+            return { pdfUrl: "https://x/should-not-happen", storagePath: "x" };
+          },
+          generateBook: async () => ({
+            bookPdfBytes: pdf, // truthy bytes — old existence check would have passed this
+            summary: { pages: { success: 11, failed: 1 } },
+            counts: { success: 11, success_after_retry: 0, escalated: 0, failed: 1 },
+            subjectList: [{ id: "protagonist", name: "Elena", viewCount: 3 }],
+            subjectSheetStatus: {
+              protagonist: { sheetFiles: ["sheet-01.png", "sheet-02.png", "sheet-03.png"], skipped: false },
+            },
+          }),
+        },
+      ),
+    ).rejects.toThrow(IncompletePipelineError);
+
+    expect(uploadCalled).toBe(false); // gate fired before upload
+    expect(fs.existsSync(scratchDir)).toBe(false); // scratch still cleaned
   });
 });

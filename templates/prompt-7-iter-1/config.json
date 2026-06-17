@@ -5,7 +5,15 @@
   "selection_metadata": {
     "summary": "Small contained watercolor vignette floating in upper portion of an otherwise blank cream page. Abundant cream framing on all sides. Short tender text centered below the vignette. Quiet, still, contemplative feel — for breath/pause beats.",
     "max_narrative_chars": 150,
-    "aesthetic_intent": ["quiet", "still", "tender", "reflective", "pause", "breath", "contemplative"]
+    "aesthetic_intent": [
+      "quiet",
+      "still",
+      "tender",
+      "reflective",
+      "pause",
+      "breath",
+      "contemplative"
+    ]
   },
   "typography": {
     "fontFamily": "Architects Daughter",
@@ -18,15 +26,22 @@
   },
   "regionDetection": null,
   "autoFit": {},
-  "textRegion": { "x": 0.25, "y": 0.58, "width": 0.50, "height": 0.22 },
+  "textRegion": {
+    "x": 0.25,
+    "y": 0.58,
+    "width": 0.5,
+    "height": 0.22
+  },
   "imageGeneration": {
     "aspectRatio": "16:9",
-    "styleOverride": "watercolor on cold-press paper, wet-on-wet wash technique, visible pigment granulation, organic uneven boundaries where wash absorbs into paper fiber. Loose, painterly, with intentional white space and atmospheric bleeding. Inspired by contemporary picture book illustration in the style of Sophie Blackall. Warm earthy palette.",
     "customCompositionRules": "single focal subject, intimate scale, calm posture, face clearly visible.",
     "compositionPromptTemplate": "The image is a 1408×768 landscape frame, cropped at render to 1.29:1 (~15% trimmed from each horizontal edge), so critical scene content must sit within the CENTRAL 70% of frame width.\n\nCRITICAL LAYOUT — SMALL VIGNETTE, ABUNDANT CREAM: This is NOT a full-bleed illustration. This is NOT a half-page illustration. This is a SMALL CONTAINED WATERCOLOR VIGNETTE — significantly smaller than typical illustrations — floating in the upper-center of an otherwise blank cream page. The painted vignette occupies approximately 32% of frame width and 38% of frame height. The vignette is centered horizontally. The vignette's TOP edge sits approximately 10% down from the top of the frame; its BOTTOM edge sits approximately 48% down from the top of the frame. The bottom 52% of the frame is BLANK CREAM with nothing painted on it.\n\nTHE ABUNDANT CREAM SURROUND: The painted vignette is surrounded on ALL FOUR SIDES by BLANK CREAM PAPER — the exact cream of the page background, with nothing painted on it: no paint, no wash, no texture, no scene content, no ground, no shadow, no atmospheric extension. The cream extends above the vignette, below the vignette, and to the left and right of the vignette. This abundant cream is INTENTIONAL and ESSENTIAL — the cream framing the vignette IS the design, signalling a quiet, breathing, contemplative moment. Do NOT fill the cream zones with painted content. Do NOT extend the painted scene outside its vignette boundary. Do NOT paint atmospheric haze, ground, sky, or environmental extension into the cream. The emptiness is the point.\n\nTHE VIGNETTE EDGES: The vignette has soft, organic painted edges that bleed naturally into the cream paper on all four sides — irregular watercolor edges where wash absorbs into paper fiber. NOT a hard rectangle. NOT a hard circle. NOT a clean geometric shape. The edges are uneven, irregular, painterly — a wash that fades into cream on every side.\n\nTHE BLANK CREAM TEXT ZONE: The lower portion of the frame (roughly the bottom half) is BLANK CREAM — this is where the story text will be placed. Keep this zone entirely free of painted content.\n\nThe painted vignette: watercolor wash with visible pigment granulation, atmospheric, intimate. A single focal subject (the protagonist, or a small contained scene with the protagonist as focus). The vignette feels like a small jewel — a quiet, contained moment of stillness."
   },
   "rendering": {
     "templateHtmlPath": "template.html",
-    "pageSize": { "width": "11in", "height": "8.5in" }
+    "pageSize": {
+      "width": "11in",
+      "height": "8.5in"
+    }
   }
 }

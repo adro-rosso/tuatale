@@ -4,7 +4,14 @@
   "selection_metadata": {
     "summary": "Climactic full-bleed layout. Image fills entire page edge-to-edge; text overlay in lower portion on translucent cream backdrop. Dramatic, cinematic, peak-emotion feel — used for the climactic moment of a story. Narrative under 200 chars recommended (small overlay zone).",
     "max_narrative_chars": 200,
-    "aesthetic_intent": ["climactic", "dramatic", "peak-emotion", "cinematic-scale", "full-bleed", "wonder"]
+    "aesthetic_intent": [
+      "climactic",
+      "dramatic",
+      "peak-emotion",
+      "cinematic-scale",
+      "full-bleed",
+      "wonder"
+    ]
   },
   "typography": {
     "fontFamily": "EB Garamond",
@@ -17,12 +24,14 @@
   "regionDetection": null,
   "autoFit": null,
   "imageGeneration": {
-    "styleOverride": "watercolor on cold-press paper, wet-on-wet wash technique, visible pigment granulation, organic uneven boundaries where wash absorbs into paper fiber. Loose, painterly, with intentional white space and atmospheric bleeding. Inspired by contemporary picture book illustration in the style of Sophie Blackall. Warm earthy palette.",
     "customCompositionRules": "full body, dramatic framing, face clearly visible if subject present, atmospheric depth.",
     "compositionPromptTemplate": "The image fills a 1408×768 landscape frame. The composition will be cropped at render to a 1.29:1 aspect ratio (cropping ~15% from each horizontal edge). The painted scene must extend RICHLY to all four edges of the source frame — every corner of the source should contain meaningful painted content (sky, landscape, atmospheric elements, scene context). This is an edge-to-edge full-bleed composition with NO cream paper margins or empty borders.\n\nThe protagonist is positioned in the UPPER PORTION of the frame (approximately top 65% of the image) so the lower portion is available for text overlay. The subject's center of mass should sit at approximately 50% from the left edge and 30% from the top of the frame.\n\nThe LOWER PORTION of the frame (bottom 35%) should be richly painted background — landscape, ground, atmospheric foreground — but with quieter visual content (less dense, more uniform tones) since text will overlay this region. Open ground, calm water surface, sky reflection, distant horizon — content that reads as 'foreground/middle-ground' without competing visually with the text.\n\nThis is a CLIMACTIC, DRAMATIC moment — the emotional peak of the scene. The composition should feel cinematic and immersive, with the painted scene wrapping around the viewer. Watercolor wash with rich pigment, atmospheric depth, dramatic light. The painting fills the page like a movie still — no margins, no whitespace, only the painted world."
   },
   "rendering": {
     "templateHtmlPath": "template.html",
-    "pageSize": { "width": "11in", "height": "8.5in" }
+    "pageSize": {
+      "width": "11in",
+      "height": "8.5in"
+    }
   }
 }

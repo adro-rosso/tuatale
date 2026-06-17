@@ -5,7 +5,14 @@
   "selection_metadata": {
     "summary": "Asymmetric off-center layout. Image positioned upper-right with organic edges; text in dedicated lower-left column. Energetic, diagonal, editorial feel — works for scenes with movement or visual asymmetry. Narrative under 250 chars recommended.",
     "max_narrative_chars": 250,
-    "aesthetic_intent": ["energetic", "diagonal", "movement", "asymmetric", "editorial", "off-balance"]
+    "aesthetic_intent": [
+      "energetic",
+      "diagonal",
+      "movement",
+      "asymmetric",
+      "editorial",
+      "off-balance"
+    ]
   },
   "typography": {
     "fontFamily": "EB Garamond",
@@ -18,12 +25,14 @@
   "regionDetection": null,
   "autoFit": null,
   "imageGeneration": {
-    "styleOverride": "watercolor on cold-press paper, wet-on-wet wash technique, visible pigment granulation, organic uneven boundaries where wash absorbs into paper fiber. Loose, painterly, with intentional white space and atmospheric bleeding. Inspired by contemporary picture book illustration in the style of Sophie Blackall. Warm earthy palette.",
     "customCompositionRules": "full body, clean uncluttered background, consistent framing, face clearly visible.",
     "compositionPromptTemplate": "The image fills a 1408×768 landscape frame. The composition will be cropped at render to a 1.29:1 aspect ratio (cropping ~15% from each horizontal edge), so all critical scene content must be positioned within the CENTRAL 70% of the source image width to survive the crop.\n\nCRITICAL — IMAGE BACKGROUND IS CREAM PAPER: The ENTIRE image is rendered on a cream paper background with the exact color #F0EADB (a warm cream / off-white). This cream paper is the substrate of the painting. Every pixel of the image that isn't part of the painted scene must be this exact cream color #F0EADB. Do not use white, do not use other off-white tones — only this specific cream paper color #F0EADB.\n\nCRITICAL COMPOSITION: This is an asymmetric painting that sits on the cream paper substrate. The subject (the protagonist) is positioned in the UPPER-RIGHT portion of the central safe zone. The subject's center of mass should sit at approximately 60% from the left edge of the frame and 35% from the top of the frame.\n\nThe LOWER-LEFT portion of the painting (approximately 0%-45% horizontal AND 50%-100% vertical of the central safe zone) should be OPEN ATMOSPHERIC BACKGROUND or quiet painterly space — sky, distant landscape, or just cream paper. NO subject elements in this region.\n\nORGANIC PAINTED EDGES: The painted scene has irregular, soft edges where the watercolor wash meets the cream paper substrate — wet-on-wet bleeding, paint splatter scattered into the cream, pigment fading organically rather than ending at hard lines. The painted scene does NOT extend all the way to the image's outer edges; there is cream paper visible around the painted scene on all sides, with painted edges dissolving into that surrounding cream.\n\nSpecifically: the outer 15-20% of the image (the border region near the source frame's edges) should be predominantly cream paper #F0EADB with sparse watercolor splatter, drips, and the gradual edges of the painted scene fading into it. The painted scene is concentrated in the central 60-70% of the image area.\n\nWatercolor wash with visible pigment granulation in the painted area. The composition reads as an asymmetric watercolor illustration that lives ON cream paper — like a Sophie Blackall painting mounted on cream paper stock."
   },
   "rendering": {
     "templateHtmlPath": "template.html",
-    "pageSize": { "width": "11in", "height": "8.5in" }
+    "pageSize": {
+      "width": "11in",
+      "height": "8.5in"
+    }
   }
 }

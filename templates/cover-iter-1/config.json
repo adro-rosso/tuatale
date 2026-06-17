@@ -3,11 +3,11 @@
   "kind": "cover",
   "description": "Front-cover template (Variant C, built 2026-05-28). Hero art fills the canvas (object-fit:cover); a translucent cream panel (rgba 240,234,219,0.92) across the lower 30% carries the auto-fit title (EB Garamond, dark ink) + an italic subtitle line ('A story for <Name>'). Canvas matches the interior page aspect exactly (11×8.5in landscape). Title auto-fits the panel width via the interior's fitTextToRegion so any length sits cleanly without wrapping/crowding. FRONT COVER ONLY — wrap/spine/back deferred until a print vendor is chosen.",
   "panel": {
-    "heightFrac": 0.30,
+    "heightFrac": 0.3,
     "color": "rgba(240, 234, 219, 0.92)"
   },
   "titleRegion": {
-    "widthFrac": 0.80,
+    "widthFrac": 0.8,
     "heightFrac": 0.185
   },
   "typography": {
@@ -22,12 +22,14 @@
   },
   "imageGeneration": {
     "aspectRatio": "4:3",
-    "styleOverride": "watercolor on cold-press paper, wet-on-wet wash technique, visible pigment granulation, organic uneven boundaries where wash absorbs into paper fiber. Loose, painterly, with intentional white space and atmospheric bleeding. Inspired by contemporary picture book illustration in the style of Sophie Blackall. Warm earthy palette.",
     "customCompositionRules": "hero shot of the protagonist, face clearly visible, warm and inviting, central and alive.",
     "compositionPromptTemplate": "The image is a 4:3 landscape frame — a BOOK COVER hero illustration. This is the single most important, most inviting image of the whole book. RENDER THE SPECIFIC COVER SCENE described in the Scene line below — that text is THIS story's own cover concept and it dictates WHAT is depicted (the signature action, motif, and mood). The rules in this section govern only WHERE elements sit and the structural scaffold — never what the scene is. Paint it to make a child want to open the book.\n\nCOMPOSITION: Place the protagonist's FACE and the key story action in the UPPER HALF / CENTER of the frame — clearly visible, central, alive, and inviting (either looking out warmly toward the viewer or absorbed in the story's signature action). The protagonist's face, body, and the main action must sit in the upper-to-middle of the frame and must NEVER fall into the lower 40% of the image.\n\nLOWER 40% — KEEP IT CALM (TITLE CLEARANCE): The BOTTOM ~40% of the frame must be visually QUIET — open ground, calm water, soft grass, gentle sky-glow, atmospheric foreground, or simple low scenery — with NO critical detail there (no faces, no key action, no important objects). A translucent cream title panel covers the lower third of the cover; reserving the bottom 40% (DELIBERATELY WIDER than the panel) guarantees breathing room between the protagonist and the panel's top edge, so the hero lands comfortably ABOVE the panel with clearance rather than kissing its top edge. Keep the subject's body and action entirely above this calm band.\n\nFull-bleed watercolor scene extending richly to all four edges — atmospheric, painterly, warm earthy palette. This is THE cover: make it the most beautiful, emotionally inviting image in the book."
   },
   "rendering": {
     "templateHtmlPath": "template.html",
-    "pageSize": { "width": "11in", "height": "8.5in" }
+    "pageSize": {
+      "width": "11in",
+      "height": "8.5in"
+    }
   }
 }

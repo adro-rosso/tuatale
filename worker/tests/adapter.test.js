@@ -132,6 +132,8 @@ describe("adaptOrderToPipelineInput", () => {
       child: { name: "Elena", age: 5, gender: "girl", appearance: "wavy auburn hair, freckles, yellow rain boots" },
       secondaries: [],
       theme: "lost in the park",
+      // art_style absent on this legacy order → defaults to watercolour (W-C).
+      style: "watercolour",
       ageRange: "5-7",
     });
   });
