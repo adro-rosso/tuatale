@@ -26,6 +26,11 @@ import { adaptOrderToPipelineInput } from "./adapter.js";
 import { uploadBookPdf as realUploadBookPdf } from "./storage.js";
 import { getOrderById as realGetOrderById } from "./db.js";
 import { IncompletePipelineError } from "./incomplete-pipeline-error.js";
+import {
+  restoreCheckpoint as realRestoreCheckpoint,
+  pushCheckpoint as realPushCheckpoint,
+  clearCheckpoint as realClearCheckpoint,
+} from "./checkpoint.js";
 
 /**
  * R1 completeness gate. STRICT: a book is shippable only if it has PDF bytes,
@@ -107,6 +112,9 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
     generateBook = realGenerateBook,
     uploadBookPdf = realUploadBookPdf,
     getOrderById = realGetOrderById,
+    restoreCheckpoint = realRestoreCheckpoint,
+    pushCheckpoint = realPushCheckpoint,
+    clearCheckpoint = realClearCheckpoint,
     resolveImageOverride = null,
     scratchDir: scratchDirOverride = null,
   } = deps;
@@ -123,21 +131,28 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
     scratchDirOverride || path.join(os.tmpdir(), `tuatale-job-${jobId}`);
   await fsp.mkdir(scratchDir, { recursive: true });
 
-  let bookPdfBytes;
-  let summary;
-  let counts;              // R1 gate input (was discarded)
-  let subjectSheetStatus;  // R1 gate input (was discarded)
-  let subjectList;         // R1 gate input (was discarded)
+  // R3a: if a prior attempt of this job left a checkpoint, restore story + meta +
+  // completed sheets into the fresh scratch dir and SKIP generateStory — so
+  // generateBook's fingerprint reuse mints only the MISSING sheets. (Restoring the
+  // story is essential: a re-gen'd story would change the sheet fingerprints and
+  // force a full re-mint.)
+  const restored = await restoreCheckpoint({ jobId, scratchDir });
+
+  // story/meta held in outer scope so the catch can checkpoint them on failure.
+  let story = restored?.story ?? null;
+  let meta = restored?.meta ?? null;
+  let usage = restored?.meta?.usage ?? null;
   try {
-    // 4. Story (Sonnet).
-    const { story, usage } = await generateStory(input);
+    // 4. Story (Sonnet) — skipped on resume (reuse the checkpointed story).
+    if (!restored) {
+      const gen = await generateStory(input);
+      story = gen.story;
+      usage = gen.usage;
+      meta = buildMetaObject(input, gen.story, gen.usage);
+    }
 
-    // 5. Meta object generateBook consumes.
-    const meta = buildMetaObject(input, story, usage);
-
-    // 6. Book (sheets + per-page render + merge). No emitStatus — the worker
-    //    uses pipeline_jobs as canonical state. resolveImageOverride is null in
-    //    production (real Gemini); tests may replay fixture images.
+    // 5. Book (sheets + per-page render + merge). resolveImageOverride is null in
+    //    production; restored sheets are skipped by generateBook's fingerprint reuse.
     const result = await generateBook({
       story,
       meta,
@@ -147,31 +162,39 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
       resolveImageOverride,
     });
 
-    bookPdfBytes = result.bookPdfBytes;
-    summary = { ...result.summary, tokens: usage };
-    counts = result.counts;
-    subjectSheetStatus = result.subjectSheetStatus;
-    subjectList = result.subjectList;
+    // 6. R1 completeness gate — INSIDE the try (R3a) so a degraded book throws
+    //    while scratch still holds the completed sheets for checkpointing.
+    assertBookComplete({
+      bookPdfBytes: result.bookPdfBytes,
+      counts: result.counts,
+      subjectSheetStatus: result.subjectSheetStatus,
+      subjectList: result.subjectList,
+    });
+
+    // 7. Complete → upload + drop the checkpoint (work is done).
+    const { pdfUrl, storagePath } = await uploadBookPdf({ orderId, pdfBytes: result.bookPdfBytes });
+    await clearCheckpoint({ jobId }).catch((e) => console.warn(`clearCheckpoint failed (${jobId}): ${e.message}`));
+
+    return { pdfUrl, metadata: { ...result.summary, tokens: usage, storagePath } };
+  } catch (err) {
+    // R3a: persist story + meta + completed sheets BEFORE scratch is deleted, so
+    // the next attempt resumes instead of re-minting. Best-effort — a checkpoint
+    // failure must not mask the real error. (R3b decides resumable vs terminal;
+    // R3a just preserves the work.)
+    if (story && meta) {
+      try {
+        await pushCheckpoint({ jobId, scratchDir, story, meta });
+      } catch (ckptErr) {
+        console.warn(`pushCheckpoint failed (${jobId}): ${ckptErr.message}`);
+      }
+    }
+    throw err;
   } finally {
-    // Always clean the scratch dir; never let a cleanup failure mask the real
-    // outcome (the PDF bytes are already in memory by this point).
+    // Always clean the scratch dir (bytes are safe in Storage if checkpointed).
     try {
       await fsp.rm(scratchDir, { recursive: true, force: true });
     } catch (cleanupError) {
       console.warn(`Scratch dir cleanup failed (${scratchDir}): ${cleanupError.message}`);
     }
   }
-
-  // R1 completeness gate (replaces the bare `!bookPdfBytes` existence check).
-  // Throws IncompletePipelineError on a degraded/empty book → handler onFailure
-  // → markFailed. A book only proceeds to upload + awaiting_review if complete.
-  assertBookComplete({ bookPdfBytes, counts, subjectSheetStatus, subjectList });
-
-  // 7. Upload to Storage → 7-day signed URL.
-  const { pdfUrl, storagePath } = await uploadBookPdf({ orderId, pdfBytes: bookPdfBytes });
-
-  return {
-    pdfUrl,
-    metadata: { ...summary, storagePath },
-  };
 }

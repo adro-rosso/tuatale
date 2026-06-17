@@ -192,3 +192,34 @@ failure-to-deliver.** Therefore R3 must:
   instead of refunding a book that would have completed. (Keep ops-alert firing immediately regardless.)
 - Implication for the credit-depletion path: park + alert (already designed), and on top-up **resume**
   rather than treating it as terminal — the customer still gets the book, just late.
+
+---
+
+## R3 finalized build-plan (2026-06-17) — decisions locked; R3a built
+
+**Decisions (Adro):** (1) backoff `5m,15m,45m,2h,4h,then 6h` repeating, **terminal give-up ~5 days** for BOTH
+transient and credit-park → then refund. (2) `runPipelineJob` inngest `retries → 1` (cron owns the long
+cadence). (3) **sheets-only resume now**; page-level resume = future **R3d**. (4) ~**$2/job** cumulative
+Gemini cap → terminal. (5) Inngest-cron-under-Connect **VERIFY-FIRST**, fallback Supabase pg_cron. (6)
+credit-park auto-flips back to `resumable` via a cron **health-probe** (no Gemini balance API exists).
+
+**R3a — checkpoint + restore: BUILT (uncommitted, for review).** `worker/src/checkpoint.js`
+(push/restore/clear; bytes→Storage `tuatale-books/checkpoints/{jobId}/`, manifest→`pipeline_jobs.checkpoint`).
+`run-pipeline.js` reordered: restore-on-entry (skip `generateStory`), R1 gate moved INSIDE `try`,
+checkpoint-on-failure BEFORE the scratch `rm`. **Story+meta are checkpointed too** (mandatory — sheet
+fingerprint = f(appearance prose); a re-gen'd story would force a full re-mint). Migration
+`20260617120000_add_resume_state.sql` (`checkpoint jsonb`, `next_retry_at`, status += `resumable`,
+`blocked_on_credits`) **applied to TEST only**. Tests: worker **141 green** (checkpoint round-trip;
+restored-sheets→FULL_SKIP zero-remint; different-story→MISMATCH proof; restore-skips-generateStory).
+
+**R3b VERIFY-SPIKE — INCONCLUSIVE + caused a prod incident (learning).** The throwaway cron spike used
+the WRONG `createFunction` signature (3-arg `config, trigger, handler`; this Inngest v4 wants
+`triggers:[{cron}]` INSIDE the config) → threw at module load → **prod worker crash-looped to max-restarts
+(down ~10-15 min)**. Restored by reverting + redeploying clean R1/R2 (`/health` ACTIVE `6fe2ba2`). Root
+cause: **deployed a spike to prod without a local boot-test** — a 30-second `node worker/src/server.js`
+locally would have caught it. **Lesson: any worker change gets a local boot before a Fly deploy.** The
+cron-under-Connect question is still OPEN → re-verify LOCALLY first (corrected signature + Inngest dev
+server), then confirm on cloud as part of R3b's gated deploy; pg_cron remains the fallback.
+
+**Sequencing:** R3b (resume controller — needs the cron verify) + R3c (refund-gate move) follow as
+separate gated stages. R3a is review-then-deploy (its own gated step; migration to prod at deploy).
