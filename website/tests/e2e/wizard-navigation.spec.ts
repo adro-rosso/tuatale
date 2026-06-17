@@ -27,6 +27,17 @@ const CHILD = {
 const THEME_TEXT =
   'Iris discovers a tiny door at the back of the garden shed. Behind it, a world only as big as her hand — and she has to figure out who lives there before they figure out she does.';
 
+/**
+ * W-F: a fresh draft now lands on /start/style (the art-style picker is the
+ * first step). Watercolour is pre-selected by default, so this helper just
+ * continues through to the character step.
+ */
+async function passStyleStep(page: Page): Promise<void> {
+  await expect(page).toHaveURL(/\/start\/style$/);
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/child$/);
+}
+
 async function fillChildStep(page: Page): Promise<void> {
   await page.locator('input[name="name"]').fill(CHILD.name);
   await page.locator('select[name="age_range"]').selectOption(CHILD.age_range);
@@ -44,7 +55,7 @@ async function fillThemeStep(page: Page): Promise<void> {
 
 test('happy path: fill all required steps and reach payment', async ({ page }) => {
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await passStyleStep(page);
   await expect(page.getByRole('heading', { level: 2, name: 'About your child' })).toBeVisible();
 
   await fillChildStep(page);
@@ -87,7 +98,7 @@ test('happy path: fill all required steps and reach payment', async ({ page }) =
 
 test('child step rejects empty submission and surfaces brand-voice errors', async ({ page }) => {
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await passStyleStep(page);
   // Click Continue with no fields filled.
   await page.getByRole('button', { name: /continue/i }).click();
   // Stays on /start/child, validation errors visible.
@@ -97,7 +108,7 @@ test('child step rejects empty submission and surfaces brand-voice errors', asyn
 
 test('back button reverses navigation without rewinding progress', async ({ page }) => {
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await passStyleStep(page);
   await fillChildStep(page);
   await page.getByRole('button', { name: /continue/i }).click();
   await expect(page).toHaveURL(/\/start\/secondaries$/);
@@ -110,7 +121,11 @@ test('back button reverses navigation without rewinding progress', async ({ page
 
   await page.getByRole('button', { name: /back/i }).click();
   await expect(page).toHaveURL(/\/start\/child$/);
-  // First step has no Back button.
+
+  // W-F: child is no longer first — Back now goes to the style step.
+  await page.getByRole('button', { name: /back/i }).click();
+  await expect(page).toHaveURL(/\/start\/style$/);
+  // The style step is the first step — no Back button.
   await expect(page.getByRole('button', { name: /back/i })).toHaveCount(0);
 });
 
@@ -119,7 +134,7 @@ test('returning customer lands on furthest step reached, with prior input preser
 }) => {
   // Advance to /start/theme so draft.current_step == 'theme'.
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await passStyleStep(page);
   await fillChildStep(page);
   await page.getByRole('button', { name: /continue/i }).click();
   await expect(page).toHaveURL(/\/start\/secondaries$/);
@@ -138,12 +153,12 @@ test('returning customer lands on furthest step reached, with prior input preser
   await expect(page.locator('textarea[name="appearance"]')).toHaveValue(CHILD.appearance);
 });
 
-test('GET /start/reset clears cookie and lands back at /start/child with a fresh one', async ({
+test('GET /start/reset clears cookie and lands back at /start/style with a fresh one', async ({
   page,
   context,
 }) => {
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await passStyleStep(page);
   await fillChildStep(page);
   await page.getByRole('button', { name: /continue/i }).click();
   await expect(page).toHaveURL(/\/start\/secondaries$/);
@@ -154,7 +169,8 @@ test('GET /start/reset clears cookie and lands back at /start/child with a fresh
   const beforeDraftId = beforeCookie?.value;
 
   await page.goto('/start/reset');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  // W-F: a fresh draft starts at the style step.
+  await expect(page).toHaveURL(/\/start\/style$/);
 
   const afterCookies = await context.cookies();
   const afterCookie = afterCookies.find((c) => c.name === 'tuatale_draft_id');
@@ -162,14 +178,15 @@ test('GET /start/reset clears cookie and lands back at /start/child with a fresh
   expect(afterCookie?.value).not.toBe(beforeDraftId);
   expect(afterCookie?.value).toMatch(/^[0-9a-f-]{36}$/);
 
-  // Fresh cookie ⇒ fresh draft ⇒ empty form.
+  // Fresh cookie ⇒ fresh draft ⇒ empty form (advance past style to check).
+  await passStyleStep(page);
   await expect(page.locator('input[name="name"]')).toHaveValue('');
 });
 
 test('proxy sets the draft cookie on first /start visit', async ({ page, context }) => {
   await context.clearCookies();
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await expect(page).toHaveURL(/\/start\/style$/);
 
   const cookies = await context.cookies();
   const draftCookie = cookies.find((c) => c.name === 'tuatale_draft_id');

@@ -47,7 +47,7 @@ describeIntegration('drafts integration', () => {
     expect(draft.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(draft.cookie_id).toBe(cookieId);
     expect(draft.status).toBe('active');
-    expect(draft.current_step).toBe('child');
+    expect(draft.current_step).toBe('style'); // W-F: 'style' is now the first step
     expect(draft.secondaries).toEqual([]);
     expect(draft.customer_email).toBeNull();
     expect(draft.child_name).toBeNull();

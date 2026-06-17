@@ -15,13 +15,21 @@
  *
  * NOT run in CI — Playwright browser install is local-only for now.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+// W-F: /start now lands on the art-style picker first. Watercolour is the
+// default selection, so continue straight through to the character step.
+async function passStyleStep(page: Page): Promise<void> {
+  await expect(page).toHaveURL(/\/start\/style$/);
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/child$/);
+}
 
 test('structured-complete character with no free text advances past the child step', async ({
   page,
 }) => {
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await passStyleStep(page);
 
   await page.locator('input[name="name"]').fill('Sam');
   await page.locator('select[name="age_range"]').selectOption('5-7');
@@ -54,7 +62,7 @@ test('structured-complete character with no free text advances past the child st
 
 test('gender gates the hair_style options (renderability constraint)', async ({ page }) => {
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await passStyleStep(page);
 
   const hairStyleValues = async () =>
     page.locator('input[name="hair_style"]').evaluateAll((els) =>

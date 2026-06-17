@@ -1,9 +1,11 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 import { submitChildStep, type SubmitChildState } from '@/app/start/_actions/submit-child';
 import { type ChildFormValues } from '@/lib/child-form';
 import { ImagePicker } from './ImagePicker';
+import { CharacterCanvas } from './CharacterCanvas';
+import { CharacterBuilder } from './CharacterBuilder';
 import { Button } from '@/components/ui/Button';
 import {
   AGE_RANGES,
@@ -19,14 +21,25 @@ import {
 
 interface ChildFormProps {
   initial: ChildFormValues;
+  /** Art style chosen in the prior step — the live character preview renders in it. */
+  artStyle: string;
 }
 
 const initialState: SubmitChildState = { errors: {} };
+// S0 reversibility: 'window' = the new animated click-in-place builder; 'classic' =
+// the old stacked ImagePicker form. Flip here (or `git revert`) to restore classic.
+const BUILDER_MODE: 'window' | 'classic' = 'window';
 const SELECT_CLASS =
   'font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none';
 const labelize = (v: string) => v.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+// "5-7" → 6 (the gen prompt wants a single age). Midpoint of any digits, default 7.
+function ageFromRange(range: string): number {
+  const nums = (range.match(/\d+/g) ?? []).map(Number);
+  if (!nums.length) return 7;
+  return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
+}
 
-export function ChildForm({ initial }: ChildFormProps) {
+export function ChildForm({ initial, artStyle }: ChildFormProps) {
   const [state, formAction, isPending] = useActionState(submitChildStep, initialState);
   const errors = state.errors;
   const fieldValue = (k: keyof ChildFormValues): string => state.values?.[k] ?? initial[k] ?? '';
@@ -36,6 +49,30 @@ export function ChildForm({ initial }: ChildFormProps) {
   // the radio stays the source of truth for the submitted value.
   const [gender, setGender] = useState<string>(fieldValue('gender'));
   const hairStyles = gender === 'boy' ? BOY_HAIR_STYLES : HAIR_STYLES;
+
+  // All visual-axis selections lifted into one state object so the window/canvas
+  // react live and the values flow to the form (via hidden inputs in window mode,
+  // or the radios/selects in classic mode).
+  const [feat, setFeat] = useState<Record<string, string>>(() => ({
+    hair_colour: fieldValue('hair_colour'),
+    hair_style: fieldValue('hair_style'),
+    skin_tone: fieldValue('skin_tone'),
+    eye_colour: fieldValue('eye_colour'),
+    build: fieldValue('build'),
+    glasses: fieldValue('glasses'),
+  }));
+  const setFeature = (k: string, v: string) => setFeat((f) => ({ ...f, [k]: v }));
+
+  // Lifted for the preview (the gen needs age/name/free-text). The inputs stay
+  // uncontrolled (defaultValue) — these just observe for the preview request.
+  const [name, setName] = useState<string>(fieldValue('name'));
+  const [ageRange, setAgeRange] = useState<string>(fieldValue('age_range'));
+  const [appearance, setAppearance] = useState<string>(fieldValue('appearance'));
+
+  const canvasSelections = useMemo(
+    () => ({ gender, hair_colour: feat.hair_colour, hair_style: feat.hair_style, eye_colour: feat.eye_colour, glasses: feat.glasses }),
+    [gender, feat.hair_colour, feat.hair_style, feat.eye_colour, feat.glasses],
+  );
 
   // Remount the whole tree when echoed values change, so every uncontrolled
   // field repopulates from its defaultValue (matches the existing pattern).
@@ -48,6 +85,7 @@ export function ChildForm({ initial }: ChildFormProps) {
           type="text"
           name="name"
           defaultValue={fieldValue('name')}
+          onChange={(e) => setName(e.target.value)}
           maxLength={50}
           className={SELECT_CLASS}
           autoComplete="off"
@@ -55,7 +93,7 @@ export function ChildForm({ initial }: ChildFormProps) {
       </Field>
 
       <Field label="How old are they?" error={errors['age_range']}>
-        <select name="age_range" defaultValue={fieldValue('age_range')} className={SELECT_CLASS}>
+        <select name="age_range" defaultValue={fieldValue('age_range')} onChange={(e) => setAgeRange(e.target.value)} className={SELECT_CLASS}>
           <option value="">Pick an age range…</option>
           {AGE_RANGES.map((r) => (
             <option key={r} value={r}>
@@ -92,21 +130,47 @@ export function ChildForm({ initial }: ChildFormProps) {
           Build your character <span className="font-body text-warm-grey text-caption not-italic">— optional</span>
         </legend>
 
-        <ImagePicker name="hair_colour" label="Hair colour" axis="hair_colour" value={fieldValue('hair_colour')} options={HAIR_COLOURS} gender={gender} />
-        <ImagePicker name="hair_style" label="Hair style" axis="hair_style" value={fieldValue('hair_style')} options={hairStyles} gender={gender} error={errors['features.hair_style']} />
-        <ImagePicker name="skin_tone" label="Skin tone" axis="skin_tone" value={fieldValue('skin_tone')} options={SKIN_TONES} gender={gender} />
-        <ImagePicker name="eye_colour" label="Eye colour" axis="eye_colour" value={fieldValue('eye_colour')} options={EYE_COLOURS} gender={gender} />
-
-        <div className="gap-md grid grid-cols-2">
-          <Select name="build" label="Build" value={fieldValue('build')} options={BUILDS} />
-          <Select name="glasses" label="Glasses?" value={fieldValue('glasses')} options={GLASSES_VALUES} />
-        </div>
+        {/* S0: the animated click-in-place window (default). The classic stacked
+            pickers stay behind BUILDER_MODE for reversibility — flip to 'classic'
+            to restore the old form; git keeps the deeper history. */}
+        {BUILDER_MODE === 'window' ? (
+          <CharacterBuilder
+            gender={gender}
+            values={feat}
+            onSet={setFeature}
+            hairStyles={hairStyles}
+            hairStyleError={errors['features.hair_style']}
+            age={ageFromRange(ageRange)}
+            name={name || undefined}
+            freeText={appearance || undefined}
+            artStyle={artStyle}
+            draftId={null}
+          />
+        ) : (
+          <div className="space-y-md">
+            <div className="bg-cream pb-sm lg:sticky lg:top-2 z-10 mx-auto max-w-[32rem]">
+              <CharacterCanvas selections={canvasSelections} />
+              <p className="font-body text-warm-grey text-caption mt-xs text-center">Live preview.</p>
+            </div>
+            <div className="space-y-md">
+              <ImagePicker name="hair_colour" label="Hair colour" axis="hair_colour" value={feat.hair_colour ?? ''} options={HAIR_COLOURS} gender={gender} onChange={(v) => setFeature('hair_colour', v)} />
+              <ImagePicker name="hair_style" label="Hair style" axis="hair_style" value={feat.hair_style ?? ''} options={hairStyles} gender={gender} error={errors['features.hair_style']} onChange={(v) => setFeature('hair_style', v)} />
+              <ImagePicker name="skin_tone" label="Skin tone" axis="skin_tone" value={feat.skin_tone ?? ''} options={SKIN_TONES} gender={gender} onChange={(v) => setFeature('skin_tone', v)} />
+              <ImagePicker name="eye_colour" label="Eye colour" axis="eye_colour" value={feat.eye_colour ?? ''} options={EYE_COLOURS} gender={gender} onChange={(v) => setFeature('eye_colour', v)} />
+              <div className="gap-md grid grid-cols-2">
+                <Select name="build" label="Build" value={feat.build ?? ''} options={BUILDS} onChange={(v) => setFeature('build', v)} />
+                <Select name="glasses" label="Glasses?" value={feat.glasses ?? ''} options={GLASSES_VALUES} onChange={(v) => setFeature('glasses', v)} />
+              </div>
+            </div>
+          </div>
+        )}
       </fieldset>
 
       <Field label="Anything else about them?" error={errors['appearance']}>
         <textarea
           name="appearance"
           defaultValue={fieldValue('appearance')}
+          onChange={(e) => setAppearance(e.target.value)}
           rows={4}
           maxLength={500}
           placeholder="Freckles, dimples, a favourite expression, a dress instead of shorts… anything the pickers above don't cover."
@@ -132,12 +196,18 @@ interface SelectProps {
   value: string;
   options: readonly string[];
   error?: string;
+  onChange?: (value: string) => void;
 }
 
-function Select({ name, label, value, options, error }: SelectProps) {
+function Select({ name, label, value, options, error, onChange }: SelectProps) {
   return (
     <Field label={label} error={error}>
-      <select name={name} defaultValue={value} className={SELECT_CLASS}>
+      <select
+        name={name}
+        defaultValue={value}
+        onChange={(e) => onChange?.(e.target.value)}
+        className={SELECT_CLASS}
+      >
         <option value="">—</option>
         {options.map((o) => (
           <option key={o} value={o}>

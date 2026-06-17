@@ -21,6 +21,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  experimental: {
+    // The character-preview photo path uploads a (downscaled) PNG through a
+    // Server Action. The default body limit is 1MB, which a full-res phone
+    // photo silently exceeds; raise it. The client also downscales to ~640px
+    // first, so this is belt-and-suspenders.
+    serverActions: {
+      bodySizeLimit: '4mb',
+    },
+  },
 };
 
 export default withSentryConfig(nextConfig, {

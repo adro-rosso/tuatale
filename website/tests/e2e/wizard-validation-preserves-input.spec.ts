@@ -15,7 +15,15 @@
  * bound to useState) preserve via React state — no auto-reset
  * applies — but we cover them here as anti-regression.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+// W-F: /start now lands on the art-style picker first. Watercolour is the
+// default selection, so continue straight through to the character step.
+async function passStyleStep(page: Page): Promise<void> {
+  await expect(page).toHaveURL(/\/start\/style$/);
+  await page.getByRole('button', { name: /continue/i }).click();
+  await expect(page).toHaveURL(/\/start\/child$/);
+}
 
 const CHILD_NAME = 'Iris';
 const CHILD_AGE = '5-7';
@@ -26,7 +34,7 @@ const CHILD_APPEARANCE_TOO_SHORT = 'Too short';
 
 test('child step preserves typed input on validation failure', async ({ page }) => {
   await page.goto('/start');
-  await expect(page).toHaveURL(/\/start\/child$/);
+  await passStyleStep(page);
 
   // Fill all four fields but make appearance fail the 50-char min.
   await page.locator('input[name="name"]').fill(CHILD_NAME);
@@ -60,6 +68,7 @@ test('child step preserves typed input on validation failure', async ({ page }) 
 test('theme step preserves typed text on validation failure', async ({ page }) => {
   // Advance past /start/child so we land on /start/theme with a usable draft.
   await page.goto('/start');
+  await passStyleStep(page);
   await page.locator('input[name="name"]').fill(CHILD_NAME);
   await page.locator('select[name="age_range"]').selectOption(CHILD_AGE);
   await page.locator(`input[name="gender"][value="${CHILD_GENDER}"]`).check({ force: true });
@@ -88,6 +97,7 @@ test('theme step preserves typed text on validation failure', async ({ page }) =
 test('secondaries step preserves card state on validation failure', async ({ page }) => {
   // Set up: advance past /start/child to /start/secondaries.
   await page.goto('/start');
+  await passStyleStep(page);
   await page.locator('input[name="name"]').fill(CHILD_NAME);
   await page.locator('select[name="age_range"]').selectOption(CHILD_AGE);
   await page.locator(`input[name="gender"][value="${CHILD_GENDER}"]`).check({ force: true });

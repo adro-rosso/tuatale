@@ -46,3 +46,21 @@ export const pipelineJobRequested = eventType('pipeline/job.requested', {
 export const pipelineJobRetried = eventType('pipeline/job.retried', {
   schema: staticSchema<PipelineJobRetriedData>(),
 });
+
+// Whole-character PREVIEW generation (S-C). The website's requestPreview action
+// sends this; the worker's runPreviewJob mints ONE character image. Photo bytes
+// are NOT in the payload — only photoPath (the bucket object the worker downloads).
+export type PreviewRequestedData = {
+  previewId: string;
+  age: number;
+  name?: string;
+  features?: Record<string, string>;
+  freeText?: string;
+  /** Chosen art style (W-F) — the worker mints the preview in it. */
+  style?: string;
+  photoPath?: string;
+} & Record<string, unknown>;
+
+export const previewRequested = eventType('preview/requested', {
+  schema: staticSchema<PreviewRequestedData>(),
+});

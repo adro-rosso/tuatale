@@ -18,7 +18,7 @@ import { DatabaseError } from './errors';
 // types/database.ts only touches files that actually consume the shapes.
 type DraftRow = Tables<'drafts'>;
 type DraftInsert = TablesInsert<'drafts'>;
-type DraftUpdate = TablesUpdate<'drafts'>;
+export type DraftUpdate = TablesUpdate<'drafts'>;
 
 /**
  * Create a fresh draft for the given cookie. The draft starts in 'active'

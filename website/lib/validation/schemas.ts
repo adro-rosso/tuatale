@@ -47,6 +47,14 @@ export const SHOES = ['white-sneakers', 'red-sneakers', 'blue-sneakers', 'black'
 export const MARK_TYPES = ['mole', 'birthmark', 'scar'] as const;
 export const MARK_SIDES = ['left', 'right'] as const;
 
+// Art style (W-C). MIRRORS src/art-styles.js STYLE_VALUES — kept in sync by the
+// style-contract-parity test (production Zod can't import the root src module).
+// The wizard picker (W-F) consumes artStyleSchema; default = watercolour.
+export const STYLE_VALUES = [
+  'watercolour', 'coloured_pencil', 'painterly', 'ink_wash', 'flat_modern', 'cutpaper',
+] as const;
+export const artStyleSchema = z.enum(STYLE_VALUES).default('watercolour');
+
 // The 4 identity axes that make a character "structured-complete" (Adro 2026-06-11).
 export const STRUCTURED_COMPLETE_AXES = ['hair_colour', 'hair_style', 'skin_tone', 'eye_colour'] as const;
 

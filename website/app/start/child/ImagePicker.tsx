@@ -17,6 +17,8 @@ interface ImagePickerProps {
   options: readonly string[];
   gender: string;
   error?: string;
+  /** Notifies the parent of the picked value so the live canvas can react. */
+  onChange?: (value: string) => void;
 }
 
 /**
@@ -25,7 +27,7 @@ interface ImagePickerProps {
  * keyboard/SR friendly), wraps into a mobile grid. Bases exist for boy + girl
  * only; non_binary uses the girl set (same full hair list as the dropdown).
  */
-export function ImagePicker({ name, label, axis, value, options, gender, error }: ImagePickerProps) {
+export function ImagePicker({ name, label, axis, value, options, gender, error, onChange }: ImagePickerProps) {
   const thumbGender = gender === 'boy' ? 'boy' : 'girl';
   return (
     <div className="space-y-xs">
@@ -41,6 +43,7 @@ export function ImagePicker({ name, label, axis, value, options, gender, error }
             checked={value === o}
             label={labelize(o)}
             src={`/feature-thumbs/${ACTIVE_STYLE}/${axis}/${thumbGender}/${o}.png`}
+            onChange={onChange}
           />
         ))}
       </fieldset>
@@ -59,18 +62,26 @@ interface PickerCardProps {
   checked: boolean;
   label: string;
   src: string;
+  onChange?: (value: string) => void;
 }
 
 // One radio card. Graceful fallback: a missing thumbnail (most, today) renders a
 // clean labelled placeholder — never a broken-image icon — so the picker is fully
 // functional now and auto-lights-up as assets land.
-function PickerCard({ name, value, checked, label, src }: PickerCardProps) {
+function PickerCard({ name, value, checked, label, src, onChange }: PickerCardProps) {
   // imgOk resets on gender flip via the parent's remount key (no set-state-in-effect).
   const [imgOk, setImgOk] = useState(true);
 
   return (
     <label className="font-body text-near-black bg-cream border-warm-grey-light hover:border-iron-oxide has-[:checked]:border-iron-oxide has-[:checked]:ring-iron-oxide gap-xs p-xs flex cursor-pointer flex-col items-center rounded border-2 text-center transition-colors has-[:checked]:ring-2">
-      <input type="radio" name={name} value={value} defaultChecked={checked} className="sr-only" />
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        defaultChecked={checked}
+        onChange={() => onChange?.(value)}
+        className="sr-only"
+      />
       {imgOk ? (
         // eslint-disable-next-line @next/next/no-img-element -- static /public thumb + onError fallback
         <img

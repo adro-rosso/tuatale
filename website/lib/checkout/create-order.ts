@@ -80,7 +80,9 @@ export async function createOrderFromDraft(
       ? stripeSession.payment_intent
       : (stripeSession.payment_intent?.id ?? null);
 
-  const payload: OrderInsert = {
+  // art_style is a new column (W-C) not yet in the generated Database types — cast
+  // its read/write, same pattern as the preview_jobs table. Defaults to watercolour.
+  const payload: OrderInsert & { art_style?: string } = {
     customer_email: customerEmail,
     child_name: draft.child_name,
     child_age: ageFromRange(draft.age_range),
@@ -88,6 +90,7 @@ export async function createOrderFromDraft(
     child_gender: draft.child_gender,
     child_appearance: draft.child_appearance,
     child_features: draft.child_features,
+    art_style: (draft as { art_style?: string | null }).art_style ?? 'watercolour',
     secondaries: draft.secondaries,
     theme: draft.theme,
     theme_template_id: draft.theme_template_id,

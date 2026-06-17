@@ -1,18 +1,22 @@
 /**
- * Wizard step list — the single source of truth for the six form steps.
+ * Wizard step list — the single source of truth for the seven form steps.
  *
  * The string union and the WIZARD_STEPS array are kept in lockstep with
  * the schema's `drafts.current_step` CHECK constraint. If you change one,
  * change the other and the SQL migration that defines the enum.
+ *
+ * `style` is FIRST (W-F): the character previews render in the chosen art
+ * style, so the customer must pick a style before the character step.
  *
  * Used by:
  *   - the navigation Server Actions (validate step transitions)
  *   - the WizardLayout chrome (compute progress + neighbour steps)
  *   - each step page's `<WizardNav>` (knows where Back / Next go)
  */
-export type WizardStep = 'child' | 'secondaries' | 'theme' | 'preview' | 'review' | 'payment';
+export type WizardStep = 'style' | 'child' | 'secondaries' | 'theme' | 'preview' | 'review' | 'payment';
 
 export const WIZARD_STEPS: readonly WizardStep[] = [
+  'style',
   'child',
   'secondaries',
   'theme',
@@ -26,6 +30,7 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
  * Keep the brand voice: warm-literary, never showy.
  */
 export const STEP_HEADINGS: Record<WizardStep, string> = {
+  style: 'Choose your art style',
   child: 'About your child',
   secondaries: 'Friends, pets, or favourite toys',
   theme: 'Choose a theme',

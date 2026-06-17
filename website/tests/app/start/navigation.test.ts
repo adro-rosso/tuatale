@@ -125,8 +125,9 @@ describeIntegration('wizard navigation actions', () => {
   });
 
   it('goBack throws InvalidTransitionError from the first step', async () => {
+    // 'style' is now the first step (W-F) — no Back from it.
     cookieValue.current = freshUuid();
-    await expect(goBack('child')).rejects.toBeInstanceOf(InvalidTransitionError);
+    await expect(goBack('style')).rejects.toBeInstanceOf(InvalidTransitionError);
     expect(redirectSpy).not.toHaveBeenCalled();
   });
 
