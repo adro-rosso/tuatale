@@ -30,6 +30,13 @@ export interface PreviewResult {
   imageUrl?: string | null;
   /** true = served from a prior identical-input mint (no spend). */
   cached: boolean;
+  /**
+   * S-E cost-control: set when a NEW gen was refused (no spend, no row created).
+   * 'capped' = the draft hit its free-preview ceiling; 'rate_limited' = too many
+   * requests too fast / per hour. The client surfaces a friendly message and does
+   * NOT poll (previewId is empty when blocked).
+   */
+  blocked?: 'capped' | 'rate_limited';
 }
 
 export interface PreviewJobRow {

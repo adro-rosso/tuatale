@@ -54,10 +54,27 @@ export async function getPreviewJob(id: string, client?: unknown): Promise<Previ
   return (data as PreviewJobRow | null) ?? null;
 }
 
-/** Per-draft preview count — the free-cap ledger (enforcement lands in S-E). */
+/** Per-draft preview count — the free-cap ledger (S-E free-preview cap). */
 export async function countPreviewsForDraft(draftId: string, client?: unknown): Promise<number> {
   const { count } = await previewTable(client)
     .select('*', { count: 'exact', head: true })
     .eq('draft_id', draftId);
+  return count ?? 0;
+}
+
+/**
+ * Per-draft preview count since `sinceIso` — the S-E rate-limit window. Reuses
+ * the preview_jobs rows' created_at (every new-gen miss writes a row), so no new
+ * infra. Used for the burst (≥1 in 5s) + hourly (≥N in 1h) ceilings.
+ */
+export async function countPreviewsForDraftSince(
+  draftId: string,
+  sinceIso: string,
+  client?: unknown,
+): Promise<number> {
+  const { count } = await previewTable(client)
+    .select('*', { count: 'exact', head: true })
+    .eq('draft_id', draftId)
+    .gte('created_at', sinceIso);
   return count ?? 0;
 }

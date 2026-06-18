@@ -22,6 +22,7 @@ import type { Tables, TablesInsert } from '@/types/database';
 import { createOrder } from '@/db/orders';
 import type { TuataleSupabaseClient } from '@/lib/supabase';
 import { isStructuredComplete } from '@/lib/validation/schemas';
+import { isPurchasableStyle } from '@/lib/art-style-options';
 import { ageFromRange } from './draft-complete';
 
 type Draft = Tables<'drafts'>;
@@ -82,6 +83,20 @@ export async function createOrderFromDraft(
 
   // art_style is a new column (W-C) not yet in the generated Database types — cast
   // its read/write, same pattern as the preview_jobs table. Defaults to watercolour.
+  //
+  // DEFENSE-IN-DEPTH (never-reject): the pre-payment gate in create-checkout-session
+  // already blocks preview-only styles. This runs in the post-payment webhook — the
+  // customer is ALREADY charged, so we must NEVER reject. If a non-purchasable style
+  // somehow reached here (pre-gate bypassed / race), coerce to watercolour + log loud,
+  // so a paid order always yields a deliverable book (pricing is style-independent).
+  const requestedStyle = (draft as { art_style?: string | null }).art_style ?? 'watercolour';
+  const safeArtStyle = isPurchasableStyle(requestedStyle) ? requestedStyle : 'watercolour';
+  if (safeArtStyle !== requestedStyle) {
+    console.error(
+      `[create-order] PRE-GATE BYPASS: draft ${draft.id} reached order creation with ` +
+      `non-purchasable art_style "${requestedStyle}" — coerced to watercolour (order ${stripeSession.id}).`,
+    );
+  }
   const payload: OrderInsert & { art_style?: string } = {
     customer_email: customerEmail,
     child_name: draft.child_name,
@@ -90,7 +105,7 @@ export async function createOrderFromDraft(
     child_gender: draft.child_gender,
     child_appearance: draft.child_appearance,
     child_features: draft.child_features,
-    art_style: (draft as { art_style?: string | null }).art_style ?? 'watercolour',
+    art_style: safeArtStyle,
     secondaries: draft.secondaries,
     theme: draft.theme,
     theme_template_id: draft.theme_template_id,

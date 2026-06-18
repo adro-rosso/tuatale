@@ -55,6 +55,13 @@ export function StyleForm({ initial }: StyleFormProps) {
                   alt={`${opt.label} sample`}
                   className="h-full w-full object-cover"
                 />
+                {/* MIN-SAFE: preview-only styles are previewable but not yet
+                    purchasable (only watercolour is book-grade until W-E). */}
+                {!opt.purchasable && (
+                  <span className="bg-near-black/70 px-xs py-3xs absolute right-1 top-1 rounded font-body text-[10px] uppercase tracking-wide text-cream">
+                    Preview only
+                  </span>
+                )}
               </span>
               <span className="px-xs pt-sm font-heading text-near-black text-h3 italic">
                 {opt.label}
@@ -69,7 +76,8 @@ export function StyleForm({ initial }: StyleFormProps) {
 
       <Body size="caption">
         Every page of the book is painted in the style you pick here. You can change it any time
-        before you order.
+        before you order. Watercolour is available to order now; the other styles are
+        preview-only while we perfect them.
       </Body>
 
       <div className="pt-md flex justify-end">

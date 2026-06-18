@@ -15,16 +15,28 @@ export interface ArtStyleOption {
   value: ArtStyleValue;
   label: string;
   blurb: string;
+  /**
+   * MIN-SAFE rollout (W-E gate): only watercolour is book-grade today, so it is
+   * the only PURCHASABLE style. The other five are previewable-but-not-purchasable
+   * until their per-style page-vocab is tuned (W-E, needs real gens). Visitors can
+   * preview any style; checkout is gated to purchasable ones (create-checkout-session).
+   */
+  purchasable: boolean;
 }
 
 export const STYLE_OPTIONS: ReadonlyArray<ArtStyleOption> = [
-  { value: 'watercolour', label: 'Watercolour', blurb: 'Soft washes, warm and gentle.' },
-  { value: 'coloured_pencil', label: 'Coloured Pencil', blurb: 'Textured strokes, hand-drawn warmth.' },
-  { value: 'painterly', label: 'Painterly', blurb: 'Rich golden-age storybook oils.' },
-  { value: 'ink_wash', label: 'Ink & Wash', blurb: 'Loose linework, atmospheric washes.' },
-  { value: 'flat_modern', label: 'Flat Modern', blurb: 'Clean shapes, bold modern flats.' },
-  { value: 'cutpaper', label: 'Cut-Paper Collage', blurb: 'Layered paper, playful texture.' },
+  { value: 'watercolour', label: 'Watercolour', blurb: 'Soft washes, warm and gentle.', purchasable: true },
+  { value: 'coloured_pencil', label: 'Coloured Pencil', blurb: 'Textured strokes, hand-drawn warmth.', purchasable: false },
+  { value: 'painterly', label: 'Painterly', blurb: 'Rich golden-age storybook oils.', purchasable: false },
+  { value: 'ink_wash', label: 'Ink & Wash', blurb: 'Loose linework, atmospheric washes.', purchasable: false },
+  { value: 'flat_modern', label: 'Flat Modern', blurb: 'Clean shapes, bold modern flats.', purchasable: false },
+  { value: 'cutpaper', label: 'Cut-Paper Collage', blurb: 'Layered paper, playful texture.', purchasable: false },
 ];
+
+/** Whether a style value may be PURCHASED (not just previewed). Unknown → false. */
+export function isPurchasableStyle(value: string | null | undefined): boolean {
+  return STYLE_OPTIONS.some((o) => o.value === value && o.purchasable);
+}
 
 /** Static /public path of the style's swatch portrait. */
 export function styleThumb(value: string): string {

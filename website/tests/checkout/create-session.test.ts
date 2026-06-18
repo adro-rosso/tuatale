@@ -109,6 +109,24 @@ describe('createCheckoutSession', () => {
     expect(stripeSessionsCreate).not.toHaveBeenCalled();
   });
 
+  it('throws CheckoutError(style_not_purchasable) for a preview-only style — BEFORE creating the session (no charge)', async () => {
+    cookieValue.current = 'cookie-uuid-1';
+    draftStore.current = completeDraft({ art_style: 'painterly' }); // preview-only until W-E
+    await expect(createCheckoutSession()).rejects.toMatchObject({
+      name: 'CheckoutError',
+      reason: 'style_not_purchasable',
+    });
+    expect(stripeSessionsCreate).not.toHaveBeenCalled(); // gated pre-payment
+  });
+
+  it('allows checkout for the purchasable watercolour style', async () => {
+    cookieValue.current = 'cookie-uuid-1';
+    draftStore.current = completeDraft({ art_style: 'watercolour' });
+    stripeSessionsCreate.mockResolvedValue({ id: 'cs_wc', url: 'https://checkout.stripe.com/c/pay/cs_wc' });
+    await expect(createCheckoutSession()).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(stripeSessionsCreate).toHaveBeenCalledTimes(1);
+  });
+
   it('creates a Stripe session with correct line items and metadata, then redirects', async () => {
     cookieValue.current = 'cookie-uuid-1';
     draftStore.current = completeDraft();

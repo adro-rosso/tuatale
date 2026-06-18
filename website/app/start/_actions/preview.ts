@@ -15,10 +15,23 @@ import { createHash } from 'node:crypto';
 import { inngest } from '@/lib/inngest/client';
 import { createServerClient } from '@/lib/supabase';
 import { computeInputHash } from '@/lib/preview/hash';
-import { findCachedPreview, createPreviewJob, getPreviewJob } from '@/lib/preview/preview-jobs';
+import {
+  findCachedPreview,
+  createPreviewJob,
+  getPreviewJob,
+  countPreviewsForDraft,
+  countPreviewsForDraftSince,
+} from '@/lib/preview/preview-jobs';
 import type { RequestPreviewInput, PreviewResult } from '@/lib/preview/types';
 
 const PREVIEW_BUCKET = 'tuatale-previews';
+
+// S-E preview cost-control (~$0.04/gen). Cache hits are free + never counted;
+// these bound NEW gens only. Starting values — tune from real usage.
+const FREE_PREVIEW_CAP = 10;          // distinct gens per draft (~$0.40 COGS ceiling)
+const RATE_BURST_MS = 5_000;          // ≥1 new gen per 5s = throttle (burst debounce)
+const RATE_HOUR_MS = 3_600_000;
+const RATE_HOURLY_MAX = 40;           // hard per-draft hourly ceiling
 
 /**
  * Photo mode (TEST-WIRING ONLY). Uploads a PNG to the previews bucket and returns
@@ -52,7 +65,28 @@ export async function requestPreview(input: RequestPreviewInput): Promise<Previe
     return { previewId: cached.id, status: 'done', imageUrl: cached.image_url, cached: true };
   }
 
-  // Miss: create the queued row + dispatch the worker.
+  // ---- S-E cost-control: a NEW gen (cache miss) is about to spend ~$0.04. -----
+  // Every preview must be attributable to a draft so the cap/rate-limit have a
+  // key (an anonymous flood with no draft would dodge both).
+  const draftId = input.draftId;
+  if (!draftId) {
+    return { previewId: '', status: 'failed', cached: false, blocked: 'capped' };
+  }
+  // Free-preview cap: bound total distinct gens per draft.
+  if ((await countPreviewsForDraft(draftId)) >= FREE_PREVIEW_CAP) {
+    return { previewId: '', status: 'failed', cached: false, blocked: 'capped' };
+  }
+  // Rate-limit: burst (≥1 in 5s) + hourly ceiling. Reuses preview_jobs.created_at.
+  const now = Date.now();
+  const [burst, hourly] = await Promise.all([
+    countPreviewsForDraftSince(draftId, new Date(now - RATE_BURST_MS).toISOString()),
+    countPreviewsForDraftSince(draftId, new Date(now - RATE_HOUR_MS).toISOString()),
+  ]);
+  if (burst >= 1 || hourly >= RATE_HOURLY_MAX) {
+    return { previewId: '', status: 'failed', cached: false, blocked: 'rate_limited' };
+  }
+
+  // Miss + within budget: create the queued row + dispatch the worker.
   const job = await createPreviewJob({
     draftId: input.draftId ?? null,
     inputHash,

@@ -33,7 +33,14 @@ export class InvalidTransitionError extends Error {
  * guards upstream so this should be defensive-only in practice.
  */
 export class CheckoutError extends Error {
-  public readonly reason: 'no_cookie' | 'no_draft' | 'draft_incomplete' | 'stripe_session_no_url';
+  public readonly reason:
+    | 'no_cookie'
+    | 'no_draft'
+    | 'draft_incomplete'
+    | 'stripe_session_no_url'
+    // MIN-SAFE rollout: the draft's art_style is preview-only-not-purchasable
+    // (only watercolour is purchasable until W-E). Gated PRE-payment.
+    | 'style_not_purchasable';
 
   constructor(reason: CheckoutError['reason'], message?: string) {
     super(message ?? `Checkout failed: ${reason}`);
