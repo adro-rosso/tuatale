@@ -92,6 +92,10 @@ export function adaptOrderToPipelineInput(order) {
     age: order.child_age,
     gender: order.child_gender,
     appearance: order.child_appearance,
+    // Optional parent-stated background/heritage (free text). null/absent → no
+    // heritage clause. composeStorySeedAppearance weaves it in (not gated by
+    // FEATURES_COMPOSE — heritage is always honoured); the HERITAGE frame governs render.
+    background: order.background ?? null,
   };
   // Hard boundary for structured features: validate against the contract (enum
   // values + gender-gated hair_style). Out-of-contract / unknown values THROW

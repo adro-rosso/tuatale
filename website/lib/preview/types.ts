@@ -10,6 +10,8 @@ export interface PreviewInputs {
   gender?: string;
   features?: Record<string, string>;
   freeText?: string;
+  /** Optional parent-stated background/heritage. Part of the cache key. */
+  background?: string;
   /** Chosen art style (W-F). Part of the cache key so switching style regenerates. */
   style?: string;
   /** content-hash of an uploaded photo (the bytes live in the bucket). */

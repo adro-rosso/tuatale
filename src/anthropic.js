@@ -592,6 +592,8 @@ Persistent appearance is symmetric and intrinsic only. Describe the features tha
 
 Structured selections are authoritative. The Appearance input may contain a structured marker spine (the parent's preset choices) optionally followed by \`also:\` and free-text notes. Where the structured spine and the free-text notes conflict on any concrete attribute (hair, skin, eyes, build, outfit), render the STRUCTURED value — the free text is additive detail, not an override. Keep every structured marker exactly as given.
 
+HERITAGE AND BACKGROUND. The Appearance may begin with the child's background in the parent's own words — a nationality, ethnicity, culture, or a mix — written as "a child of <…> background". Render it FAITHFULLY and with DIGNITY. Describe natural, specific, real features true to that heritage (hair texture and colour, skin tone, eye and facial features) the way you would lovingly and accurately describe any real child of that background. Keep the parent's words exactly; never soften, generalise, or substitute them. Do NOT stereotype, caricature, or exaggerate: no exaggerated or caricatured features, no costume, props, flags, or "traditional dress" standing in for the child, no clichéd cultural backdrop unless the parent explicitly asked for it, and never reduce the child to a single trait. The child is an individual first; their heritage is one true part of who they are, rendered with the same realism and care as every other feature. For a mixed background, let the blend show naturally rather than choosing one side.
+
 Pronouns: refer to the protagonist throughout the character description and the narrative with the pronouns matching the \`Gender\` field in the input — he/him for boy, she/her for girl, they/them for non_binary. Do not infer gender from the name; honor the field as given.
 
 Gender-coded styling (driven by the same \`Gender\` field): the character description's STYLING VOCABULARY must reflect the gender, not just the pronouns. When gender is \`boy\` or \`girl\`, weave gender-coded styling cues directly into the appearance prose — WITHOUT changing or contradicting any customer-provided marker. Every color, length, item, and texture the customer specified stays exactly as given; you only inflect the gender coding AROUND those markers:
@@ -1217,16 +1219,20 @@ const VALID_GENDERS = new Set(["boy", "girl", "non_binary"]);
 //           behavior for all secondaries. Required for humans.
 const VALID_ANCHORS = new Set(["tier1", "tier2"]);
 
-// Build the story-gen seed appearance line. Default (FEATURES_COMPOSE off, or no
-// structured features) = the raw free-text appearance, unchanged. When on: the
-// descriptive features spine merged with free text, plus the bare mark clause
-// (de-emphasis bares it in the resulting prose). Outfit is intentionally excluded
-// (deterministic post-Sonnet injection).
+// Build the story-gen seed appearance line. The parent's stated background
+// (heritage) ALWAYS flows when present — it is the parent's own words and is not
+// gated by FEATURES_COMPOSE. Without structured features (or compose off) the seed
+// is background + free-text appearance. When compose is on: the descriptive
+// features spine (background-led) merged with free text + the bare mark clause.
+// Outfit is intentionally excluded (deterministic post-Sonnet injection).
 function composeStorySeedAppearance(child) {
+  const background = child.background ?? null;
   if (process.env.FEATURES_COMPOSE !== "on" || !child.features) {
-    return child.appearance || "";
+    // No structured features: background + free text only (composeAppearance with
+    // null features → "a child of <bg> background; also: <free text>", or just one).
+    return composeAppearance(null, child.appearance, background);
   }
-  const spine = composeAppearance(child.features, child.appearance);
+  const spine = composeAppearance(child.features, child.appearance, background);
   const mark = composeMarkClause(child.features.marks);
   if (spine && mark) return `${spine}, with ${mark}`;
   return spine || mark || "";

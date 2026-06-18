@@ -287,6 +287,17 @@ console.log("Test 11 (Item 2) — asymmetric-accessory rule echoed in COMPANIONS
   console.log(`  PASS (companion character_description gets the same asymmetric-accessory discipline)`);
 }
 
+// ---- Test 12 — Heritage: the HERITAGE AND BACKGROUND frame is present ----
+console.log();
+console.log("Test 12 (Heritage) — HERITAGE AND BACKGROUND frame in CHARACTER DESCRIPTION");
+{
+  assert(SYSTEM_PROMPT_TEMPLATE.includes("HERITAGE AND BACKGROUND"), "HERITAGE frame heading must be present");
+  assert(/render it faithfully and with dignity/i.test(SYSTEM_PROMPT_TEMPLATE), "faithful + dignity instruction present");
+  assert(/do not stereotype, caricature, or exaggerate/i.test(SYSTEM_PROMPT_TEMPLATE), "no-stereotype/caricature instruction present");
+  assert(SYSTEM_PROMPT_TEMPLATE.includes("never reduce the child to a single trait"), "individual-first instruction present");
+  console.log("  PASS (heritage frame: render faithfully + with dignity + no stereotype/caricature)");
+}
+
 console.log();
 console.log("=".repeat(72));
 console.log("All prompt-scope tests passed.");

@@ -12,6 +12,8 @@ import {
   themeSchema,
   dedicationMessageSchema,
   DEDICATION_MAX,
+  backgroundSchema,
+  BACKGROUND_MAX,
   VALIDATION_COPY,
 } from '@/lib/validation/schemas';
 
@@ -254,6 +256,27 @@ describe('dedicationMessageSchema', () => {
 
   it(`rejects over ${DEDICATION_MAX} characters`, () => {
     const r = dedicationMessageSchema.safeParse('x'.repeat(DEDICATION_MAX + 1));
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.message).toBe(VALIDATION_COPY.TOO_LONG);
+  });
+});
+
+describe('backgroundSchema', () => {
+  it('accepts the parent\'s own words (trimmed)', () => {
+    const r = backgroundSchema.safeParse('  mixed Korean and Irish  ');
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toBe('mixed Korean and Irish');
+  });
+
+  it('is optional — undefined / blank → undefined (no heritage clause)', () => {
+    expect(backgroundSchema.safeParse(undefined).success).toBe(true);
+    const blank = backgroundSchema.safeParse('   ');
+    expect(blank.success).toBe(true);
+    if (blank.success) expect(blank.data).toBeUndefined();
+  });
+
+  it(`rejects over ${BACKGROUND_MAX} characters`, () => {
+    const r = backgroundSchema.safeParse('x'.repeat(BACKGROUND_MAX + 1));
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues[0]?.message).toBe(VALIDATION_COPY.TOO_LONG);
   });

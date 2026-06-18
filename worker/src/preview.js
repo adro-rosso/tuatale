@@ -81,12 +81,12 @@ export async function runPreview(event, deps = {}) {
     upload = uploadPreviewImage,
     getPhoto = downloadPhoto,
   } = deps;
-  const { previewId, age, name, features, freeText, style, photoPath } = event;
+  const { previewId, age, name, features, freeText, background, style, photoPath } = event;
   try {
     await markRunning(previewId);
     const photoBuf = photoPath ? await getPhoto(photoPath) : undefined;
     const png = await generateCharacterPreview(
-      { age, name, features, freeText, style, photoBuf },
+      { age, name, features, freeText, background, style, photoBuf },
       { callKind: "preview_mint", subjectName: `preview-${previewId}` },
     );
     const imageUrl = await upload({ previewId, pngBytes: png });

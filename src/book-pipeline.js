@@ -248,7 +248,7 @@ export function buildSubjectListForSheetGen(story, meta, protagonistName, protag
         : story.character,
     ),
     markers: process.env.FEATURES_COMPOSE === "on"
-      ? (composeAppearance(meta?.inputs?.child?.features, meta?.inputs?.child?.appearance) || null)
+      ? (composeAppearance(meta?.inputs?.child?.features, meta?.inputs?.child?.appearance, meta?.inputs?.child?.background) || null)
       : (meta?.inputs?.child?.appearance ?? null),
     subject_type: "human",
     gender: protagonistGender,

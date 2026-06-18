@@ -55,6 +55,29 @@ describe("composeAppearance — per-axis prose", () => {
   });
 });
 
+describe("composeAppearance — background / heritage (leading clause)", () => {
+  it("background only → leading 'a child of <words> background', verbatim", () => {
+    expect(composeAppearance({}, "", "Nigerian")).toBe("a child of Nigerian background");
+    expect(composeAppearance(null, "", "mixed Korean and Irish")).toBe("a child of mixed Korean and Irish background");
+  });
+  it("background leads, then the structured spine", () => {
+    expect(composeAppearance({ skin_tone: "deep-brown" }, "", "Aboriginal Australian"))
+      .toBe("a child of Aboriginal Australian background; deep brown skin");
+  });
+  it("background + spine + free text", () => {
+    expect(composeAppearance({ skin_tone: "tan" }, "freckly", "Nigerian"))
+      .toBe("a child of Nigerian background; tan skin; also: freckly");
+  });
+  it("background + free text, no structured features", () => {
+    expect(composeAppearance(null, "freckly", "Japanese")).toBe("a child of Japanese background; also: freckly");
+  });
+  it("no background (undefined / blank) → unchanged 2-arg behaviour", () => {
+    expect(composeAppearance({ skin_tone: "tan" }, "freckly")).toBe("tan skin; also: freckly");
+    expect(composeAppearance({ skin_tone: "tan" }, "freckly", "")).toBe("tan skin; also: freckly");
+    expect(composeAppearance({ skin_tone: "tan" }, "freckly", "   ")).toBe("tan skin; also: freckly");
+  });
+});
+
 describe("composeMarkClause — bare clause, type guard", () => {
   it("mole → bare left-cheek clause", () => {
     expect(composeMarkClause([{ type: "mole", side: "left", region: "cheek" }])).toBe("a mole on the left cheek");

@@ -152,6 +152,19 @@ describe('createOrderFromDraft', () => {
     expect(createOrderSpy.mock.calls[0]![0]!.dedication_message).toBeNull();
   });
 
+  it('copies the child background/heritage into the order payload', async () => {
+    await createOrderFromDraft({
+      draft: fakeDraft({ background: 'mixed Korean and Irish' }) as never,
+      stripeSession: fakeStripeSession(),
+    });
+    expect(createOrderSpy.mock.calls[0]![0]!.background).toBe('mixed Korean and Irish');
+  });
+
+  it('background → null when the draft has none', async () => {
+    await createOrderFromDraft({ draft: fakeDraft() as never, stripeSession: fakeStripeSession() });
+    expect(createOrderSpy.mock.calls[0]![0]!.background).toBeNull();
+  });
+
   it('copies child_features into the order payload', async () => {
     const features = { hair_colour: 'brown', hair_style: 'tousled', skin_tone: 'tan', eye_colour: 'brown' };
     await createOrderFromDraft({

@@ -97,7 +97,11 @@ export async function createOrderFromDraft(
       `non-purchasable art_style "${requestedStyle}" — coerced to watercolour (order ${stripeSession.id}).`,
     );
   }
-  const payload: OrderInsert & { art_style?: string; dedication_message?: string | null } = {
+  const payload: OrderInsert & {
+    art_style?: string;
+    dedication_message?: string | null;
+    background?: string | null;
+  } = {
     customer_email: customerEmail,
     child_name: draft.child_name,
     child_age: ageFromRange(draft.age_range),
@@ -108,6 +112,8 @@ export async function createOrderFromDraft(
     art_style: safeArtStyle,
     // Optional custom dedication (front matter); null → auto-default at render.
     dedication_message: (draft as { dedication_message?: string | null }).dedication_message ?? null,
+    // Optional child background/heritage (parent's words); null → no heritage clause.
+    background: (draft as { background?: string | null }).background ?? null,
     secondaries: draft.secondaries,
     theme: draft.theme,
     theme_template_id: draft.theme_template_id,

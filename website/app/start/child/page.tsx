@@ -24,6 +24,7 @@ export default async function ChildStepPage() {
         age_range: draft?.age_range ?? '',
         gender: draft?.child_gender ?? '',
         appearance: draft?.child_appearance ?? '',
+        background: (draft as { background?: string | null } | null)?.background ?? '',
         ...featuresToFormValues(draft?.child_features),
       }}
     />

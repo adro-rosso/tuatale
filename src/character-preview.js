@@ -36,7 +36,7 @@ const PHOTO_COND =
  * @returns {Promise<Buffer>} PNG bytes
  */
 export async function generateCharacterPreview(
-  { age, name, features, freeText, photoBuf, style },
+  { age, name, features, freeText, background, photoBuf, style },
   callContext = { callKind: "preview_mint" },
 ) {
   // Chosen art style (undefined → watercolour). composition_rules + negative_prompt
@@ -60,7 +60,7 @@ export async function generateCharacterPreview(
       age,
       name,
       isProtagonist: true,
-      character_description: composeAppearance(features, freeText),
+      character_description: composeAppearance(features, freeText, background),
       markers: "",
     };
     const base = buildSubjectSheetBasePrompt(subject, previewStory);

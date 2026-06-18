@@ -68,6 +68,7 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
   const [name, setName] = useState<string>(fieldValue('name'));
   const [ageRange, setAgeRange] = useState<string>(fieldValue('age_range'));
   const [appearance, setAppearance] = useState<string>(fieldValue('appearance'));
+  const [background, setBackground] = useState<string>(fieldValue('background'));
 
   const canvasSelections = useMemo(
     () => ({ gender, hair_colour: feat.hair_colour, hair_style: feat.hair_style, eye_colour: feat.eye_colour, glasses: feat.glasses }),
@@ -143,6 +144,7 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
             age={ageFromRange(ageRange)}
             name={name || undefined}
             freeText={appearance || undefined}
+            background={background || undefined}
             artStyle={artStyle}
             draftId={null}
           />
@@ -178,6 +180,22 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
         />
         <p className="font-body text-warm-grey text-caption mt-xs">
           Build the character above, or just describe them here in 50+ characters — either works.
+        </p>
+      </Field>
+
+      <Field label="Tell us about your child's background (optional)" error={errors['background']}>
+        <input
+          name="background"
+          type="text"
+          defaultValue={fieldValue('background')}
+          onChange={(e) => setBackground(e.target.value)}
+          maxLength={120}
+          placeholder="e.g. Nigerian, mixed Korean and Irish, Aboriginal Australian"
+          className={SELECT_CLASS}
+        />
+        <p className="font-body text-warm-grey text-caption mt-xs">
+          In your own words. We&apos;ll render your child faithfully and with care. Leave blank to
+          skip.
         </p>
       </Field>
 

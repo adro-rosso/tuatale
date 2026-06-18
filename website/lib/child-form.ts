@@ -21,6 +21,8 @@ export interface ChildFormValues {
   age_range: string;
   gender: string;
   appearance: string;
+  /** Optional parent-stated background/heritage (free text). '' = unset. */
+  background: string;
   // Structured IDENTITY axes — flat for form round-tripping ('' = unset).
   hair_colour: string;
   hair_style: string;

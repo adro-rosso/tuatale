@@ -65,10 +65,13 @@ const HAIR_STYLE_PHRASE = {
 const kebabToWords = (v) => String(v ?? "").replace(/-/g, " ").trim();
 
 // Descriptive identity-marker spine from structured features merged with optional
-// free text. Four cases: free-text-only -> verbatim; structured-only -> "; "-joined
-// spine; both -> "<spine>; also: <freeText>"; neither -> "". Marks + outfit are
-// handled on their own channels (composeMarkClause / injectOutfit).
-export function composeAppearance(features, freeText) {
+// free text + optional parent-stated background/heritage. `background` (the
+// parent's own words, e.g. "Nigerian", "mixed Korean and Irish") LEADS the spine
+// as a labelled clause so it reaches the illustrator verbatim; the system-prompt
+// HERITAGE frame governs how it's rendered (faithfully, no caricature). Marks +
+// outfit are handled on their own channels (composeMarkClause / injectOutfit).
+// `background` is a backward-compatible 3rd arg — 2-arg callers are unchanged.
+export function composeAppearance(features, freeText, background) {
   const f = features || {};
   const parts = [];
   if (f.hair_style || f.hair_colour) {
@@ -82,9 +85,12 @@ export function composeAppearance(features, freeText) {
   if (f.glasses === "yes" || f.glasses === true) parts.push("glasses");
   if (f.build) parts.push(`${kebabToWords(f.build)} build`);
   const spine = parts.filter(Boolean).join("; ");
+  const bg = (background ?? "").trim();
+  // Background leads, verbatim from the parent, framed as a heritage clause.
+  const core = [bg ? `a child of ${bg} background` : "", spine].filter(Boolean).join("; ");
   const ft = (freeText ?? "").trim();
-  if (spine && ft) return `${spine}; also: ${ft}`;
-  return spine || ft;
+  if (core && ft) return `${core}; also: ${ft}`;
+  return core || ft;
 }
 
 // Deterministic outfit injection — protagonist only, value-driven. Mirrors

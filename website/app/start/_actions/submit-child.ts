@@ -7,6 +7,7 @@ import { updateDraftByCookieId } from '@/db/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import type { FieldErrors } from '@/lib/validation/validate';
 import { type ChildFormValues, STRUCTURED_KEYS, buildChildFeatures } from '@/lib/child-form';
+import { backgroundSchema } from '@/lib/validation/schemas';
 
 export interface SubmitChildState {
   errors: FieldErrors;
@@ -23,6 +24,7 @@ function readFormValues(formData: FormData): ChildFormValues {
     age_range: get('age_range'),
     gender: get('gender'),
     appearance: get('appearance'),
+    background: get('background'),
   } as ChildFormValues;
   for (const k of STRUCTURED_KEYS) v[k] = get(k);
   return v;
@@ -50,6 +52,11 @@ export async function submitChildStep(
     return { errors: result.errors, values: input };
   }
 
+  // Optional background/heritage. Non-blocking: the input caps at 120, so a
+  // too-long value is clamped rather than failing the step. Blank → null.
+  const bgParsed = backgroundSchema.safeParse(input.background || undefined);
+  const background = bgParsed.success ? (bgParsed.data ?? null) : (input.background.trim().slice(0, 120) || null);
+
   const cookieId = await getDraftCookieFromRequest();
   if (!cookieId) redirect('/start/reset');
 
@@ -59,8 +66,9 @@ export async function submitChildStep(
     child_gender: result.data.gender,
     child_appearance: result.data.appearance ?? '',
     child_features: (result.data.features ?? null) as never,
+    background,
     current_step: 'secondaries',
-  });
+  } as never);
 
   // Bust the /start layout cache so the fresh child_name propagates to the
   // StepHeader + PricePanel on the next render.

@@ -73,6 +73,8 @@ interface BuilderProps {
   age: number;
   name?: string;
   freeText?: string;
+  /** Optional parent-stated background/heritage — flows into the preview gen. */
+  background?: string;
   /** Chosen art style — the preview mints in this style (cache-keyed per style). */
   artStyle: string;
   draftId?: string | null;
@@ -87,6 +89,7 @@ export function CharacterBuilder({
   age,
   name,
   freeText,
+  background,
   artStyle,
   draftId,
 }: BuilderProps) {
@@ -135,7 +138,7 @@ export function CharacterBuilder({
     setOpen(null);
   };
 
-  const previewInputs = { gender, features: values, freeText, age, name, style: artStyle, draftId };
+  const previewInputs = { gender, features: values, freeText, background, age, name, style: artStyle, draftId };
 
   return (
     <div className="space-y-lg mx-auto max-w-[34rem]">

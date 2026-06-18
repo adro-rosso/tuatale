@@ -67,6 +67,17 @@ export const dedicationMessageSchema = z
   .optional()
   .transform((v) => (v ? v : undefined));
 
+// Optional child background / heritage (the parent's own words, e.g. "Nigerian",
+// "mixed Korean and Irish"). Threaded into composeAppearance; the system-prompt
+// HERITAGE frame governs faithful, dignified rendering. Blank → undefined.
+export const BACKGROUND_MAX = 120;
+export const backgroundSchema = z
+  .string()
+  .trim()
+  .max(BACKGROUND_MAX, COPY.TOO_LONG)
+  .optional()
+  .transform((v) => (v ? v : undefined));
+
 // The 4 identity axes that make a character "structured-complete" (Adro 2026-06-11).
 export const STRUCTURED_COMPLETE_AXES = ['hair_colour', 'hair_style', 'skin_tone', 'eye_colour'] as const;
 
