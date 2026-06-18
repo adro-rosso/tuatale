@@ -31,6 +31,9 @@ export function GeneratedPreview({ inputs, photo }: Props) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cached, setCached] = useState(false);
+  // Sampled bg of the generated image — the box matches it so the character melts
+  // in (no seam against the page cream). null → keep the default paper colour.
+  const [bgColor, setBgColor] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stop = () => {
@@ -43,6 +46,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
     stop();
     setError(null);
     setCached(false);
+    setBgColor(null);
     setPhase('generating');
     try {
       const res = await requestPreview({
@@ -52,6 +56,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
       });
       if (res.status === 'done' && res.imageUrl) {
         setImageUrl(res.imageUrl);
+        setBgColor(res.bgColor ?? null);
         setCached(res.cached);
         setPhase('done');
         return;
@@ -67,6 +72,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
           const s = await getPreviewStatus(res.previewId);
           if (s.status === 'done' && s.imageUrl) {
             setImageUrl(s.imageUrl);
+            setBgColor(s.bgColor ?? null);
             setPhase('done');
             return;
           }
@@ -125,8 +131,8 @@ export function GeneratedPreview({ inputs, photo }: Props) {
         style={{ backgroundColor: '#fdfbef', boxShadow: '0 2px 14px rgba(120,90,60,.10)' }}
       >
         <div
-          className="bg-cream relative aspect-[11/6] w-full overflow-hidden rounded-xl"
-          style={{ backgroundColor: '#fdfbef' }}
+          className="relative aspect-[11/6] w-full overflow-hidden rounded-xl transition-colors"
+          style={{ backgroundColor: bgColor ?? '#fdfbef' }}
         >
           {imageUrl && (phase === 'done' || phase === 'generating') ? (
             // eslint-disable-next-line @next/next/no-img-element -- remote signed Supabase URL

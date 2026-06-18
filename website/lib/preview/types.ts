@@ -30,6 +30,9 @@ export interface PreviewResult {
   previewId: string;
   status: PreviewStatus;
   imageUrl?: string | null;
+  /** Sampled bg colour ("#rrggbb") of the generated image — the box matches it
+   *  so the character melts in (no seam). null/absent → keep the default box bg. */
+  bgColor?: string | null;
   /** true = served from a prior identical-input mint (no spend). */
   cached: boolean;
   /**
@@ -45,6 +48,7 @@ export interface PreviewJobRow {
   id: string;
   status: PreviewStatus;
   image_url: string | null;
+  bg_color: string | null;
   error_message: string | null;
   input_hash: string;
   draft_id: string | null;

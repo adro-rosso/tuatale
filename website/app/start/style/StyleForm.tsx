@@ -24,6 +24,33 @@ export function StyleForm({ initial }: StyleFormProps) {
   const [selected, setSelected] = useState<string>(initial);
   void state; // the picker always submits a valid value; no field errors to show
 
+  // Match each tile's background to its thumbnail's own paper colour so the swatch
+  // melts into the tile (no rectangle seam against the page cream). Thumbnails are
+  // same-origin (/style-thumbs), so the canvas isn't tainted. Mean of the 4 source
+  // corners, sampled on image load.
+  const [bgByValue, setBgByValue] = useState<Record<string, string>>({});
+  const sampleCorner = (value: string, img: HTMLImageElement) => {
+    try {
+      const nw = img.naturalWidth, nh = img.naturalHeight;
+      if (!nw || !nh) return;
+      const s = Math.max(1, Math.floor(Math.min(nw, nh) * 0.06));
+      const c = document.createElement('canvas');
+      c.width = 1; c.height = 1;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      let r = 0, g = 0, b = 0;
+      const corners: ReadonlyArray<readonly [number, number]> = [[0, 0], [nw - s, 0], [0, nh - s], [nw - s, nh - s]];
+      for (const [x, y] of corners) {
+        ctx.drawImage(img, x, y, s, s, 0, 0, 1, 1);
+        const d = ctx.getImageData(0, 0, 1, 1).data;
+        r += d[0] ?? 0; g += d[1] ?? 0; b += d[2] ?? 0;
+      }
+      setBgByValue((prev) => ({ ...prev, [value]: `rgb(${Math.round(r / 4)}, ${Math.round(g / 4)}, ${Math.round(b / 4)})` }));
+    } catch {
+      /* sampling failed → keep the default paper colour */
+    }
+  };
+
   return (
     <form action={formAction} className="space-y-lg">
       <input type="hidden" name="art_style" value={selected} />
@@ -42,17 +69,21 @@ export function StyleForm({ initial }: StyleFormProps) {
                   ? 'border-iron-oxide bg-cream-deep'
                   : 'border-warm-grey-light bg-cream hover:border-iron-oxide'
               }`}
+              // Once the thumbnail loads, its sampled paper colour overrides the
+              // class bg so the swatch melts into the tile (selection = the border).
+              style={{ backgroundColor: bgByValue[opt.value] }}
             >
               <span
                 className={`relative block aspect-square w-full overflow-hidden rounded-lg ${
                   checked ? 'ring-iron-oxide ring-2' : ''
                 }`}
-                style={{ backgroundColor: '#fdfbef' }}
+                style={{ backgroundColor: bgByValue[opt.value] ?? '#fdfbef' }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- static /public swatch */}
                 <img
                   src={styleThumb(opt.value)}
                   alt={`${opt.label} sample`}
+                  onLoad={(e) => sampleCorner(opt.value, e.currentTarget)}
                   className="h-full w-full object-cover"
                 />
                 {/* MIN-SAFE: preview-only styles are previewable but not yet

@@ -37,9 +37,9 @@ describe('requestPreview', () => {
   const input = { age: 7, gender: 'girl', features: { hair_colour: 'brown', eye_colour: 'green' }, style: 'ink_wash', draftId: 'draft-1' };
 
   it('CACHE HIT: returns the stored image, no row created, no event sent (no spend)', async () => {
-    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p-old', status: 'done', image_url: 'https://x/p.png' });
+    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p-old', status: 'done', image_url: 'https://x/p.png', bg_color: '#fdfaee' });
     const r = await requestPreview(input);
-    expect(r).toEqual({ previewId: 'p-old', status: 'done', imageUrl: 'https://x/p.png', cached: true });
+    expect(r).toEqual({ previewId: 'p-old', status: 'done', imageUrl: 'https://x/p.png', bgColor: '#fdfaee', cached: true });
     expect(createPreviewJob).not.toHaveBeenCalled();
     expect(inngest.send).not.toHaveBeenCalled();
   });
@@ -116,8 +116,8 @@ describe('requestPreview', () => {
 
 describe('getPreviewStatus', () => {
   it('returns the row status + url', async () => {
-    (getPreviewJob as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p', status: 'done', image_url: 'u' });
-    expect(await getPreviewStatus('p')).toEqual({ previewId: 'p', status: 'done', imageUrl: 'u', cached: false });
+    (getPreviewJob as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p', status: 'done', image_url: 'u', bg_color: '#fdfaee' });
+    expect(await getPreviewStatus('p')).toEqual({ previewId: 'p', status: 'done', imageUrl: 'u', bgColor: '#fdfaee', cached: false });
   });
   it('missing row → failed', async () => {
     (getPreviewJob as ReturnType<typeof vi.fn>).mockResolvedValue(null);

@@ -7,6 +7,7 @@
 
 import { getClient } from "./db.js";
 import { generateCharacterPreview as realGenerateCharacterPreview } from "../../src/character-preview.js";
+import { sampleBackgroundColor } from "../../src/image-bg.js";
 
 export const PREVIEW_BUCKET = "tuatale-previews";
 const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
@@ -33,9 +34,9 @@ export async function markPreviewRunning(previewId) {
   if (error) throw new Error(`markPreviewRunning(${previewId}) failed: ${error.message}`);
 }
 
-export async function markPreviewDone(previewId, { imageUrl }) {
+export async function markPreviewDone(previewId, { imageUrl, bgColor = null }) {
   const { error } = await getClient().from("preview_jobs")
-    .update({ status: "done", image_url: imageUrl, completed_at: new Date().toISOString() })
+    .update({ status: "done", image_url: imageUrl, bg_color: bgColor, completed_at: new Date().toISOString() })
     .eq("id", previewId);
   if (error) throw new Error(`markPreviewDone(${previewId}) failed: ${error.message}`);
 }
@@ -90,8 +91,11 @@ export async function runPreview(event, deps = {}) {
       { callKind: "preview_mint", subjectName: `preview-${previewId}` },
     );
     const imageUrl = await upload({ previewId, pngBytes: png });
-    await markDone(previewId, { imageUrl });
-    return { previewId, status: "done", imageUrl };
+    // Sample the generated image's background so the client box can match it
+    // (no seam against page cream). Best-effort: null → client keeps the default.
+    const bgColor = await sampleBackgroundColor(png);
+    await markDone(previewId, { imageUrl, bgColor });
+    return { previewId, status: "done", imageUrl, bgColor };
   } catch (err) {
     try { await markFailed(previewId, { errorMessage: err?.message ?? "preview failed" }); }
     catch (markErr) { console.error("[runPreview] markFailed threw", { previewId, markErr }); }

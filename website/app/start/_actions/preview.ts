@@ -62,7 +62,7 @@ export async function requestPreview(input: RequestPreviewInput): Promise<Previe
   // Cache: an identical-input preview was already minted → reuse it, no spend.
   const cached = await findCachedPreview(inputHash);
   if (cached) {
-    return { previewId: cached.id, status: 'done', imageUrl: cached.image_url, cached: true };
+    return { previewId: cached.id, status: 'done', imageUrl: cached.image_url, bgColor: cached.bg_color ?? null, cached: true };
   }
 
   // ---- S-E cost-control: a NEW gen (cache miss) is about to spend ~$0.04. -----
@@ -121,5 +121,5 @@ export async function requestPreview(input: RequestPreviewInput): Promise<Previe
 export async function getPreviewStatus(previewId: string): Promise<PreviewResult> {
   const job = await getPreviewJob(previewId);
   if (!job) return { previewId, status: 'failed', imageUrl: null, cached: false };
-  return { previewId, status: job.status, imageUrl: job.image_url, cached: false };
+  return { previewId, status: job.status, imageUrl: job.image_url, bgColor: job.bg_color ?? null, cached: false };
 }
