@@ -22,6 +22,11 @@
 // Test 6 — N=4 system prompt: BOTH rules present
 // Test 7 — N=1 system prompt: neither rule present
 // Test 8 — Per-N target bands verified verbatim
+//
+// Book-polish additions (Items 1 + 2, 2026-06-17) — also no API cost:
+// Test 9  — Item 1: em/en-dash ban present in VOICE section + narrative_text schema
+// Test 10 — Item 2: asymmetric-accessory rule in CHARACTER DESCRIPTION
+// Test 11 — Item 2: asymmetric-accessory rule echoed in COMPANIONS
 
 import "dotenv/config";
 import { buildScenePrompt } from "../src/page-pipeline.js";
@@ -29,6 +34,8 @@ import {
   buildSubsetDistributionRule,
   buildMulticharRulesBlock,
   N4_COMPOSITION_SHAPES_RULE,
+  SYSTEM_PROMPT_TEMPLATE,
+  buildStorySchema,
 } from "../src/anthropic.js";
 
 function assert(condition, message) {
@@ -222,6 +229,62 @@ console.log("Test 8 (FIX 1) — N-scaled target bands appear verbatim per N");
   assert(n4.includes("all four subjects"), `N=4 mentions "all four subjects"`);
 
   console.log(`  PASS (per-N target bands present verbatim; cross-contamination absent)`);
+}
+
+// ---- Test 9 — Item 1: em/en-dash rule present in VOICE + schema ----
+console.log();
+console.log("Test 9 (Item 1) — em/en-dash rule in system prompt VOICE + narrative_text schema");
+{
+  assert(
+    SYSTEM_PROMPT_TEMPLATE.includes("PUNCTUATION: do NOT use em dashes"),
+    "VOICE section must carry the em/en-dash ban",
+  );
+  assert(
+    SYSTEM_PROMPT_TEMPLATE.includes("breaks the read-aloud cadence"),
+    "em-dash rule must give the read-aloud-cadence rationale",
+  );
+  // The same instruction is mirrored in the schema's narrative_text description.
+  const schema = buildStorySchema([{ id: "prompt-3-iter-2" }]);
+  const narrativeDesc = schema.properties.scenes.items.properties.narrative_text.description;
+  assert(
+    /do not use em dashes/i.test(narrativeDesc),
+    `narrative_text schema description must echo the em-dash ban (got: ${JSON.stringify(narrativeDesc)})`,
+  );
+  console.log(`  PASS (em/en-dash rule present in both the prompt and the schema)`);
+}
+
+// ---- Test 10 — Item 2: asymmetric-accessory rule in CHARACTER DESCRIPTION ----
+console.log();
+console.log("Test 10 (Item 2) — asymmetric-accessory rule in CHARACTER DESCRIPTION");
+{
+  assert(
+    SYSTEM_PROMPT_TEMPLATE.includes("Persistent appearance is symmetric and intrinsic only"),
+    "CHARACTER DESCRIPTION must carry the symmetric/intrinsic-only rule",
+  );
+  assert(
+    SYSTEM_PROMPT_TEMPLATE.includes("a pencil behind one ear"),
+    "asymmetric-accessory rule must include the concrete examples (pencil-behind-ear, etc.)",
+  );
+  assert(
+    SYSTEM_PROMPT_TEMPLATE.includes("single-cheek mole"),
+    "rule must tie the failure to the known single-cheek-mole failure mode",
+  );
+  assert(
+    SYSTEM_PROMPT_TEMPLATE.includes("per-scene prop"),
+    "rule must redirect asymmetric items to per-scene props in `action`",
+  );
+  console.log(`  PASS (asymmetric-accessory rule present with examples + mole analogy + per-scene-prop redirect)`);
+}
+
+// ---- Test 11 — Item 2: companion parallel of the asymmetric rule ----
+console.log();
+console.log("Test 11 (Item 2) — asymmetric-accessory rule echoed in COMPANIONS");
+{
+  assert(
+    SYSTEM_PROMPT_TEMPLATE.includes("The persistent-appearance rule from CHARACTER DESCRIPTION applies to companions too"),
+    "COMPANIONS section must carry the parallel asymmetric-accessory rule",
+  );
+  console.log(`  PASS (companion character_description gets the same asymmetric-accessory discipline)`);
 }
 
 console.log();

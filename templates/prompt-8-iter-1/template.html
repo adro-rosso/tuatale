@@ -58,6 +58,14 @@
     object-fit: cover;
     object-position: center center;
     display: block;
+    /* Stage C (2026-06-17): right-edge feather so the portrait MELTS into the
+       cream text column instead of ending on a hard vertical cut at 58%
+       (mirrors prompt-2's left-edge feather). The image fades over its right
+       ~15%, revealing the page's cream background, which flows into the text
+       column — image + text read cohesive. The composition prompt keeps the
+       right edge calm/atmospheric so nothing important is lost to the fade. */
+    -webkit-mask-image: linear-gradient(to right, black 0%, black 85%, transparent 100%);
+            mask-image: linear-gradient(to right, black 0%, black 85%, transparent 100%);
   }
 
   /* ---- TEXT COLUMN (right 58% - 100%, 42% wide, full-height) -------
@@ -80,10 +88,10 @@
     padding-right: 4%;
   }
   .narrative {
-    font-family: "EB Garamond", Georgia, serif;
-    font-size: 18pt;
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    font-size: 20pt;
     font-weight: 400;
-    line-height: 1.7;
+    line-height: 1.5;
     letter-spacing: 0.005em;
     font-variant-numeric: oldstyle-nums;
     color: #1F1A14;

@@ -1,0 +1,9 @@
+{
+  "id": "dedication-iter-1",
+  "kind": "front-matter",
+  "description": "DEDICATION page (Stage B.1). Auto-default 'For {name}, with love.' on cream, EB Garamond italic. $0 (no image). A custom parent message is a future wizard field (wizard-revamp branch); until then the auto-default renders. kind:'front-matter' excludes it from the picker. PROVISIONAL safe inset; true margins vendor-gated (B.2).",
+  "rendering": {
+    "templateHtmlPath": "template.html",
+    "pageSize": { "width": "11in", "height": "8.5in" }
+  }
+}

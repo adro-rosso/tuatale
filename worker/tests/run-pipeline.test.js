@@ -50,6 +50,15 @@ function stubGenerateStory() {
   };
 }
 
+// R3a: these tests exercise R1/assembly, not checkpointing — no-op the checkpoint
+// collaborators so they don't touch Storage. (Checkpoint behaviour is covered in
+// checkpoint.test.js + the restore test below.)
+const noCheckpoint = {
+  restoreCheckpoint: async () => null,
+  pushCheckpoint: async () => {},
+  clearCheckpoint: async () => {},
+};
+
 describe("runPipeline — happy path", () => {
   it("returns a fetchable pdfUrl + metadata, and cleans the scratch dir", async () => {
     const scratchDir = path.join(os.tmpdir(), `tuatale-test-${crypto.randomUUID()}`);
@@ -60,6 +69,7 @@ describe("runPipeline — happy path", () => {
       { orderId: order.id, jobId: "job-happy" },
       {
         scratchDir,
+        ...noCheckpoint,
         generateStory: stubGenerateStory(),
         generateBook: async (args) => {
           generateBookArgs = args;
@@ -111,6 +121,7 @@ describe("runPipeline — failure handling", () => {
         { orderId: order.id, jobId: "job-fail" },
         {
           scratchDir,
+          ...noCheckpoint,
           generateStory: stubGenerateStory(),
           generateBook: async () => {
             throw new Error("render exploded");
@@ -127,7 +138,7 @@ describe("runPipeline — failure handling", () => {
     await expect(
       runPipeline(
         { orderId: crypto.randomUUID(), jobId: "job-missing" },
-        { generateStory: stubGenerateStory(), generateBook: async () => ({}) },
+        { ...noCheckpoint, generateStory: stubGenerateStory(), generateBook: async () => ({}) },
       ),
     ).rejects.toThrow();
   });
@@ -145,6 +156,7 @@ describe("runPipeline — failure handling", () => {
         { orderId: order.id, jobId: "job-degraded" },
         {
           scratchDir,
+          ...noCheckpoint,
           generateStory: stubGenerateStory(),
           uploadBookPdf: async () => {
             uploadCalled = true;
@@ -165,5 +177,45 @@ describe("runPipeline — failure handling", () => {
 
     expect(uploadCalled).toBe(false); // gate fired before upload
     expect(fs.existsSync(scratchDir)).toBe(false); // scratch still cleaned
+  });
+});
+
+describe("runPipeline — R3a resume", () => {
+  it("restores a checkpoint → SKIPS generateStory + reuses the restored story", async () => {
+    const scratchDir = path.join(os.tmpdir(), `tuatale-test-${crypto.randomUUID()}`);
+    const pdf = await makeTinyPdf("resumed book");
+    let storyGenCalled = false;
+    let generateBookStory = null;
+    let clearCalled = false;
+    const restoredStory = { title: "Restored Story", character: "a boy in a red rocket tee" };
+
+    const result = await runPipeline(
+      { orderId: order.id, jobId: "job-resume" },
+      {
+        scratchDir,
+        // A prior attempt's checkpoint exists.
+        restoreCheckpoint: async () => ({ story: restoredStory, meta: { usage: { input_tokens: 1, output_tokens: 2 } }, sheetFiles: ["sheet-01.png"] }),
+        pushCheckpoint: async () => {},
+        clearCheckpoint: async () => { clearCalled = true; },
+        // Must NOT be called on resume — using a fresh story would change sheet fingerprints.
+        generateStory: async () => { storyGenCalled = true; return { story: { title: "FRESH-SHOULD-NOT-BE-USED" }, usage: {} }; },
+        generateBook: async (args) => {
+          generateBookStory = args.story;
+          return {
+            bookPdfBytes: pdf,
+            summary: { pages: { success: 12, failed: 0 } },
+            counts: { success: 12, success_after_retry: 0, escalated: 0, failed: 0 },
+            subjectList: [{ id: "protagonist", name: "Elena", viewCount: 3 }],
+            subjectSheetStatus: { protagonist: { sheetFiles: ["sheet-01.png", "sheet-02.png", "sheet-03.png"], skipped: false } },
+          };
+        },
+        uploadBookPdf: async () => ({ pdfUrl: "https://x/resumed.pdf", storagePath: "p" }),
+      },
+    );
+
+    expect(storyGenCalled).toBe(false);                 // generateStory SKIPPED on resume
+    expect(generateBookStory).toEqual(restoredStory);   // reused the restored story → fingerprints match → sheet reuse
+    expect(clearCalled).toBe(true);                     // checkpoint cleared on success
+    expect(result.pdfUrl).toBe("https://x/resumed.pdf");
   });
 });

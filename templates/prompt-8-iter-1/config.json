@@ -14,8 +14,8 @@
   },
   "typography": {
     "fontFamily": "EB Garamond",
-    "fontSize": 18,
-    "lineHeight": 1.7,
+    "fontSize": 20,
+    "lineHeight": 1.5,
     "letterSpacing": "0.005em",
     "color": "#1F1A14",
     "fontVariantNumeric": "oldstyle-nums"
@@ -25,7 +25,7 @@
   "imageGeneration": {
     "aspectRatio": "3:4",
     "customCompositionRules": "single focal subject, vertical composition, face clearly visible, the vertical axis of the composition aligned with the subject's gaze or gesture.",
-    "compositionPromptTemplate": "The image is a 3:4 PORTRAIT frame — taller than wide. This is a vertical composition. The painted scene fills the portrait frame edge-to-edge; compose to USE the full vertical scale of the frame.\n\nVERTICAL COMPOSITION INTENT: This composition's expressive purpose is VERTICAL SCALE and reaching-upward energy. The composition should emphasize VERTICAL movement, scale, or gaze: the protagonist LOOKING UP, towering elements rising ABOVE the subject (vast sky, tall trees, rising stars, soaring clouds), or the subject framed against a TALL vertical backdrop. The UPPER portion of the frame is where the vertical scale unfolds — the towering sky, the rising elements, the vast above. The LOWER portion is where the protagonist is grounded.\n\nSUBJECT PLACEMENT: protagonist centered horizontally in the portrait frame, positioned in the LOWER HALF of the frame (roughly bottom 40% — feet on the ground), looking UP or reaching UP toward the towering content above. Face clearly visible.\n\nFull painted scene edge-to-edge — atmospheric watercolor wash extending to all four edges of the portrait frame. No cream margins, no contained vignette."
+    "compositionPromptTemplate": "The image is a 3:4 PORTRAIT frame — taller than wide. This is a vertical composition. The painted scene fills the portrait frame edge-to-edge; compose to USE the full vertical scale of the frame.\n\nVERTICAL COMPOSITION INTENT: This composition's expressive purpose is VERTICAL SCALE and reaching-upward energy. The composition should emphasize VERTICAL movement, scale, or gaze: the protagonist LOOKING UP, towering elements rising ABOVE the subject (vast sky, tall trees, rising stars, soaring clouds), or the subject framed against a TALL vertical backdrop. The UPPER portion of the frame is where the vertical scale unfolds — the towering sky, the rising elements, the vast above. The LOWER portion is where the protagonist is grounded.\n\nSUBJECT PLACEMENT: protagonist centered horizontally in the portrait frame, positioned in the LOWER HALF of the frame (roughly bottom 40% — feet on the ground), looking UP or reaching UP toward the towering content above. Face clearly visible.\n\nFull painted scene edge-to-edge — atmospheric watercolor wash extending to all four edges of the portrait frame. No cream margins, no contained vignette. Keep the protagonist and key action toward the LEFT and CENTER of the portrait; the RIGHT edge of the frame should be the calmest, most atmospheric part (soft sky, distant wash, negative space), because that edge feathers into the cream paper where the story text sits — let the painting melt toward the text rather than ending on a hard edge."
   },
   "rendering": {
     "templateHtmlPath": "template.html",

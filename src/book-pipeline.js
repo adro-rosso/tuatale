@@ -31,6 +31,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
+import { assembleFrontMatter } from "./front-matter.js";
 import { generateImage } from "./gemini.js";
 import { loadTemplateRegistry, findTemplate } from "./template-registry.js";
 import { renderPageWithTemplate } from "./page-pipeline.js";
@@ -1108,9 +1109,36 @@ export async function generateBook({
   });
 
   const successfulPages = perPageResults.filter((r) => r.outcome !== "failed");
+
+  // Stage B.1 (flag-gated, default OFF): assemble front/back matter around the
+  // story pages so the delivered book is a real book — cover → title → [story]
+  // → dedication → colophon — instead of story-pages-only. When the flag is off
+  // this block is skipped and the merge below is byte-identical to before.
+  // Title/dedication/colophon are $0 typographic pages; the cover is the one
+  // paid piece (~$0.04 Gemini hero gen, reusing the interior's sheets). Margins
+  // use a PROVISIONAL safe inset — true trim/bleed/safe-area is vendor-gated (B.2).
+  let frontPdfs = [], backPdfs = [], frontMatterCost = 0;
+  if (process.env.FEATURES_FRONTMATTER === "on") {
+    try {
+      const sheetBufs = ["sheet-01.png", "sheet-02.png", "sheet-03.png"]
+        .map((f) => path.join(sheetsDir, f)).filter((p) => fs.existsSync(p)).map((p) => fs.readFileSync(p));
+      const fm = await assembleFrontMatter({
+        story, childName, childAge, sheets: sheetBufs,
+        generatedAtIso: meta?.generatedAt, outputDir: path.join(outputDir, "front-matter"), withCover: true,
+      });
+      frontPdfs = fm.front; backPdfs = fm.back; frontMatterCost = fm.cost;
+      log.log(`Front matter assembled: ${frontPdfs.length} front + ${backPdfs.length} back page(s); cover gen $${frontMatterCost.toFixed(2)}.`);
+    } catch (e) {
+      // Front matter must NEVER break book delivery — log + fall back to story-only.
+      log.log(`⚠ front-matter assembly failed (${e.message}); delivering story pages only.`);
+      frontPdfs = []; backPdfs = [];
+    }
+  }
+
+  const orderedPdfPaths = [...frontPdfs, ...successfulPages.map((r) => r.pdfPath), ...backPdfs];
   const mergedDoc = await PDFDocument.create();
-  for (const r of successfulPages) {
-    const srcBytes = fs.readFileSync(r.pdfPath);
+  for (const pdfPath of orderedPdfPaths) {
+    const srcBytes = fs.readFileSync(pdfPath);
     const src = await PDFDocument.load(srcBytes);
     const copiedPages = await mergedDoc.copyPages(src, src.getPageIndices());
     copiedPages.forEach((p) => mergedDoc.addPage(p));
@@ -1130,7 +1158,7 @@ export async function generateBook({
     escalated: perPageResults.filter((r) => r.outcome === "escalated").length,
     failed: perPageResults.filter((r) => r.outcome === "failed").length,
   };
-  const totalCost = sheetsActualCost + totalScenesCost;
+  const totalCost = sheetsActualCost + totalScenesCost + frontMatterCost;
   const totalCalls = Math.round((sheetsActualCost + totalScenesCost) / GEMINI_IMAGE_USD_PER_CALL);
 
   log.log();

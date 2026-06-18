@@ -23,10 +23,11 @@ import * as Sentry from "@sentry/node";
 import { Inngest } from "inngest";
 import { connect, ConnectionState } from "inngest/connect";
 import { runPipeline } from "./run-pipeline.js";
-import { markRunning, markAwaitingReview, markFailed, getJobById as realGetJobById } from "./db.js";
+import { markRunning, markAwaitingReview, getJobById as realGetJobById } from "./db.js";
 import { regenerateSignedUrl as realRegenerateSignedUrl, bookPdfPath as realBookPdfPath } from "./storage.js";
 import { runPreview, markPreviewFailed } from "./preview.js";
 import { notifyRecovery } from "./notify-recovery.js";
+import { handlePipelineFailure, resumeSweep } from "./resume-controller.js";
 
 // ---- Sentry (optional; shared project, release-tagged) --------------------
 const sentryEnabled = Boolean(process.env.SENTRY_DSN);
@@ -45,34 +46,26 @@ if (sentryEnabled) {
 // key). INNGEST_DEV=1 routes to a local dev server.
 export const inngest = new Inngest({ id: "tuatale" });
 
-/** onFailure — after retries exhaust. Original event is nested at event.data.event. */
+/**
+ * onFailure — after the (now 1) retry exhausts. R3b: hand to the resume controller,
+ * which classifies the failure and either parks it for resume (transient → resumable
+ * + next_retry_at; RESOURCE_EXHAUSTED → blocked_on_credits) with an ops-alert only,
+ * or — when terminal (deterministic / 5-day window / spend cap) — markFailed + the
+ * full customer recovery (terminal:true). Original event nested at event.data.event.
+ */
 async function runPipelineJobOnFailure({ event, error, runId }) {
   const jobId = event?.data?.event?.data?.jobId;
   const orderId = event?.data?.event?.data?.orderId;
   if (!jobId) {
-    console.error("[runPipelineJob.onFailure] no jobId in original event", {
-      runId,
-      eventName: event?.data?.event?.name,
-    });
+    console.error("[runPipelineJob.onFailure] no jobId in original event", { runId, eventName: event?.data?.event?.name });
     return;
   }
   try {
-    await markFailed(jobId, {
-      errorMessage: error?.message ?? "Unknown pipeline failure",
-      errorDetails: { name: error?.name, message: error?.message, stack: error?.stack, inngestRunId: runId },
-    });
-  } catch (markErr) {
-    console.error("[runPipelineJob.onFailure] markFailed threw", { jobId, runId, markErr });
+    const { failureClass, decision } = await handlePipelineFailure({ jobId, orderId, error });
+    console.log(`[runPipelineJob.onFailure] ${jobId}: ${failureClass} → ${decision.kind} (${decision.reason})`);
+  } catch (e) {
+    console.error("[runPipelineJob.onFailure] handlePipelineFailure threw", { jobId, runId, error: e?.message });
   }
-  // R2: fan a PAID-order failure to the website recovery endpoint (refund +
-  // customer email + status sync) + ops-alert. Never throws (markFailed above is
-  // the durable record). Idempotent on the website side.
-  await notifyRecovery({
-    source: "order",
-    orderId,
-    jobId,
-    error: { message: error?.message, kind: error?.kind ?? error?.name },
-  });
 }
 
 /**
@@ -106,7 +99,7 @@ export const runPipelineJob = inngest.createFunction(
   {
     id: "run-pipeline-job",
     name: "Run Pipeline Job",
-    retries: 2,
+    retries: 1, // R3b: the resume cron owns the minutes-to-days cadence; 1 fast retry catches a blip
     concurrency: { limit: 1 },
     triggers: [{ event: "pipeline/job.requested" }, { event: "pipeline/job.retried" }],
     onFailure: runPipelineJobOnFailure,
@@ -188,6 +181,19 @@ export const runPreviewJob = inngest.createFunction(
     runPreview(event.data),
 );
 
+// ---- Resume cron (R3b) — verified to fire under Connect --------------------
+// Every 15 min: re-enqueue due resumable jobs (pipeline/job.retried) + probe-flip
+// credit-parked jobs back to resumable when the API recovers. resumeSweep holds the
+// logic; we inject the inngest sender so it stays I/O-free + unit-tested.
+export const resumeCron = inngest.createFunction(
+  { id: "resume-cron", name: "Resume Controller (R3b)", triggers: [{ cron: "*/15 * * * *" }] },
+  async () =>
+    resumeSweep({
+      sendRetried: ({ jobId, orderId }) =>
+        inngest.send({ name: "pipeline/job.retried", data: { jobId, orderId } }),
+    }),
+);
+
 // ---- Health server (liveness for Fly) -------------------------------------
 // Returns 200 unless the connection is terminally CLOSED/CLOSING, so transient
 // RECONNECTING/CONNECTING states (the SDK auto-reconnects) don't cause Fly to
@@ -199,7 +205,13 @@ export function createHealthServer(getState) {
       const state = getState();
       const dead = state === ConnectionState.CLOSED || state === ConnectionState.CLOSING;
       res.writeHead(dead ? 503 : 200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ ok: !dead, state, version: process.env.SENTRY_RELEASE ?? null }));
+      res.end(JSON.stringify({
+        ok: !dead,
+        state,
+        version: process.env.SENTRY_RELEASE ?? null,
+        // B.1: surface the front-matter flag so its live state is verifiable in prod.
+        frontMatter: process.env.FEATURES_FRONTMATTER === "on",
+      }));
     } else {
       res.writeHead(404);
       res.end();
@@ -210,7 +222,7 @@ export function createHealthServer(getState) {
 // ---- Entry point ----------------------------------------------------------
 export async function start() {
   const connection = await connect({
-    apps: [{ client: inngest, functions: [runPipelineJob, runPreviewJob] }],
+    apps: [{ client: inngest, functions: [runPipelineJob, runPreviewJob, resumeCron] }],
     instanceId: process.env.FLY_MACHINE_ID || process.env.HOSTNAME || "tuatale-worker",
     handleShutdownSignals: ["SIGTERM", "SIGINT"],
   });
