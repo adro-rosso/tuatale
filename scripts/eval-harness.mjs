@@ -106,15 +106,18 @@ async function main() {
   const fmName = (story.cover_subjects && story.cover_subjects[0]) || "the reader";
   let generatedAtIso = "";
   try { generatedAtIso = JSON.parse(fs.readFileSync(path.join(BOOK, "meta.json"), "utf8")).generatedAt || ""; } catch {}
+  // Custom-dedication example (the optional field, when a parent writes one).
+  const customDedication = `For ${fmName}, on your sixth birthday, with all our love from Mum and Dad.`;
   const frontMatter = [
     { kind: "title", out: "00b-title", subs: buildTitleSubs({ title: story.title, childName: fmName }) },
-    { kind: "dedication", out: "97-dedication", subs: buildDedicationSubs({ childName: fmName }) },
+    { kind: "dedication", out: "97-dedication-default", subs: buildDedicationSubs({ childName: fmName }) },
+    { kind: "dedication", out: "97b-dedication-custom", subs: buildDedicationSubs({ childName: fmName, message: customDedication }) },
     { kind: "colophon", out: "98-colophon", subs: buildColophonSubs({ childName: fmName, generatedAtIso }) },
   ];
   for (const fm of frontMatter) {
     let entry = { slot: fm.out, kind: "front-matter", template: `${fm.kind}-iter-1` };
     try {
-      const r = await renderFrontMatterPage({ kind: fm.kind, subs: fm.subs, outputDir: path.join(RAW_DIR, fm.kind), outName: fm.kind });
+      const r = await renderFrontMatterPage({ kind: fm.kind, subs: fm.subs, outputDir: path.join(RAW_DIR, fm.out), outName: fm.kind });
       fs.copyFileSync(r.pngPath, path.join(REVIEW_DIR, `${fm.out}.png`));
       fs.copyFileSync(r.pdfPath, path.join(REVIEW_DIR, `${fm.out}.pdf`));
       entry = { ...entry, success: true, out: `${fm.out}.png` };

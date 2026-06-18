@@ -55,6 +55,18 @@ export const STYLE_VALUES = [
 ] as const;
 export const artStyleSchema = z.enum(STYLE_VALUES).default('watercolour');
 
+// Optional custom dedication (front-matter). Blank → the auto-default
+// "For {name}, with love" renders. Trimmed; ~120-char cap (one short line on
+// the dedication page). Placement-independent: whatever step collects it uses
+// this schema. Empty string normalises to undefined (treated as "use default").
+export const DEDICATION_MAX = 120;
+export const dedicationMessageSchema = z
+  .string()
+  .trim()
+  .max(DEDICATION_MAX, COPY.TOO_LONG)
+  .optional()
+  .transform((v) => (v ? v : undefined));
+
 // The 4 identity axes that make a character "structured-complete" (Adro 2026-06-11).
 export const STRUCTURED_COMPLETE_AXES = ['hair_colour', 'hair_style', 'skin_tone', 'eye_colour'] as const;
 

@@ -97,7 +97,7 @@ export async function createOrderFromDraft(
       `non-purchasable art_style "${requestedStyle}" — coerced to watercolour (order ${stripeSession.id}).`,
     );
   }
-  const payload: OrderInsert & { art_style?: string } = {
+  const payload: OrderInsert & { art_style?: string; dedication_message?: string | null } = {
     customer_email: customerEmail,
     child_name: draft.child_name,
     child_age: ageFromRange(draft.age_range),
@@ -106,6 +106,8 @@ export async function createOrderFromDraft(
     child_appearance: draft.child_appearance,
     child_features: draft.child_features,
     art_style: safeArtStyle,
+    // Optional custom dedication (front matter); null → auto-default at render.
+    dedication_message: (draft as { dedication_message?: string | null }).dedication_message ?? null,
     secondaries: draft.secondaries,
     theme: draft.theme,
     theme_template_id: draft.theme_template_id,

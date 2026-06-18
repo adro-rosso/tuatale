@@ -10,6 +10,8 @@ import {
   secondarySchema,
   secondariesArraySchema,
   themeSchema,
+  dedicationMessageSchema,
+  DEDICATION_MAX,
   VALIDATION_COPY,
 } from '@/lib/validation/schemas';
 
@@ -228,5 +230,31 @@ describe('themeSchema', () => {
         theme_template_id: 'milestone_first_school',
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('dedicationMessageSchema', () => {
+  it('accepts a short custom dedication (trimmed)', () => {
+    const r = dedicationMessageSchema.safeParse('  For Maya, on your 6th birthday.  ');
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toBe('For Maya, on your 6th birthday.');
+  });
+
+  it('is optional — undefined stays undefined (use the auto-default)', () => {
+    const r = dedicationMessageSchema.safeParse(undefined);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toBeUndefined();
+  });
+
+  it('blank / whitespace-only normalises to undefined (auto-default)', () => {
+    const r = dedicationMessageSchema.safeParse('   ');
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toBeUndefined();
+  });
+
+  it(`rejects over ${DEDICATION_MAX} characters`, () => {
+    const r = dedicationMessageSchema.safeParse('x'.repeat(DEDICATION_MAX + 1));
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.message).toBe(VALIDATION_COPY.TOO_LONG);
   });
 });

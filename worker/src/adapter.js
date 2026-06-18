@@ -107,6 +107,9 @@ export function adaptOrderToPipelineInput(order) {
     // null/legacy → watercolour; a present-but-unknown value THROWS (bad data
     // fails loud, like validateChildFeatures).
     style: validateArtStyle(order.art_style),
+    // Optional custom dedication (front matter). null/blank → the auto-default
+    // renders. Free text; the front-matter builder trims + caps + HTML-escapes it.
+    dedicationMessage: order.dedication_message ?? null,
     // ageRange is carried for completeness; generateStory does not read it, but
     // it documents the bucket the integer age came from.
     ageRange: order.age_range,

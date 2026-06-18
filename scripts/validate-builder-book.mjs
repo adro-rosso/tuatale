@@ -59,23 +59,38 @@ async function main() {
   console.log(`features: ${JSON.stringify(input.child.features)}`);
   console.log(`${"=".repeat(72)}\n`);
 
-  fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
+  const storyPath = path.join(OUT, "story.json");
+  const metaPath = path.join(OUT, "meta.json");
 
-  console.log("→ generateStory (Sonnet)…");
-  const { story, usage } = await generateStory(input);
-  console.log(`  title: "${story.title}"`);
-  console.log(`  COMPOSED CHARACTER PROSE (should reflect red braids / deep-brown skin / green eyes / glasses):`);
-  console.log(`  ${JSON.stringify(story.character)}\n`);
-  fs.writeFileSync(path.join(OUT, "story.json"), JSON.stringify(story, null, 2));
-
-  const meta = {
-    inputs: { child: input.child, secondaries: input.secondaries, theme: input.theme, ageRange: input.ageRange },
-    story: { title: story.title },
-    generatedAt: new Date().toISOString(),
-    usage,
-  };
-  fs.writeFileSync(path.join(OUT, "meta.json"), JSON.stringify(meta, null, 2));
+  let story, meta;
+  if (fs.existsSync(storyPath) && fs.existsSync(metaPath)) {
+    // REUSE the saved story (skip Sonnet) — regenerate only the images. Clear
+    // stale image artifacts so the render is fresh.
+    console.log("→ reusing saved story.json + meta.json (skip Sonnet)…");
+    story = JSON.parse(fs.readFileSync(storyPath, "utf8"));
+    meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+    for (const d of ["character-sheets", "pages", "front-matter"]) fs.rmSync(path.join(OUT, d), { recursive: true, force: true });
+    fs.rmSync(path.join(OUT, "book.pdf"), { force: true });
+    console.log(`  title: "${story.title}"`);
+    console.log(`  COMPOSED CHARACTER PROSE (reused — reflects red braids / deep-brown skin / green eyes / glasses):`);
+    console.log(`  ${JSON.stringify(story.character)}\n`);
+  } else {
+    console.log("→ generateStory (Sonnet)…");
+    const gen = await generateStory(input);
+    story = gen.story;
+    console.log(`  title: "${story.title}"`);
+    console.log(`  COMPOSED CHARACTER PROSE (should reflect red braids / deep-brown skin / green eyes / glasses):`);
+    console.log(`  ${JSON.stringify(story.character)}\n`);
+    fs.writeFileSync(storyPath, JSON.stringify(story, null, 2));
+    meta = {
+      inputs: { child: input.child, secondaries: input.secondaries, theme: input.theme, ageRange: input.ageRange },
+      story: { title: story.title },
+      generatedAt: new Date().toISOString(),
+      usage: gen.usage,
+    };
+    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
+  }
 
   console.log("→ generateBook (sheets + 12 pages + front-matter assembly + merge)…");
   const result = await generateBook({

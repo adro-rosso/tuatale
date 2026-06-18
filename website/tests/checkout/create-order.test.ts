@@ -139,6 +139,19 @@ describe('createOrderFromDraft', () => {
     expect(createOrderSpy).not.toHaveBeenCalled();
   });
 
+  it('copies a custom dedication_message into the order payload', async () => {
+    await createOrderFromDraft({
+      draft: fakeDraft({ dedication_message: 'For Iris, with love from Grandma.' }) as never,
+      stripeSession: fakeStripeSession(),
+    });
+    expect(createOrderSpy.mock.calls[0]![0]!.dedication_message).toBe('For Iris, with love from Grandma.');
+  });
+
+  it('dedication_message → null when the draft has none (renders the auto-default)', async () => {
+    await createOrderFromDraft({ draft: fakeDraft() as never, stripeSession: fakeStripeSession() });
+    expect(createOrderSpy.mock.calls[0]![0]!.dedication_message).toBeNull();
+  });
+
   it('copies child_features into the order payload', async () => {
     const features = { hair_colour: 'brown', hair_style: 'tousled', skin_tone: 'tan', eye_colour: 'brown' };
     await createOrderFromDraft({

@@ -3,7 +3,7 @@ import { getDraft } from '@/lib/draft-fetch';
 import { Body } from '@/components/ui/Body';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
-import { advanceStep } from '@/app/start/_actions/navigation';
+import { submitReviewStep } from '@/app/start/_actions/submit-review';
 
 /**
  * Step 5 — review. Read-only summary of everything entered so far,
@@ -15,7 +15,7 @@ import { advanceStep } from '@/app/start/_actions/navigation';
 export default async function ReviewStepPage() {
   const result = await getDraft();
   const draft = result.kind === 'found' ? result.draft : null;
-  const advance = advanceStep.bind(null, 'review');
+  const dedication = (draft as { dedication_message?: string | null } | null)?.dedication_message ?? '';
 
   const secondaries = Array.isArray(draft?.secondaries)
     ? (draft.secondaries as Array<{
@@ -82,10 +82,32 @@ export default async function ReviewStepPage() {
         <Field label="Story" value={draft?.theme} multiline />
       </ReviewSection>
 
-      <form action={advance} className="pt-lg flex justify-end">
-        <Button type="submit" variant="primary">
-          Looks good — continue →
-        </Button>
+      <form action={submitReviewStep} className="space-y-lg pt-lg">
+        <section className="space-y-sm">
+          <div className="border-warm-grey-light pb-sm border-b">
+            <Heading level="3" className="not-italic">
+              Dedication
+            </Heading>
+          </div>
+          <Body size="caption" className="text-warm-grey">
+            Add a dedication? e.g. &ldquo;For Maya, on your 6th birthday&rdquo; — leave blank for the
+            default.
+          </Body>
+          <textarea
+            name="dedication_message"
+            rows={2}
+            maxLength={120}
+            defaultValue={dedication}
+            placeholder="For Maya, on your 6th birthday"
+            className="font-body text-body border-warm-grey-light bg-cream p-sm focus:border-iron-oxide w-full rounded-lg border-2 focus:outline-none"
+          />
+        </section>
+
+        <div className="flex justify-end">
+          <Button type="submit" variant="primary">
+            Looks good — continue →
+          </Button>
+        </div>
       </form>
     </div>
   );

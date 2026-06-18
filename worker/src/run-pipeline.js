@@ -166,6 +166,7 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
       childName: input.child.name,
       childAge: input.child.age,
       outputDir: scratchDir,
+      dedicationMessage: input.dedicationMessage ?? null,
       resolveImageOverride,
     });
     spendThisRun = result.totalCost ?? 0;

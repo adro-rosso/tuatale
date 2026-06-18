@@ -83,8 +83,12 @@ function loadTemplate(dir) {
 export function buildTitleSubs({ title, childName }) {
   return { TITLE: title, SUBTITLE: `A story for ${childName}` };
 }
-export function buildDedicationSubs({ childName }) {
-  return { DEDICATION: `For ${childName}, with love.` }; // auto-default; custom message = future wizard field
+// Custom dedication if the parent wrote one, else the auto-default. `message`
+// is the parent's free text (already Zod-capped at 120 on the website; clamped
+// here too as a defensive boundary). renderTemplatePage HTML-escapes it.
+export function buildDedicationSubs({ childName, message = null }) {
+  const custom = typeof message === "string" ? message.trim().slice(0, 120) : "";
+  return { DEDICATION: custom || `For ${childName}, with love.` };
 }
 export function buildColophonSubs({ childName, generatedAtIso }) {
   const year = (generatedAtIso || "").slice(0, 4) || "";
@@ -157,7 +161,7 @@ export async function generateCoverHero({ story, childName, childAge, sheets }, 
  * Deps injectable for tests/preview ($0): pass a stub generateImage, or
  * withCover:false + a coverImagePath to reuse an existing hero (the harness path).
  */
-export async function assembleFrontMatter({ story, childName, childAge, sheets, generatedAtIso, outputDir, withCover = true, coverImagePath = null }, deps = {}) {
+export async function assembleFrontMatter({ story, childName, childAge, sheets, generatedAtIso, dedicationMessage = null, outputDir, withCover = true, coverImagePath = null }, deps = {}) {
   fs.mkdirSync(outputDir, { recursive: true });
   let cost = 0;
   const front = [];
@@ -180,7 +184,7 @@ export async function assembleFrontMatter({ story, childName, childAge, sheets, 
   front.push(ttl.pdfPath);
 
   // Back matter — $0.
-  const ded = await renderFrontMatterPage({ kind: "dedication", subs: buildDedicationSubs({ childName }), outputDir, outName: "98-dedication" });
+  const ded = await renderFrontMatterPage({ kind: "dedication", subs: buildDedicationSubs({ childName, message: dedicationMessage }), outputDir, outName: "98-dedication" });
   const col = await renderFrontMatterPage({ kind: "colophon", subs: buildColophonSubs({ childName, generatedAtIso }), outputDir, outName: "99-colophon" });
 
   return { front, back: [ded.pdfPath, col.pdfPath], cost };

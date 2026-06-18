@@ -476,6 +476,7 @@ export async function generateBook({
   childAge,
   outputDir,
   registry,
+  dedicationMessage = null,
   resolveImageOverride = null,
   sheetsOnly = false,
   emitStatus,
@@ -1124,7 +1125,8 @@ export async function generateBook({
         .map((f) => path.join(sheetsDir, f)).filter((p) => fs.existsSync(p)).map((p) => fs.readFileSync(p));
       const fm = await assembleFrontMatter({
         story, childName, childAge, sheets: sheetBufs,
-        generatedAtIso: meta?.generatedAt, outputDir: path.join(outputDir, "front-matter"), withCover: true,
+        generatedAtIso: meta?.generatedAt, dedicationMessage,
+        outputDir: path.join(outputDir, "front-matter"), withCover: true,
       });
       frontPdfs = fm.front; backPdfs = fm.back; frontMatterCost = fm.cost;
       log.log(`Front matter assembled: ${frontPdfs.length} front + ${backPdfs.length} back page(s); cover gen $${frontMatterCost.toFixed(2)}.`);
