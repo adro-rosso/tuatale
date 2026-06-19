@@ -14,7 +14,7 @@ const STAGES: { until: number; text: string }[] = [
   { until: 7000, text: 'Sketching their face…' },
   { until: 12000, text: 'Painting their hair…' },
   { until: 20000, text: 'Adding the finishing touches…' },
-  { until: Infinity, text: 'Taking a little longer than usual — hang tight ✨' },
+  { until: Infinity, text: 'Taking a little longer than usual. Hang tight ✨' },
 ];
 
 const stageFor = (ms: number) => (STAGES.find((s) => ms < s.until) ?? STAGES[STAGES.length - 1])!.text;
@@ -42,7 +42,7 @@ export function PreviewProgress({ done, photo }: { done: boolean; photo?: boolea
         />
       </div>
       <p className="font-body text-warm-grey text-caption text-center italic">
-        {photo ? 'Painting their likeness — ' : ''}{copy}
+        {photo ? 'Painting their likeness. ' : ''}{copy}
       </p>
     </div>
   );

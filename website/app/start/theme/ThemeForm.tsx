@@ -89,7 +89,7 @@ export function ThemeForm({ initial, childName, childGender }: ThemeFormProps) {
           </p>
         )}
         <Body size="caption">
-          You can edit anything above — pick a template to start, or write your own from scratch.
+          You can edit anything above. Pick a template to start, or write your own from scratch.
         </Body>
       </div>
 

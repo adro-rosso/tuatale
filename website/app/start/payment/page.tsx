@@ -42,7 +42,7 @@ export default async function PaymentStepPage() {
           Let&apos;s finish the details first
         </Heading>
         <Body className="text-warm-grey">
-          We need a few more things before checkout — head back to the review page and you&apos;ll
+          We need a few more things before checkout. Head back to the review page and you&apos;ll
           see what&apos;s left.
         </Body>
         <Body size="caption" className="text-warm-grey">

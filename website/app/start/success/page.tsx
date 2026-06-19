@@ -81,7 +81,7 @@ function ConfirmationState({
           {order.child_name}&apos;s book is being made.
         </Heading>
         <Body className="text-warm-grey">
-          We&apos;ve received your order. We&apos;re writing the story now — we&apos;ll email you at{' '}
+          We&apos;ve received your order. We&apos;re writing the story now. We&apos;ll email you at{' '}
           <span className="text-near-black">{order.customer_email}</span> when it&apos;s ready to
           see. This usually takes 3-5 days.
         </Body>
@@ -156,7 +156,7 @@ function TookTooLongState({ sessionId }: { sessionId: string }) {
         That&apos;s taking longer than expected.
       </Heading>
       <Body className="text-warm-grey">
-        We&apos;ve received your payment — your money is safe. If you don&apos;t see a confirmation
+        We&apos;ve received your payment. Your money is safe. If you don&apos;t see a confirmation
         email shortly, please write to{' '}
         <a href="mailto:hello@tuatale.com" className="text-iron-oxide hover:underline">
           hello@tuatale.com
@@ -175,7 +175,7 @@ function MissingSessionState() {
         Something&apos;s missing.
       </Heading>
       <Body className="text-warm-grey">
-        This page expects a checkout session in its URL — looks like you arrived without one. If you
+        This page expects a checkout session in its URL. Looks like you arrived without one. If you
         just paid and ended up here, please email{' '}
         <a href="mailto:hello@tuatale.com" className="text-iron-oxide hover:underline">
           hello@tuatale.com

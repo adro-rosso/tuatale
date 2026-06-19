@@ -24,7 +24,7 @@ export function PricePanel({ secondaries }: PricePanelProps) {
 
   return (
     <aside
-      aria-label="Your book — price summary"
+      aria-label="Your book, price summary"
       className="bg-cream-deep border-warm-grey-light p-lg rounded-lg border"
     >
       <Heading level="3" className="mb-md not-italic">

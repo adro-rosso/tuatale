@@ -63,6 +63,12 @@ interface AxisDef {
   options: readonly string[];
 }
 
+// Launch posture: the photo path is test-wiring-only, gated behind the privacy /
+// safety / consent / moderation workstream (and the upload bucket is prod-gated).
+// Hidden for the min-safe ship → builder-only. Flip to true to restore it for
+// internal testing. (uploadPhoto + the photo state stay in the tree, just unrendered.)
+const PHOTO_ENABLED = false;
+
 interface BuilderProps {
   gender: string;
   values: Values;
@@ -111,7 +117,7 @@ export function CharacterBuilder({
       const { photoPath, photoHash } = await uploadPhoto(fd);
       setPhoto({ path: photoPath, hash: photoHash, name: file.name });
     } catch {
-      setPhotoError('Couldn’t upload that photo — try another.');
+      setPhotoError('Couldn’t upload that photo. Try another.');
     } finally {
       setUploading(false);
     }
@@ -149,24 +155,28 @@ export function CharacterBuilder({
         @media (min-width:640px){ .cb-picker { position:absolute; top:calc(100% + 8px); left:0; right:0; bottom:auto; max-height:none; border-radius:14px } }
       `}</style>
 
-      {/* 1. HERO — generate from a photo (primary path). */}
-      <PhotoHero
-        photo={photo}
-        uploading={uploading}
-        error={photoError}
-        onChoose={(f) => void onPhotoChosen(f)}
-        onRemove={() => setPhoto(null)}
-      />
+      {/* Photo path (hidden for launch — see PHOTO_ENABLED). */}
+      {PHOTO_ENABLED && (
+        <PhotoHero
+          photo={photo}
+          uploading={uploading}
+          error={photoError}
+          onChoose={(f) => void onPhotoChosen(f)}
+          onRemove={() => setPhoto(null)}
+        />
+      )}
 
-      {/* 2. OR set the features by hand — the distinct control row. */}
+      {/* Pick their features. */}
       <div className="relative">
-        <div className="gap-sm mb-sm flex items-center">
-          <span className="bg-warm-grey-light h-px flex-1" />
-          <span className="font-body text-warm-grey text-caption tracking-wider uppercase">
-            or set their features
-          </span>
-          <span className="bg-warm-grey-light h-px flex-1" />
-        </div>
+        {PHOTO_ENABLED && (
+          <div className="gap-sm mb-sm flex items-center">
+            <span className="bg-warm-grey-light h-px flex-1" />
+            <span className="font-body text-warm-grey text-caption tracking-wider uppercase">
+              or set their features
+            </span>
+            <span className="bg-warm-grey-light h-px flex-1" />
+          </div>
+        )}
 
         <div className="gap-sm flex flex-wrap justify-center">
           {axes.map((a) => {

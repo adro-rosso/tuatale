@@ -26,9 +26,11 @@ interface WizardLayoutProps {
 export function WizardLayout({ children, childName, secondariesForPricing }: WizardLayoutProps) {
   return (
     <main className="bg-cream flex min-h-screen flex-col">
-      <div className="px-lg py-md">
-        <Wordmark size="sm" />
-      </div>
+      <header className="border-warm-grey-light bg-cream/95 sticky top-0 z-30 border-b backdrop-blur-sm">
+        <div className="px-lg py-sm flex items-center">
+          <Wordmark size="sm" />
+        </div>
+      </header>
       <ProgressIndicator />
       <StepHeader childName={childName} />
 

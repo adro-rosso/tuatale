@@ -31,6 +31,9 @@ const initialState: SubmitChildState = { errors: {} };
 const BUILDER_MODE: 'window' | 'classic' = 'window';
 const SELECT_CLASS =
   'font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none';
+// Shared section card — a solid, subtle bordered card (no dashed "unfinished" look),
+// used for both step sections so the rhythm is consistent.
+const CARD = 'border-warm-grey-light rounded-2xl border p-lg';
 const labelize = (v: string) => v.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 // "5-7" → 6 (the gen prompt wants a single age). Midpoint of any digits, default 7.
 function ageFromRange(range: string): number {
@@ -80,124 +83,139 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
   const formKey = state.values ? `submitted:${JSON.stringify(state.values)}` : 'fresh';
 
   return (
-    <form action={formAction} className="space-y-lg" key={formKey}>
-      <Field label="What's their name?" error={errors['name']}>
-        <input
-          type="text"
-          name="name"
-          defaultValue={fieldValue('name')}
-          onChange={(e) => setName(e.target.value)}
-          maxLength={50}
-          className={SELECT_CLASS}
-          autoComplete="off"
-        />
-      </Field>
+    <form action={formAction} className="space-y-xl" key={formKey}>
+      {/* ---- The essentials (the only required part) ---- */}
+      <section className={CARD}>
+        <SectionHead title="The essentials" />
+        <div className="space-y-lg">
+          <Field label="What's their name?" error={errors['name']}>
+            <input
+              type="text"
+              name="name"
+              defaultValue={fieldValue('name')}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={50}
+              className={SELECT_CLASS}
+              autoComplete="off"
+            />
+          </Field>
 
-      <Field label="How old are they?" error={errors['age_range']}>
-        <select name="age_range" defaultValue={fieldValue('age_range')} onChange={(e) => setAgeRange(e.target.value)} className={SELECT_CLASS}>
-          <option value="">Pick an age range…</option>
-          {AGE_RANGES.map((r) => (
-            <option key={r} value={r}>
-              {r} years
-            </option>
-          ))}
-        </select>
-      </Field>
+          <Field label="How old are they?" error={errors['age_range']}>
+            <select name="age_range" defaultValue={fieldValue('age_range')} onChange={(e) => setAgeRange(e.target.value)} className={SELECT_CLASS}>
+              <option value="">Pick an age range…</option>
+              {AGE_RANGES.map((r) => (
+                <option key={r} value={r}>
+                  {r} years
+                </option>
+              ))}
+            </select>
+          </Field>
 
-      <Field label="And their gender?" error={errors['gender']}>
-        <fieldset className="gap-md flex">
-          {GENDERS.map((g) => (
-            <label
-              key={g}
-              className="font-body text-near-black bg-cream border-warm-grey-light hover:border-iron-oxide px-md py-sm has-[:checked]:border-iron-oxide has-[:checked]:bg-cream-deep flex-1 cursor-pointer rounded border-2 text-center capitalize transition-colors"
-            >
-              <input
-                type="radio"
-                name="gender"
-                value={g}
-                defaultChecked={fieldValue('gender') === g}
-                onChange={() => setGender(g)}
-                className="sr-only"
+          <Field label="And their gender?" error={errors['gender']}>
+            <fieldset className="gap-md flex">
+              {GENDERS.map((g) => (
+                <label
+                  key={g}
+                  className="font-body text-near-black bg-cream border-warm-grey-light hover:border-iron-oxide px-md py-sm has-[:checked]:border-iron-oxide has-[:checked]:bg-cream-deep flex-1 cursor-pointer rounded border-2 text-center capitalize transition-colors"
+                >
+                  <input
+                    type="radio"
+                    name="gender"
+                    value={g}
+                    defaultChecked={fieldValue('gender') === g}
+                    onChange={() => setGender(g)}
+                    className="sr-only"
+                  />
+                  {g.replace('_', ' ')}
+                </label>
+              ))}
+            </fieldset>
+          </Field>
+        </div>
+      </section>
+
+      {/* ---- Bring them to life (every field optional) ---- */}
+      <section className={CARD}>
+        <SectionHead title="Bring them to life" hint="all optional" />
+        <p className="font-body text-warm-grey text-body">
+          Use as much or as little as you like. Build their look, add a few words, note their
+          background, or skip it entirely. Anything you leave blank, we&apos;ll choose to suit the
+          story.
+        </p>
+
+        <div className="space-y-lg pt-md">
+          {/* Build their look */}
+          <div className="space-y-sm">
+            <h3 className="font-heading text-near-black text-h3 italic">Build their look</h3>
+            {/* window builder (default); classic stacked pickers stay behind BUILDER_MODE
+                for reversibility (flip to 'classic'; git keeps the deeper history). */}
+            {BUILDER_MODE === 'window' ? (
+              <CharacterBuilder
+                gender={gender}
+                values={feat}
+                onSet={setFeature}
+                hairStyles={hairStyles}
+                hairStyleError={errors['features.hair_style']}
+                age={ageFromRange(ageRange)}
+                name={name || undefined}
+                freeText={appearance || undefined}
+                background={background || undefined}
+                artStyle={artStyle}
+                draftId={null}
               />
-              {g.replace('_', ' ')}
-            </label>
-          ))}
-        </fieldset>
-      </Field>
-
-      {/* ---- Optional structured "build your character" ---- */}
-      <fieldset className="space-y-md border-warm-grey-light rounded border-2 border-dashed p-md">
-        <legend className="font-heading text-near-black text-h3 px-sm italic">
-          Build your character <span className="font-body text-warm-grey text-caption not-italic">— optional</span>
-        </legend>
-
-        {/* S0: the animated click-in-place window (default). The classic stacked
-            pickers stay behind BUILDER_MODE for reversibility — flip to 'classic'
-            to restore the old form; git keeps the deeper history. */}
-        {BUILDER_MODE === 'window' ? (
-          <CharacterBuilder
-            gender={gender}
-            values={feat}
-            onSet={setFeature}
-            hairStyles={hairStyles}
-            hairStyleError={errors['features.hair_style']}
-            age={ageFromRange(ageRange)}
-            name={name || undefined}
-            freeText={appearance || undefined}
-            background={background || undefined}
-            artStyle={artStyle}
-            draftId={null}
-          />
-        ) : (
-          <div className="space-y-md">
-            <div className="bg-cream pb-sm lg:sticky lg:top-2 z-10 mx-auto max-w-[32rem]">
-              <CharacterCanvas selections={canvasSelections} />
-              <p className="font-body text-warm-grey text-caption mt-xs text-center">Live preview.</p>
-            </div>
-            <div className="space-y-md">
-              <ImagePicker name="hair_colour" label="Hair colour" axis="hair_colour" value={feat.hair_colour ?? ''} options={HAIR_COLOURS} gender={gender} onChange={(v) => setFeature('hair_colour', v)} />
-              <ImagePicker name="hair_style" label="Hair style" axis="hair_style" value={feat.hair_style ?? ''} options={hairStyles} gender={gender} error={errors['features.hair_style']} onChange={(v) => setFeature('hair_style', v)} />
-              <ImagePicker name="skin_tone" label="Skin tone" axis="skin_tone" value={feat.skin_tone ?? ''} options={SKIN_TONES} gender={gender} onChange={(v) => setFeature('skin_tone', v)} />
-              <ImagePicker name="eye_colour" label="Eye colour" axis="eye_colour" value={feat.eye_colour ?? ''} options={EYE_COLOURS} gender={gender} onChange={(v) => setFeature('eye_colour', v)} />
-              <div className="gap-md grid grid-cols-2">
-                <Select name="build" label="Build" value={feat.build ?? ''} options={BUILDS} onChange={(v) => setFeature('build', v)} />
-                <Select name="glasses" label="Glasses?" value={feat.glasses ?? ''} options={GLASSES_VALUES} onChange={(v) => setFeature('glasses', v)} />
+            ) : (
+              <div className="space-y-md">
+                <div className="bg-cream pb-sm lg:sticky lg:top-2 z-10 mx-auto max-w-[32rem]">
+                  <CharacterCanvas selections={canvasSelections} />
+                  <p className="font-body text-warm-grey text-caption mt-xs text-center">Live preview.</p>
+                </div>
+                <div className="space-y-md">
+                  <ImagePicker name="hair_colour" label="Hair colour" axis="hair_colour" value={feat.hair_colour ?? ''} options={HAIR_COLOURS} gender={gender} onChange={(v) => setFeature('hair_colour', v)} />
+                  <ImagePicker name="hair_style" label="Hair style" axis="hair_style" value={feat.hair_style ?? ''} options={hairStyles} gender={gender} error={errors['features.hair_style']} onChange={(v) => setFeature('hair_style', v)} />
+                  <ImagePicker name="skin_tone" label="Skin tone" axis="skin_tone" value={feat.skin_tone ?? ''} options={SKIN_TONES} gender={gender} onChange={(v) => setFeature('skin_tone', v)} />
+                  <ImagePicker name="eye_colour" label="Eye colour" axis="eye_colour" value={feat.eye_colour ?? ''} options={EYE_COLOURS} gender={gender} onChange={(v) => setFeature('eye_colour', v)} />
+                  <div className="gap-md grid grid-cols-2">
+                    <Select name="build" label="Build" value={feat.build ?? ''} options={BUILDS} onChange={(v) => setFeature('build', v)} />
+                    <Select name="glasses" label="Glasses?" value={feat.glasses ?? ''} options={GLASSES_VALUES} onChange={(v) => setFeature('glasses', v)} />
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
-        )}
-      </fieldset>
 
-      <Field label="Anything else about them?" error={errors['appearance']}>
-        <textarea
-          name="appearance"
-          defaultValue={fieldValue('appearance')}
-          onChange={(e) => setAppearance(e.target.value)}
-          rows={4}
-          maxLength={500}
-          placeholder="Freckles, dimples, a favourite expression, a dress instead of shorts… anything the pickers above don't cover."
-          className={`${SELECT_CLASS} resize-y`}
-        />
-        <p className="font-body text-warm-grey text-caption mt-xs">
-          Build the character above, or just describe them here in 50+ characters — either works.
-        </p>
-      </Field>
+          {/* Describe them — complements the builder */}
+          <Field label="Anything else?" error={errors['appearance']}>
+            <textarea
+              name="appearance"
+              defaultValue={fieldValue('appearance')}
+              onChange={(e) => setAppearance(e.target.value)}
+              rows={4}
+              maxLength={500}
+              placeholder="Freckles, dimples, a favourite outfit, a cheeky grin."
+              className={`${SELECT_CLASS} resize-y`}
+            />
+            <p className="font-body text-warm-grey text-caption mt-xs">
+              In your own words. Add anything the builder doesn&apos;t cover, or describe them entirely here. Optional.
+            </p>
+          </Field>
 
-      <Field label="Tell us about your child's background (optional)" error={errors['background']}>
-        <input
-          name="background"
-          type="text"
-          defaultValue={fieldValue('background')}
-          onChange={(e) => setBackground(e.target.value)}
-          maxLength={120}
-          placeholder="e.g. Nigerian, mixed Korean and Irish, Aboriginal Australian"
-          className={SELECT_CLASS}
-        />
-        <p className="font-body text-warm-grey text-caption mt-xs">
-          In your own words. We&apos;ll render your child faithfully and with care. Leave blank to
-          skip.
-        </p>
-      </Field>
+          {/* Background / heritage */}
+          <Field label="Their background" error={errors['background']}>
+            <input
+              name="background"
+              type="text"
+              defaultValue={fieldValue('background')}
+              onChange={(e) => setBackground(e.target.value)}
+              maxLength={120}
+              placeholder="e.g. Nigerian, mixed Korean and Irish, Aboriginal Australian"
+              className={SELECT_CLASS}
+            />
+            <p className="font-body text-warm-grey text-caption mt-xs">
+              In your own words. We&apos;ll render your child faithfully and with care. Optional.
+            </p>
+          </Field>
+        </div>
+      </section>
 
       <div className="pt-md flex justify-end">
         <Button type="submit" variant="primary" disabled={isPending}>
@@ -205,6 +223,17 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
         </Button>
       </div>
     </form>
+  );
+}
+
+function SectionHead({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="border-warm-grey-light pb-sm mb-md flex items-baseline justify-between border-b">
+      <h2 className="font-heading text-near-black text-[20px] italic">{title}</h2>
+      {hint ? (
+        <span className="font-body text-warm-grey text-caption tracking-wider uppercase">{hint}</span>
+      ) : null}
+    </div>
   );
 }
 
@@ -226,7 +255,7 @@ function Select({ name, label, value, options, error, onChange }: SelectProps) {
         onChange={(e) => onChange?.(e.target.value)}
         className={SELECT_CLASS}
       >
-        <option value="">—</option>
+        <option value="">Any</option>
         {options.map((o) => (
           <option key={o} value={o}>
             {labelize(o)}

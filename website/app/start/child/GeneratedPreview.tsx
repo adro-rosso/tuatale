@@ -65,7 +65,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
       const poll = async () => {
         if (Date.now() - startedAt > TIMEOUT_MS) {
           setPhase('failed');
-          setError('That one got stuck — try again. (You haven’t been charged.)');
+          setError('That one got stuck. Try again. (You haven’t been charged.)');
           return;
         }
         try {
@@ -78,7 +78,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
           }
           if (s.status === 'failed') {
             setPhase('failed');
-            setError('That one got stuck — try again. (You haven’t been charged.)');
+            setError('That one got stuck. Try again. (You haven’t been charged.)');
             return;
           }
         } catch {
@@ -89,7 +89,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
       pollRef.current = setTimeout(poll, POLL_MS);
     } catch {
       setPhase('failed');
-      setError('Something went wrong — try again.');
+      setError('Something went wrong. Try again.');
     }
   }
 
@@ -105,9 +105,14 @@ export function GeneratedPreview({ inputs, photo }: Props) {
           disabled={busy}
           className="font-heading bg-iron-oxide px-lg py-sm text-h3 rounded-full text-white italic transition-opacity disabled:opacity-60"
         >
-          {busy ? 'Painting…' : phase === 'done' ? '↻ Regenerate' : '✨ Generate my character'}
+          {busy ? 'Painting…' : phase === 'done' ? '↻ Try another look' : '✨ Preview them (optional)'}
         </button>
 
+        {phase === 'idle' ? (
+          <p className="font-body text-warm-grey text-caption italic">
+            Optional. See how they’ll look before you continue.
+          </p>
+        ) : null}
         {phase === 'done' && cached ? (
           <p className="font-body text-warm-grey text-caption italic">
             ✨ Here’s your character (from your saved preview).
@@ -115,7 +120,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
         ) : null}
         {phase === 'done' && !cached ? (
           <p className="font-body text-warm-grey text-caption">
-            A painted preview — your book places them in the story.
+            A painted preview. Your book places them in the story.
           </p>
         ) : null}
         {phase === 'failed' && error ? (
@@ -142,7 +147,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
           {phase === 'idle' && !imageUrl ? (
             <div className="text-warm-grey p-md flex h-full w-full items-center justify-center text-center">
               <p className="font-body text-caption italic">
-                Add a photo or set their features above, then ✨ Generate.
+                Set their features above, then preview them here. Totally optional.
               </p>
             </div>
           ) : null}

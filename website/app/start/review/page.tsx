@@ -90,7 +90,7 @@ export default async function ReviewStepPage() {
             </Heading>
           </div>
           <Body size="caption" className="text-warm-grey">
-            Add a dedication? e.g. &ldquo;For Maya, on your 6th birthday&rdquo; — leave blank for the
+            Add a dedication? e.g. &ldquo;For Maya, on your 6th birthday&rdquo;. Leave blank for the
             default.
           </Body>
           <textarea
@@ -105,7 +105,7 @@ export default async function ReviewStepPage() {
 
         <div className="flex justify-end">
           <Button type="submit" variant="primary">
-            Looks good — continue →
+            Looks good, continue →
           </Button>
         </div>
       </form>

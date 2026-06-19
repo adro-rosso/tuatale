@@ -65,7 +65,7 @@ export function SecondariesForm({ initialSecondaries }: SecondariesFormProps) {
     <div className="space-y-lg">
       {cards.length === 0 ? (
         <Body className="font-body text-warm-grey text-center">
-          No companions added yet. Click below to add a friend, a pet, or a favourite toy — or skip
+          No companions added yet. Click below to add a friend, a pet, or a favourite toy, or skip
           this step entirely.
         </Body>
       ) : (

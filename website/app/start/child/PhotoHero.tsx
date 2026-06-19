@@ -32,7 +32,7 @@ export function PhotoHero({ photo, uploading, error, onChoose, onRemove }: Props
         {/* Arbitrary max-w — Tailwind v4 named scales (max-w-sm) aren't configured
             here and collapse to ~8px (the named-scale bite). Keep a readable line. */}
         <p className="font-body text-warm-grey text-caption max-w-[22rem]">
-          The fastest way to a likeness — we paint your child into the story from a single photo.
+          The fastest way to a likeness. We paint your child into the story from a single photo.
         </p>
 
         <button

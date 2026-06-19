@@ -17,7 +17,7 @@ export default function PreviewStepPage() {
     <div className="space-y-lg">
       <div className="border-warm-grey-light bg-cream p-lg rounded-lg border text-center">
         <Body className="text-warm-grey">
-          A glimpse of the finished book lands here in the next phase — one rendered page, free to
+          A glimpse of the finished book lands here in the next phase: one rendered page, free to
           view, so you can see the style before paying. For now, continue straight through.
         </Body>
       </div>
