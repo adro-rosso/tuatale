@@ -53,6 +53,28 @@ eq(stripNarrativeDashes("Bo looked up — and up — and up."), "Bo looked up, a
 // ---- Title field ----
 eq(stripNarrativeDashes("Mia — The Brave"), "Mia, The Brave", "title em dash → comma");
 
+// ---- Typography markup survives untouched (the [ ] : delimiters) ----
+eq(
+  stripNarrativeDashes("this time it goes in [[em:straight]]."),
+  "this time it goes in [[em:straight]].",
+  "[[em:...]] markup preserved",
+);
+eq(
+  stripNarrativeDashes("There is a sound, [[sfx:thunk]], and it is done."),
+  "There is a sound, [[sfx:thunk]], and it is done.",
+  "[[sfx:...]] markup preserved",
+);
+eq(
+  stripNarrativeDashes("[[line:He built something real today.]]"),
+  "[[line:He built something real today.]]",
+  "[[line:...]] markup preserved",
+);
+eq(
+  stripNarrativeDashes("He stops — and stares. [[line:It was real — all of it.]]"),
+  "He stops, and stares. [[line:It was real, all of it.]]",
+  "dashes (incl. inside [[line:]]) → comma; brackets survive",
+);
+
 // ---- Pass-through + robustness ----
 eq(stripNarrativeDashes("A clean sentence with no dashes."), "A clean sentence with no dashes.", "no-dash text unchanged");
 eq(stripNarrativeDashes(""), "", "empty string passes through");

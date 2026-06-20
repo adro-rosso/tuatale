@@ -470,7 +470,7 @@ export function buildStorySchema(registry) {
             },
             narrative_text: {
               type: "string",
-              description: "3-5 sentences of read-aloud prose for this page. Do not use em dashes (—) or en dashes (–) in this text; use a comma, or a separate sentence, instead.",
+              description: "3-5 sentences of read-aloud prose for this page. Do not use em dashes (—) or en dashes (–) in this text; use a comma, or a separate sentence, instead. You MAY optionally use the sparing emphasis markup ([[em:word]], [[sfx:word]], [[line:sentence]]) defined in the system prompt — but most pages should have none, and the per-book budgets there are strict.",
             },
             subjects_present: {
               type: "array",
@@ -549,6 +549,21 @@ Each scene has an \`action\` and a \`narrative_text\`. They serve different jobs
 - \`action\` is for the illustrator. It must be VISUALLY CONCRETE — a specific moment an illustrator can draw without inventing details. "Lila kneels in the tall grass cupping a firefly in her hands" is drawable. "Lila feels wonder" is not. Pick the most picture-able moment in each scene. Always show the protagonist in the action.
 
 - \`narrative_text\` is what the parent reads aloud. 3-5 sentences. Write it for rhythm, not just information. Read it aloud in your head — if it's a mouthful or thuds, rewrite it. Children's-book prose has cadence: short next to long, soft consonants where they count, occasional repetition for emphasis ("step, step, step"). Don't merely describe what the action shows — the narrative continues the story, gives the protagonist's interior, sets up the next moment.
+
+EMPHASIS MARKUP (use VERY sparingly — seasoning, not decoration)
+
+You may mark up a FEW moments in narrative_text with three optional inline tags. They are the ONLY markup allowed, and MOST PAGES SHOULD HAVE NONE. Overused, they cheapen the effect and clutter the page. The budgets below are per-BOOK totals, not per-page:
+
+- \`[[em:word]]\` — emphasis. Wrap a SINGLE genuinely-emphatic word (occasionally two) at a real emotional peak: the word a parent's voice would lean on reading aloud. Budget: 1 to 3 in the WHOLE book, and never more than one per page. If nothing truly peaks on a page, use none.
+- \`[[sfx:word]]\` — a sound word (onomatopoeia: thunk, crash, whoosh, splash, creak). Wrap ONLY a word that is genuinely a sound, and ONLY where one naturally occurs. Budget: 0 to 3 in the whole book. Never invent a sound word to fill the budget.
+- \`[[line:A whole sentence.]]\` — ONE short, standalone emotional sentence, given its own line for weight. Reserve it for the single biggest heart-beat of the book (usually near the end). Wrap exactly one complete sentence. Budget: 0 or 1 in the whole book.
+
+Markup rules:
+- AT MOST ONE markup treatment (em / sfx / line) per page. Never combine two on the same page (e.g. an \`[[em:]]\` and a \`[[line:]]\` together) — one page, one treatment at most, and most pages none. The drop cap is separate and automatic; it does not count.
+- Wrap PLAIN words/sentences only. Do NOT nest tags, do NOT wrap surrounding punctuation, and do NOT put any markup in \`action\` (illustrator text) or the title.
+- Use the exact bracket form: \`[[em:...]]\`, \`[[sfx:...]]\`, \`[[line:...]]\`. The brackets are invisible in the printed book and do NOT count toward the narrative's character length for template selection.
+- The opening page's large decorative initial (drop cap) is added automatically by the renderer. Do NOT add any markup for it.
+- When in doubt, leave it out. A book with one perfect \`[[em:]]\` and one \`[[line:]]\` reads far better than one peppered with emphasis. Zero markup is an acceptable, often correct, choice.
 
 TEMPLATE SELECTION
 
@@ -763,6 +778,11 @@ These rules ensure the engine's reference-budget ceiling is respected. They do n
  * idempotent. Applied to narrative_text + title ONLY, not to `action`/
  * `cover_concept` (those are image-prompt text for Gemini, never printed in the
  * book). Exported for the unit test (scripts/test-narrative-sanitizer.js).
+ *
+ * Markup-safe: this only ever touches dashes, whitespace, and commas — never
+ * the [[em:]]/[[sfx:]]/[[line:]] typography markup's `[ ] :` delimiters — so it
+ * runs harmlessly over narrative_text that already carries markup (and cleans
+ * any dash a parent wrote inside a [[line:...]]). Covered by the sanitizer test.
  */
 export function stripNarrativeDashes(text) {
   if (typeof text !== "string" || text.length === 0) return text;
