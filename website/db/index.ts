@@ -13,3 +13,4 @@ export * as drafts from './drafts';
 export * as orders from './orders';
 export * as pipelineJobs from './pipeline-jobs';
 export * as previewEvents from './preview-events';
+export * as waitlist from './waitlist';

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Wordmark } from '@/components/Wordmark';
+import { SiteHeader } from '@/components/SiteHeader';
 import { Container } from '@/components/ui/Container';
 import { ProgressIndicator } from './ProgressIndicator';
 import { StepHeader } from './StepHeader';
@@ -26,11 +26,7 @@ interface WizardLayoutProps {
 export function WizardLayout({ children, childName, secondariesForPricing }: WizardLayoutProps) {
   return (
     <main className="bg-cream flex min-h-screen flex-col">
-      <header className="border-warm-grey-light bg-cream/95 sticky top-0 z-30 border-b backdrop-blur-sm">
-        <div className="px-lg py-sm flex items-center">
-          <Wordmark size="sm" />
-        </div>
-      </header>
+      <SiteHeader />
       <ProgressIndicator />
       <StepHeader childName={childName} />
 
