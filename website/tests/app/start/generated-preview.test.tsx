@@ -19,7 +19,7 @@ const req = requestPreview as ReturnType<typeof vi.fn>;
 const stat = getPreviewStatus as ReturnType<typeof vi.fn>;
 const inputs = { age: 7, gender: 'girl', features: { hair_colour: 'brown', eye_colour: 'green' } };
 const clickGenerate = () =>
-  fireEvent.click(screen.getByRole('button', { name: /Generate my character/ }));
+  fireEvent.click(screen.getByRole('button', { name: /Preview them/ }));
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.useRealTimers());
