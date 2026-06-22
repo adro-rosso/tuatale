@@ -52,6 +52,77 @@
  * @param {string} name
  * @returns {string}
  */
+// ---- Narrative typography markup -----------------------------------------
+// Sonnet may mark up a FEW moments in narrative_text with three inline tags
+// (see the EMPHASIS MARKUP section of the story-gen system prompt):
+//
+//   [[em:word]]        slightly-larger iron-oxide accent on one peak word
+//   [[sfx:word]]       hand-lettered sound word (onomatopoeia)
+//   [[line:sentence.]] one standalone emotional sentence on its own line
+//
+// Delimiter choice: [[tag:...]] survives BOTH the em-dash sanitizer
+// (stripNarrativeDashes touches only dashes / whitespace / commas — never
+// [ ] :) AND HTML-escaping (escapeHtml touches only & < > " ' — never the
+// bracket/colon delimiters). The inner content `[^\]]+` cannot cross the
+// closing `]]`, so adjacent tokens never run together.
+//
+// Two consumers, two helpers:
+//   - stripNarrativeMarkup: tokens → their plain inner text. Used BEFORE
+//     measuring / auto-fit (text-measurement + auto-fit escape+measure the
+//     literal string, so they must see the visible characters, not the
+//     bracket tokens, or sizing would be wrong).
+//   - expandNarrativeMarkup: tokens → <span class="tz-*"> HTML. Runs on
+//     ALREADY-ESCAPED text at render time (escape FIRST, THEN expand — the
+//     load-bearing ordering; expanding first would let escapeHtml turn the
+//     spans into visible &lt;span&gt; text).
+const NARRATIVE_TOKEN_RE = {
+  em: /\[\[em:([^\]]+)\]\]/g,
+  sfx: /\[\[sfx:([^\]]+)\]\]/g,
+  line: /\[\[line:([^\]]+)\]\]/g,
+};
+
+/** Replace every [[tag:...]] token with its trimmed inner text. Pure + idempotent. */
+export function stripNarrativeMarkup(text) {
+  if (typeof text !== "string" || text.length === 0) return text;
+  return text
+    .replace(NARRATIVE_TOKEN_RE.em, (_, x) => x.trim())
+    .replace(NARRATIVE_TOKEN_RE.sfx, (_, x) => x.trim())
+    .replace(NARRATIVE_TOKEN_RE.line, (_, x) => x.trim());
+}
+
+/** True if the text carries any narrative markup token. */
+export function hasNarrativeMarkup(text) {
+  return typeof text === "string" && /\[\[(?:em|sfx|line):[^\]]+\]\]/.test(text);
+}
+
+// Page-1 deterministic drop cap: wrap the opening letter as an oversized
+// decorative initial and left-align the opening paragraph. Skipped (returns
+// unchanged) unless the text starts with a plain letter — if page 1 opens with
+// markup or an escaped entity, no cap rather than a broken one.
+function applyDropCap(html) {
+  const m = html.match(/^([A-Za-z])([\s\S]*)$/);
+  if (!m) return html;
+  return `<span class="tz-dropcap-wrap"><span class="tz-dropcap">${m[1]}</span>${m[2]}</span>`;
+}
+
+/**
+ * Expand [[tag:...]] tokens in ALREADY-ESCAPED text into styled spans, and
+ * (page 1 only) apply the deterministic opening drop cap.
+ *
+ * @param {string} escapedText  narrative text already passed through escapeHtml
+ * @param {{ page?: number }} [opts]
+ * @returns {string} render-ready HTML for the .narrative text zone
+ */
+export function expandNarrativeMarkup(escapedText, { page } = {}) {
+  if (typeof escapedText !== "string" || escapedText.length === 0) return escapedText;
+  let html = escapedText
+    .replace(NARRATIVE_TOKEN_RE.em, (_, x) => `<span class="tz-em">${x.trim()}</span>`)
+    .replace(NARRATIVE_TOKEN_RE.sfx, (_, x) => `<span class="tz-sfx">${x.trim()}</span>`)
+    .replace(NARRATIVE_TOKEN_RE.line, (_, x) => `<span class="tz-line">${x.trim()}</span>`);
+  if (page === 1) html = applyDropCap(html);
+  return html;
+}
+
 export function maskName(text, name) {
   if (!text || !name) return text ?? "";
 

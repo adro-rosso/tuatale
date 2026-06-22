@@ -25,8 +25,34 @@ import { measureText } from "./text-measurement.js";
 import { detectCleanRegion } from "./region-detection.js";
 import { fitTextToRegion } from "./auto-fit.js";
 import { generateImage } from "./gemini.js";
+import { stripNarrativeMarkup, expandNarrativeMarkup } from "./text-utils.js";
 
 const GEMINI_IMAGE_USD_PER_CALL = 0.04;
+
+// ---- Narrative typography treatments -------------------------------------
+// The picked variants (book-polish "zing", 2026-06-21). Injected into EVERY
+// page render so the tz-* span classes (emitted by expandNarrativeMarkup) and
+// the deterministic page-1 drop cap resolve. Sizes are in `em` so they ride
+// the auto-fit font-size (Type A/C dynamic) or the static template size (Type
+// B) without re-measuring. Treatments live ONLY in the CSS text zone — never
+// on the image. ACCENT is the brand iron-oxide (matches cover + website).
+const TZ_ACCENT = "#7a3328";
+const TREATMENT_FONT_LINK =
+  '<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">';
+const TREATMENT_CSS = `
+  /* emphasis (b): slightly larger + iron-oxide accent — sparing */
+  .tz-em { color: ${TZ_ACCENT}; font-size: 1.16em; font-weight: 500; }
+  /* sound word (b): hand-lettered + accent + slight tilt */
+  .tz-sfx { font-family: "Architects Daughter", cursive; font-size: 2.1em; color: ${TZ_ACCENT};
+            display: inline-block; transform: rotate(-5deg); line-height: 1; }
+  /* standalone emotional line: own larger italic line with air */
+  .tz-line { display: block; margin-top: 0.7em; font-size: 1.28em; font-style: italic; }
+  /* deterministic page-1 drop cap (left-aligned opening) */
+  .tz-dropcap-wrap { display: block; text-align: left; }
+  .tz-dropcap { float: left; font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+                font-size: 3em; line-height: 0.74; padding: 0.02em 0.08em 0 0;
+                font-weight: 500; color: ${TZ_ACCENT}; }
+`;
 
 // ---- Unit helpers ---------------------------------------------------------
 
@@ -121,12 +147,27 @@ async function renderPdfWithDynamicCss({
   pageSize,
   dynamicCss,
   outputPath,
+  page = null,
 }) {
   let templateHtml = fs.readFileSync(templateHtmlPath, "utf8");
   const imageFileUrl = pathToFileURL(imagePath).href;
+  // Escape FIRST, then expand the [[tag:...]] markup into <span> HTML. This
+  // ordering is load-bearing: escapeHtml neutralises any real < & " in the
+  // prose, and because it never touches [ ] :, the markup tokens survive it;
+  // expandNarrativeMarkup then turns them into real spans (+ the page-1 drop
+  // cap). Doing it the other way round would escape our own spans into text.
+  const narrativeHtml = expandNarrativeMarkup(escapeHtml(narrativeText), { page });
   templateHtml = templateHtml
     .replace(/\{\{IMAGE_URL\}\}/g, imageFileUrl)
-    .replace(/\{\{NARRATIVE_TEXT\}\}/g, escapeHtml(narrativeText));
+    .replace(/\{\{NARRATIVE_TEXT\}\}/g, narrativeHtml);
+
+  // Always inject the typography-treatment font + CSS so the tz-* classes
+  // resolve. Goes in before any dynamicCss so the latter's !important
+  // font-size on .narrative still wins; the tz-* sizes are em-relative.
+  templateHtml = templateHtml.replace(
+    /<\/head>/i,
+    `${TREATMENT_FONT_LINK}<style>${TREATMENT_CSS}</style></head>`
+  );
 
   // Source-order CSS: the injected <style> at end of <head> overrides the
   // template's earlier <style> for equal-specificity selectors. Combined
@@ -507,6 +548,12 @@ export async function renderPageWithTemplate({
     fs.mkdirSync(outputDir, { recursive: true });
     const pageNumStr = String(scene.page).padStart(2, "0");
 
+    // Typography markup ([[em:]]/[[sfx:]]/[[line:]]) is invisible to layout:
+    // measure + auto-fit must size the VISIBLE characters, not the bracket
+    // tokens (text-measurement escapes+measures the literal string). Strip to
+    // plain for every measure/fit; the marked-up original is rendered later.
+    const plainNarrative = stripNarrativeMarkup(narrativeText);
+
     // ---- 1. Image: generate via Gemini, or use override -----------------
     if (imagePathOverride) {
       imagePath = imagePathOverride;
@@ -547,7 +594,7 @@ export async function renderPageWithTemplate({
         const pageHeightIn = parseInchesValue(config.rendering.pageSize.height);
 
         const baselineMeasure = await measureText({
-          text: narrativeText,
+          text: plainNarrative,
           fontFamily: config.typography.fontFamily,
           fontSize: config.typography.maxFontSize,
           lineHeight: config.typography.lineHeight,
@@ -668,7 +715,7 @@ export async function renderPageWithTemplate({
       // ---- 4. Auto-fit text to page-pt region --------------------------
       const tFitStart = Date.now();
       fit = await fitTextToRegion({
-        text: narrativeText,
+        text: plainNarrative,
         region: { width: converted.region.width, height: converted.region.height },
         fontFamily: config.typography.fontFamily,
         lineHeight: config.typography.lineHeight,
@@ -728,7 +775,7 @@ export async function renderPageWithTemplate({
 
       const tFitStart = Date.now();
       fit = await fitTextToRegion({
-        text: narrativeText,
+        text: plainNarrative,
         region: { width: fixedRegion.width, height: fixedRegion.height },
         fontFamily: config.typography.fontFamily,
         lineHeight: config.typography.lineHeight,
@@ -778,6 +825,7 @@ export async function renderPageWithTemplate({
       pageSize: config.rendering.pageSize,
       dynamicCss: dynamicCssOut,
       outputPath: pdfPath,
+      page: scene.page,
     });
     timing.renderMs = Date.now() - tRenderStart;
     timing.totalMs = Date.now() - tStart;
