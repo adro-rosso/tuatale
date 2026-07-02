@@ -479,6 +479,10 @@ export async function generateBook({
   dedicationMessage = null,
   resolveImageOverride = null,
   sheetsOnly = false,
+  onlyPages = null, // Set<number> | null. When set, re-render ONLY these page
+                    // numbers; reuse the existing page-NN.pdf on disk for the
+                    // rest. Lets you re-roll specific bad pages without re-rolling
+                    // (and randomly regressing) the good ones. Sheets are reused.
   emitStatus,
   onSlowCall,
   logger = console,
@@ -966,6 +970,19 @@ export async function generateBook({
     const originalTemplateId = scene.layout_intent.template_id;
     const iterStart = Date.now();
 
+    // --only-pages: keep the good pages, re-roll only the requested ones. A page
+    // not in the set reuses its existing PDF on disk (no Gemini call, no re-roll).
+    if (onlyPages && !onlyPages.has(scene.page)) {
+      const existingPdf = path.join(pagesDir, `page-${String(scene.page).padStart(2, "0")}.pdf`);
+      if (fs.existsSync(existingPdf)) {
+        log.log(`  Page ${String(scene.page).padStart(2)}/${story.scenes.length}: reusing existing render (not in --only-pages).`);
+        perPageResults.push({ page: scene.page, originalTemplate: originalTemplateId, finalTemplate: originalTemplateId, outcome: "reused", pdfPath: existingPdf });
+        pagesCompletedCount += 1;
+        continue;
+      }
+      log.log(`  Page ${String(scene.page).padStart(2)}/${story.scenes.length}: no existing render to reuse — rendering.`);
+    }
+
     log.log(`  Page ${String(scene.page).padStart(2)}/${story.scenes.length}: ${originalTemplateId}...`);
     emit({
       event: { kind: "page_render_start", page: scene.page, template: originalTemplateId },
@@ -1145,7 +1162,11 @@ export async function generateBook({
     const copiedPages = await mergedDoc.copyPages(src, src.getPageIndices());
     copiedPages.forEach((p) => mergedDoc.addPage(p));
   }
-  const mergedBytes = await mergedDoc.save();
+  // useObjectStreams:false → traditional xref table. pdf-lib's default (object
+  // streams) renders in Chrome but some viewers (Preview, Adobe, mobile) mis-
+  // render merged pages, showing a wrong/stale image on a page. Traditional
+  // xref maximises cross-viewer compatibility for the delivered book (2026-07-01).
+  const mergedBytes = await mergedDoc.save({ useObjectStreams: false });
   fs.writeFileSync(bookPdfPath, mergedBytes);
   const bookSize = fs.statSync(bookPdfPath).size;
   emit({

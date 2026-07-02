@@ -68,9 +68,9 @@ console.log("Test 3 — N=2 human + non_human: 3 + 1");
   console.log("  PASS (human + non_human: 3 + 1 = 4)");
 }
 
-// ---- Test 4: N=3 → 2 + 1 + 1 ----
+// ---- Test 4: N=3 → 2 + 2 + 2 (raised from 2+1+1, 2026-07-01) ----
 console.log();
-console.log("Test 4 — N=3: 2 + 1 + 1");
+console.log("Test 4 — N=3: 2 + 2 + 2");
 {
   const result = allocate(["Søren", "Theo", "Mia"], {
     "Søren": PROTAG,
@@ -78,27 +78,27 @@ console.log("Test 4 — N=3: 2 + 1 + 1");
     "Mia": HUMAN_SEC_3,
   });
   assert(result["protagonist"] === 2, `expected 2 for protagonist, got ${result["protagonist"]}`);
-  assert(result["companion-1"] === 1, `expected 1 for companion-1, got ${result["companion-1"]}`);
-  assert(result["companion-2"] === 1, `expected 1 for companion-2, got ${result["companion-2"]}`);
+  assert(result["companion-1"] === 2, `expected 2 for companion-1, got ${result["companion-1"]}`);
+  assert(result["companion-2"] === 2, `expected 2 for companion-2, got ${result["companion-2"]}`);
   const total = Object.values(result).reduce((s, v) => s + v, 0);
-  assert(total === 4, `expected total=4 references, got ${total}`);
-  console.log("  PASS (N=3: 2 + 1 + 1 = 4)");
+  assert(total === 6, `expected total=6 references, got ${total}`);
+  console.log("  PASS (N=3: 2 + 2 + 2 = 6)");
 }
 
-// ---- Test 5: N=4 → 1 + 1 + 1 + 1 ----
+// ---- Test 5: N=4 → 2 + 2 + 2 + 2 (raised from 1+1+1+1, 2026-07-01) ----
 console.log();
-console.log("Test 5 — N=4: 1 + 1 + 1 + 1");
+console.log("Test 5 — N=4: 2 + 2 + 2 + 2");
 {
   const protag4 = { ...PROTAG };
   const a = { id: "a", isProtagonist: false, subjectType: "human", mintedSheetCount: 2 };
   const b = { id: "b", isProtagonist: false, subjectType: "human", mintedSheetCount: 2 };
   const c = { id: "c", isProtagonist: false, subjectType: "human", mintedSheetCount: 2 };
   const result = allocate(["P", "A", "B", "C"], { "P": protag4, "A": a, "B": b, "C": c });
-  assert(result["protagonist"] === 1, `protagonist should be 1, got ${result["protagonist"]}`);
-  assert(result["a"] === 1 && result["b"] === 1 && result["c"] === 1, `each secondary should be 1`);
+  assert(result["protagonist"] === 2, `protagonist should be 2, got ${result["protagonist"]}`);
+  assert(result["a"] === 2 && result["b"] === 2 && result["c"] === 2, `each secondary should be 2`);
   const total = Object.values(result).reduce((s, v) => s + v, 0);
-  assert(total === 4, `expected total=4, got ${total}`);
-  console.log("  PASS (N=4: 1 + 1 + 1 + 1 = 4)");
+  assert(total === 8, `expected total=8, got ${total}`);
+  console.log("  PASS (N=4: 2 + 2 + 2 + 2 = 8)");
 }
 
 // ---- Test 6: fewer minted than allocated (degraded-fewer fallback) ----

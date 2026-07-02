@@ -369,6 +369,9 @@ try {
     outputDir: bookDir,
     registry,
     sheetsOnly: Boolean(args["sheets-only"]),
+    onlyPages: args["only-pages"]
+      ? new Set(String(args["only-pages"]).split(",").map((n) => parseInt(n.trim(), 10)).filter(Number.isFinite))
+      : null,
     emitStatus,
     onSlowCall,
   });

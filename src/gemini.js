@@ -9,8 +9,10 @@ import { Agent, setGlobalDispatcher } from "undici";
 import { callWithRetry as sharedCallWithRetry } from "./wall-ceiling.js";
 
 // Model verified May 2026 against ai.google.dev/gemini-api/docs/image-generation.
-// 'gemini-3.1-flash-image-preview' is Google's recommended image-gen model
-// and supports up to 4 character reference images for consistency.
+// 'gemini-3.1-flash-image-preview' is Google's recommended image-gen model.
+// It accepts MORE than 4 reference images (the old "up to 4" was a legacy
+// assumption; 6 validated 2026-07-01 via scripts/_refceiling-probe.mjs — the
+// allocator now hands each subject up to 2 refs, so N=3 sends 6 and N=4 sends 8).
 // To swap models (e.g. fall back to the GA 'gemini-2.5-flash-image'),
 // change just this constant — no other code in the project knows the name.
 export const MODEL = "gemini-3.1-flash-image-preview";
@@ -103,7 +105,7 @@ function callWithRetry(fn, callContext = {}) {
  * @param {string} prompt - The text prompt describing what to draw.
  * @param {Buffer[]} [referenceImages=[]] - Optional PNG buffers passed as
  *   visual references. For character consistency, pass the character-sheet
- *   images here. The model accepts up to 4 character reference images.
+ *   images here. The model accepts more than 4 reference images (see MODEL note).
  * @param {object} [options={}]
  * @param {string} [options.aspectRatio] - Optional Gemini aspectRatio hint.
  *   Supported by @google/genai v1.52+: "1:1" | "2:3" | "3:2" | "3:4" |

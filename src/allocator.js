@@ -54,8 +54,10 @@ const SUBJECT_TYPES = new Set(["human", "non_human"]);
  *   Map keyed by subject NAME (matching subjectsPresent strings) to that
  *   subject's id + type + how many sheets are on disk for them.
  * @returns {Object<string, number>}
- *   Map keyed by subject ID to view count (1..3). Total across all
- *   subjects is <= 4 (the Gemini ceiling).
+ *   Map keyed by subject ID to view count (1..3). Total across all subjects
+ *   is <= 8 (2026-07-01: raised from the legacy 4-ref ceiling — gemini-3.1-
+ *   flash-image accepts more; each subject now gets up to 2 refs, protagonist
+ *   up to 3).
  * @throws {Error} when a subject in subjectsPresent has 0 minted sheets
  *   (caller catches, drops the subject for that page, re-calls), or when
  *   subjectsPresent has > 4 names (architecturally not allowed), or when
@@ -121,9 +123,18 @@ export function allocate(subjectsPresent, subjectMetadata) {
       allocations = [2, 2];
     }
   } else if (N === 3) {
-    allocations = [2, 1, 1];
+    // 2026-07-01: raised from [2,1,1] (old 4-ref ceiling) to [2,2,2]. The old
+    // ceiling starved each secondary to a SINGLE reference in all-three scenes —
+    // exactly where multichar likeness + wardrobe drift was worst. gemini-3.1-
+    // flash-image accepts >4 refs (validated in scripts/_refceiling-probe.mjs:
+    // 6 refs accepted, likeness + outfit fidelity visibly improved). 2 is the
+    // most a secondary can supply (secondaries mint 2 sheets).
+    allocations = [2, 2, 2];
   } else if (N === 4) {
-    allocations = [1, 1, 1, 1];
+    // Raised from [1,1,1,1] to [2,2,2,2] on the same finding (2 refs/subject,
+    // not 1). N=4 not separately probed but the mechanism matches the validated
+    // N=3 case; watch the first N=4 book for latency (8 refs = larger payload).
+    allocations = [2, 2, 2, 2];
   } else {
     // Unreachable — guarded above — but exhaustive for clarity.
     throw new Error(`allocate: unreachable N=${N}`);

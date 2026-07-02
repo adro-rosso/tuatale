@@ -357,6 +357,65 @@ function buildWardrobeLock(subjects) {
   );
 }
 
+// Shirt-colour lock (2026-07-01). The wardrobe-lock points at "the outfit
+// described in the Appearance line", but at N>=2 the model still swaps/recolours
+// tops between pages (the fishing-book drift: Pheonix's shirt flipped green<->
+// maroon page to page). This extracts each subject's explicit shirt colour from
+// their Appearance prose (which pins "<colour> t-shirt") and restates all of
+// them together as a hard per-subject colour lock, so the model can neither
+// recolour nor SWAP shirts between the children. Only meaningful for multi-
+// subject pages (needs >=2 named colours). Env-gated SHIRT_COLOUR_LOCK=off.
+function buildShirtColourLock(subjects) {
+  if (process.env.SHIRT_COLOUR_LOCK === "off") return "";
+  const pieces = [];
+  for (const s of subjects) {
+    const m = (s.description || "").match(/([a-z]+(?:-[a-z]+)?)\s+t-shirt/i);
+    if (m && s.name) pieces.push(`${s.name}'s t-shirt is ${m[1].toLowerCase()}`);
+  }
+  if (pieces.length < 2) return ""; // single-colour case is already covered by the wardrobe lock
+  return (
+    `SHIRT COLOUR LOCK — CRITICAL: ${pieces.join("; ")}. Keep each child's shirt colour EXACTLY ` +
+    `as stated; never recolour a shirt and never swap shirt colours between the children.\n\n`
+  );
+}
+
+// Reference-authority directive (2026-07-01). Root cause of the fishing-book
+// "different people": the Appearance TEXT carried adjectives that conflicted with
+// the reference sheet (e.g. "tousled" hair vs the sheet's blunt fringe; "lean"
+// vs a sturdy build; "mischievous/cheeky" pulling a freckled-ginger archetype),
+// and with no photo at page-render time the model followed the WORDS over the
+// image. This makes the image authoritative for identity so a stray adjective
+// can't override the real face. Env-gated REF_AUTHORITY=off.
+function buildReferenceAuthorityDirective(subjects) {
+  if (process.env.REF_AUTHORITY === "off") return "";
+  if (subjects.length < 1) return "";
+  return (
+    `REFERENCE IS AUTHORITATIVE: the provided reference images are the exact, definitive source ` +
+    `for each character's face, hairstyle, hair colour, skin tone, and body build. Reproduce the ` +
+    `faces and hair EXACTLY as in the references. If any word in the Appearance text seems to ` +
+    `conflict with a reference image, FOLLOW THE IMAGE. Do not substitute a generic or stereotyped ` +
+    `child; each face must be individually recognisable as the specific child in their reference.\n\n`
+  );
+}
+
+// Crowd-framing directive (2026-07-01). The dominant likeness failure at N>=3 is
+// FACE COLLAPSE: in a wide full-body group long-shot each face is only a few
+// dozen pixels, too little detail to carry a real likeness, so the model
+// substitutes a generic child's face (the fishing-book "different people on
+// page 12"). Bigger faces = more detail = recognisable. Pushes 2+ subject
+// scenes CLOSER so faces are large. Env-gated CROWD_FRAMING=off.
+function buildCrowdFramingDirective(subjects) {
+  if (process.env.CROWD_FRAMING === "off") return "";
+  if (subjects.length < 2) return ""; // 2026-07-01: extended to N>=2 — face collapse hit a 2-char page too
+  return (
+    `GROUP FRAMING — IMPORTANT: frame these ${subjects.length} characters CLOSE and LARGE in the ` +
+    `image (roughly waist-up, filling most of the frame height), so EACH face is big, clearly ` +
+    `detailed, and individually recognisable from their reference images. Do NOT render them small ` +
+    `or distant in a wide full-body long-shot — small faces lose their likeness. Keep all ` +
+    `${subjects.length} faces clearly visible and turned enough to read.\n\n`
+  );
+}
+
 // Bike-colour lock (Spec D-B, 2026-06-08). The bike is an action-prose prop with
 // no Appearance line and no reference sheet, so the wardrobe-lock can't reach it.
 // Story-gen already states the colour ("red bike"), but only on pages whose
@@ -422,7 +481,7 @@ export function buildScenePrompt({
       `Template composition: ${templateComposition}`,
       `Avoid: ${negativePrompt}.`,
     ].join("\n")
-      + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
+      + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
   }
 
   // ---- N>1: V2 canvas-seam defense is load-bearing here. -----------------
@@ -460,7 +519,7 @@ export function buildScenePrompt({
     `Template composition: ${templateCompositionV2}`,
     `Avoid: ${negativePrompt}.`,
   ].join("\n")
-    + `\n\nScene: ${scene.action}\n\n${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
+    + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildCrowdFramingDirective(subjects)}${buildWardrobeLock(subjects)}${buildShirtColourLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
 }
 
 /**
