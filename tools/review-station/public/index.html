@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Review Station</title>
+<style>
+  :root { --bg:#f6f5f2; --card:#fff; --ink:#1f2421; --muted:#6b726c; --line:#e3e1db;
+          --ok:#2f7d4f; --okbg:#e8f4ec; --warn:#b4531a; --warnbg:#fbeee3; --accent:#2b5c8a;
+          --err:#b42318; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { position:sticky; top:0; z-index:10; background:var(--card); border-bottom:1px solid var(--line);
+           padding:14px 22px; display:flex; align-items:center; gap:20px; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; font-weight:650; }
+  .tally { color:var(--muted); font-size:13px; }
+  .tally b { color:var(--ink); }
+  .bar { flex:1; min-width:120px; height:8px; background:var(--line); border-radius:5px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:var(--ok); width:0; transition:width .3s; }
+  button { font:inherit; border:1px solid var(--line); background:var(--card); color:var(--ink);
+           padding:6px 12px; border-radius:8px; cursor:pointer; }
+  button:hover { border-color:#c9c6bf; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.ok { background:var(--ok); color:#fff; border-color:var(--ok); }
+  button.sm { padding:4px 9px; font-size:13px; }
+  main { max-width:1120px; margin:0 auto; padding:22px; display:flex; flex-direction:column; gap:22px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden;
+          display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); }
+  .card.approved { border-color:var(--ok); box-shadow:0 0 0 1px var(--ok) inset; }
+  .imgwrap { background:#eceae4; display:flex; align-items:center; justify-content:center; min-height:300px; }
+  .imgwrap img { max-width:100%; max-height:560px; display:block; }
+  .imgwrap .noimg { color:var(--muted); font-size:13px; padding:40px; text-align:center; }
+  .panel { padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
+  .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .pageno { font-weight:700; font-size:15px; }
+  .chip { font-size:11px; padding:2px 8px; border-radius:20px; background:#eef0ee; color:var(--muted); }
+  .chip.tmpl { font-family:ui-monospace,Menlo,monospace; }
+  .chip.status-approved { background:var(--okbg); color:var(--ok); }
+  .chip.status-pending { background:#eef0ee; color:var(--muted); }
+  .chip.stale { background:var(--warnbg); color:var(--warn); }
+  .sec { border:1px solid var(--line); border-radius:10px; padding:10px 11px; display:flex; flex-direction:column; gap:8px; }
+  .sec h4 { margin:0; font-size:12px; font-weight:650; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+  textarea { width:100%; resize:vertical; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+  textarea.narr { min-height:96px; }
+  textarea.note { min-height:44px; font-size:13px; }
+  .counter { font-size:12px; color:var(--muted); }
+  .counter.over { color:var(--err); font-weight:650; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .approve-row { display:flex; gap:8px; margin-top:2px; }
+  .hist { display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; }
+  .hist .cell { flex:0 0 auto; width:74px; text-align:center; cursor:pointer; }
+  .hist .cell img { width:74px; height:56px; object-fit:cover; border:1px solid var(--line); border-radius:6px; display:block; }
+  .hist .cell:hover img { border-color:var(--accent); }
+  .hist .cell.keeper img { border-color:var(--ok); box-shadow:0 0 0 1px var(--ok); }
+  .hist .cell small { display:block; font-size:10px; color:var(--muted); margin-top:2px; line-height:1.2; }
+  .hist .empty { color:var(--muted); font-size:12px; padding:8px 0; }
+  .log { font-family:ui-monospace,Menlo,monospace; font-size:11px; white-space:pre-wrap; color:var(--muted);
+         background:#faf9f6; border:1px solid var(--line); border-radius:8px; padding:8px; max-height:120px;
+         overflow:auto; display:none; }
+  .spin { display:inline-block; width:12px; height:12px; border:2px solid #8886; border-top-color:var(--accent);
+          border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; margin-right:6px; }
+  button.primary .spin, button.ok .spin { border-color:#fff6; border-top-color:#fff; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  footer { max-width:1120px; margin:0 auto 40px; padding:0 22px; }
+  #finalizeMsg { color:var(--muted); font-size:13px; margin-top:8px; }
+  .banner { background:var(--warnbg); color:var(--warn); font-size:12px; padding:4px 10px; border-radius:6px; }
+  @media(max-width:820px){ .card{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Review Station</h1>
+  <div class="bar"><i id="barFill"></i></div>
+  <div class="tally"><b id="approvedN">0</b>/<span id="totalN">0</span> approved</div>
+  <div class="tally">img re-rolls: <b id="rerollN">0</b> · text regens: <b id="regenN">0</b> · est <b id="costN">$0.00</b></div>
+  <span id="envWarn" class="banner" style="display:none">env-file not loaded → text regen disabled</span>
+</header>
+
+<main id="pages"></main>
+
+<footer>
+  <button id="finalizeBtn" class="ok" disabled>Finalize → stitch book.pdf</button>
+  <div id="finalizeMsg"></div>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let STATE = null;
+
+async function api(path, body) {
+  const opt = body ? { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify(body) } : {};
+  const r = await fetch(path, opt);
+  return r.json();
+}
+function esc(s){ return (s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function counterText(chars, maxChars){ return maxChars==null ? `${chars} chars (no limit)` : `${chars} / ${maxChars} chars`; }
+
+function render() {
+  const { pages, summary, title, envLoaded } = STATE;
+  $("title").textContent = title;
+  $("approvedN").textContent = summary.approved;
+  $("totalN").textContent = summary.total;
+  $("rerollN").textContent = summary.rerolls;
+  $("regenN").textContent = summary.textRegens;
+  $("costN").textContent = "$" + summary.estCost.toFixed(2);
+  $("barFill").style.width = (summary.total ? (summary.approved / summary.total * 100) : 0) + "%";
+  $("finalizeBtn").disabled = !summary.allApproved;
+  $("envWarn").style.display = envLoaded ? "none" : "inline-block";
+
+  const host = $("pages");
+  host.innerHTML = "";
+  for (const p of pages) {
+    const over = p.maxChars != null && p.chars > p.maxChars;
+    const card = document.createElement("div");
+    card.className = "card" + (p.status === "approved" ? " approved" : "");
+    const imgCell = p.hasImage
+      ? `<img src="/img/${p.page}?t=${p.mtime}" alt="page ${p.page}">`
+      : `<div class="noimg">no rendered image on disk<br>(page-${String(p.page).padStart(2,"0")}-rendered.png)</div>`;
+
+    const histCells = (p.history && p.history.length)
+      ? p.history.map(h => `
+          <div class="cell ${p.keeper===h.id?'keeper':''}" title="${esc(h.source)} · ${h.chars} chars · ${esc(h.created_at)}" onclick="restore(${p.page},'${h.id}')">
+            <img src="/hist/${p.page}/${h.id}" alt="${esc(h.source)}">
+            <small>${esc(h.source)}</small>
+          </div>`).join("")
+      : `<div class="empty">no prior rolls yet — a snapshot is taken before each re-render</div>`;
+
+    card.innerHTML = `
+      <div class="imgwrap" id="img-${p.page}">${imgCell}</div>
+      <div class="panel">
+        <div class="row">
+          <span class="pageno">Page ${p.page}</span>
+          <span class="chip tmpl">${p.template_id ?? "—"}</span>
+          <span class="chip status-${p.status}" id="st-${p.page}">${p.status}</span>
+          ${p.stale ? `<span class="chip stale">image stale — re-render</span>` : ""}
+          ${p.subjects_present.length ? `<span class="chip">${esc(p.subjects_present.join(", "))}</span>` : ""}
+        </div>
+
+        <div class="sec">
+          <h4>Narrative text</h4>
+          <textarea class="narr" id="narr-${p.page}" oninput="updateCounter(${p.page})">${esc(p.narrative_text)}</textarea>
+          <div class="row" style="justify-content:space-between">
+            <span class="counter ${over?'over':''}" id="cnt-${p.page}" data-max="${p.maxChars==null?'':p.maxChars}">${counterText(p.chars,p.maxChars)}</span>
+            <div class="actions">
+              <button class="sm primary" id="txt-${p.page}" onclick="textEdit(${p.page})">Save &amp; re-lay ($0)</button>
+              <button class="sm" id="regen-${p.page}" onclick="textRegen(${p.page})">Regenerate (~1¢)</button>
+            </div>
+          </div>
+          <textarea class="note" id="regennote-${p.page}" placeholder="Optional steer for Regenerate: 'shorter', 'more playful', 'less repetitive'"></textarea>
+        </div>
+
+        <div class="sec">
+          <h4>Re-render image</h4>
+          <textarea class="note" id="note-${p.page}" placeholder="Optional note (threaded into the image prompt): 'crisper faces, characters larger in frame'">${esc(p.note)}</textarea>
+          <div class="actions">
+            <button class="primary" id="re-${p.page}" onclick="rerender(${p.page})">↻ Re-render image (~$0.04)</button>
+          </div>
+        </div>
+
+        <div class="sec">
+          <h4>Prior rolls (click to restore)</h4>
+          <div class="hist" id="hist-${p.page}">${histCells}</div>
+        </div>
+
+        <div class="approve-row">
+          <button id="ap-${p.page}" class="${p.status==='approved'?'':'ok'}" onclick="toggleApprove(${p.page}, ${p.status==='approved'})">
+            ${p.status === "approved" ? "Un-approve" : "✓ Approve"}
+          </button>
+        </div>
+        <div class="log" id="log-${p.page}"></div>
+      </div>`;
+    host.appendChild(card);
+  }
+}
+
+function updateCounter(page) {
+  const ta = $("narr-"+page), cnt = $("cnt-"+page);
+  const max = cnt.dataset.max === "" ? null : Number(cnt.dataset.max);
+  const chars = ta.value.length;
+  cnt.textContent = counterText(chars, max);
+  cnt.classList.toggle("over", max != null && chars > max);
+}
+
+function busy(btn, label){ btn.disabled = true; btn._old = btn.innerHTML; btn.innerHTML = `<span class="spin"></span>${label}`; }
+function unbusy(btn){ if(btn._old!==undefined){ btn.innerHTML = btn._old; } btn.disabled = false; }
+function showLog(page, text){ const l=$("log-"+page); l.style.display="block"; l.textContent = text; }
+
+async function toggleApprove(page, isApproved) {
+  await api(isApproved ? "/api/unapprove" : "/api/approve", { page });
+  await refresh();
+}
+async function rerender(page) {
+  const btn = $("re-"+page); busy(btn, "rendering…"); showLog(page, "re-rendering image (page "+page+")…");
+  const r = await api("/api/rerender", { page, note: $("note-"+page).value });
+  showLog(page, r.log || (r.ok ? "done" : "failed")); unbusy(btn); await refresh();
+}
+async function textEdit(page) {
+  const btn = $("txt-"+page); busy(btn, "laying…"); showLog(page, "re-laying text over existing image…");
+  const r = await api("/api/text-edit", { page, text: $("narr-"+page).value });
+  showLog(page, (r.overflow ? "⚠ over "+r.maxChars+" char cap\n" : "") + (r.log || (r.ok?"done":"failed")));
+  unbusy(btn); await refresh();
+}
+async function textRegen(page) {
+  const btn = $("regen-"+page); busy(btn, "writing…"); showLog(page, "asking Sonnet to rewrite…");
+  const r = await api("/api/text-regen", { page, note: $("regennote-"+page).value });
+  if (r.ok && r.newText != null) $("narr-"+page).value = r.newText;
+  showLog(page, (r.error ? "✗ "+r.error+"\n" : "") + (r.overflow ? "⚠ over "+r.maxChars+" char cap\n" : "") + (r.log || (r.ok?"done":"failed")));
+  unbusy(btn); await refresh();
+}
+async function restore(page, id) {
+  showLog(page, "restoring roll "+id+"…");
+  const r = await api("/api/restore", { page, id });
+  showLog(page, r.ok ? "restored." : ("✗ "+r.error)); await refresh();
+}
+async function saveNote(page){ await api("/api/note", { page, note: $("note-"+page).value }); }
+
+async function finalize() {
+  const btn = $("finalizeBtn"); busy(btn, "stitching…");
+  const r = await api("/api/finalize", {});
+  $("finalizeMsg").textContent = r.ok ? `✓ Stitched ${r.pages} pages → book.pdf (${(r.bytes/1024).toFixed(0)} KB)` : `✗ ${r.error}`;
+  unbusy(btn); await refresh();
+}
+async function refresh(){ STATE = await api("/api/state"); render(); }
+
+// persist the image-render note on blur (not the narrative — that saves via re-lay)
+document.addEventListener("blur", (e) => {
+  if (e.target && e.target.id && e.target.id.startsWith("note-")) saveNote(Number(e.target.id.slice(5)));
+}, true);
+
+$("finalizeBtn").onclick = finalize;
+refresh();
+</script>
+</body>
+</html>

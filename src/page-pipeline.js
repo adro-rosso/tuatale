@@ -449,6 +449,18 @@ function buildHelmetLock(helmetColour) {
   );
 }
 
+// Operator revision note (review station, 2026-07-02). A per-page free-text
+// directive an operator types in the review station when re-rolling a bad page
+// ("make the faces crisper", "she should hold a rod not a line", ...). Threaded
+// generate-book.js --only-pages → generateBook(pageDirectives) →
+// renderPageWithTemplate(reviewNote) → here. Appended LAST so it is the most
+// recent instruction the model reads and is clearly framed as page-scoped
+// operator feedback. Empty/absent → "" → byte-for-byte the pre-feature prompt.
+function buildReviewNoteDirective(reviewNote) {
+  if (!reviewNote || !reviewNote.trim()) return "";
+  return `\n\nREVISION NOTE FOR THIS PAGE (operator feedback — apply it to this render): ${reviewNote.trim()}`;
+}
+
 export function buildScenePrompt({
   subjects,
   scene,
@@ -458,6 +470,7 @@ export function buildScenePrompt({
   negativePrompt,
   bikeColour = null,
   helmetColour = null,
+  reviewNote = "",
 }) {
   if (!Array.isArray(subjects) || subjects.length === 0) {
     throw new Error("buildScenePrompt: subjects must be a non-empty array");
@@ -481,7 +494,8 @@ export function buildScenePrompt({
       `Template composition: ${templateComposition}`,
       `Avoid: ${negativePrompt}.`,
     ].join("\n")
-      + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
+      + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`
+      + buildReviewNoteDirective(reviewNote);
   }
 
   // ---- N>1: V2 canvas-seam defense is load-bearing here. -----------------
@@ -519,7 +533,8 @@ export function buildScenePrompt({
     `Template composition: ${templateCompositionV2}`,
     `Avoid: ${negativePrompt}.`,
   ].join("\n")
-    + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildCrowdFramingDirective(subjects)}${buildWardrobeLock(subjects)}${buildShirtColourLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`;
+    + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildCrowdFramingDirective(subjects)}${buildWardrobeLock(subjects)}${buildShirtColourLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`
+    + buildReviewNoteDirective(reviewNote);
 }
 
 /**
@@ -564,6 +579,7 @@ export async function renderPageWithTemplate({
   callContext = null,
   bikeColour = null,        // Spec D-B: canonical bike colour for this book, or null
   helmetColour = null,      // Spec D-H: helmet colour (= bike colour), or null
+  reviewNote = "",          // Review station: per-page operator directive, or "" (inert)
 }) {
   const timing = {
     imageGenMs: 0,
@@ -703,6 +719,7 @@ export async function renderPageWithTemplate({
         negativePrompt: sceneNegativePrompt,
         bikeColour,
         helmetColour,
+        reviewNote,
       });
 
       // Reference images: concatenate each subject's allocated sheets in

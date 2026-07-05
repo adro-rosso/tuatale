@@ -1394,3 +1394,81 @@ function formatUserMessage(input) {
 
   return lines.join("\n");
 }
+
+// ---- Single-page narrative rewrite (review station, 2026-07-02) ------------
+// Rewrites ONE page's read-aloud narrative_text from an optional operator note
+// ("shorter", "more playful", "less repetitive") without touching the image.
+// Used by the review station's "Regenerate text" mode: the new text is laid
+// over the EXISTING page image ($0 Puppeteer re-lay, no Gemini). This is a
+// small, self-contained Sonnet call — plain text out, no story schema.
+//
+// Honours the same constraints the story schema enforces: age-appropriate
+// read-aloud prose, a hard character cap (the target template's
+// max_narrative_chars; null = no cap), and the no-em/en-dash house rule. Retries
+// ONCE with a stricter instruction if the first draft overruns the cap; returns
+// { text, usage, overflow } (overflow=true means even the retry was over — the
+// caller decides whether to accept or warn).
+export async function rewriteNarrative({ currentText, note = "", age, maxChars = null, onSlowCall } = {}) {
+  if (typeof currentText !== "string" || !currentText.trim()) {
+    throw new Error("rewriteNarrative: currentText is required.");
+  }
+  const ageLine = Number.isFinite(age)
+    ? `The reader is about ${age} years old — match vocabulary and sentence length to that age.`
+    : `Keep vocabulary and sentence length appropriate for a young child.`;
+  const capLine = Number.isFinite(maxChars)
+    ? `HARD LIMIT: the rewritten text MUST be ${maxChars} characters or fewer (it is laid into a fixed text area). Count characters, not words.`
+    : `Keep it to a natural single paragraph (roughly 3–5 sentences).`;
+  const noteLine = note && note.trim()
+    ? `Editor's direction for this rewrite: ${note.trim()}`
+    : `Improve the flow and freshness while preserving the same events and meaning.`;
+
+  const system =
+    `You are a children's picture-book editor. You rewrite the read-aloud narrative ` +
+    `for ONE page. Preserve the page's events, characters, and meaning — do not invent ` +
+    `new plot. ${ageLine} ${capLine} Do NOT use em dashes (—) or en dashes (–); use a comma ` +
+    `or a separate sentence. Return ONLY the rewritten narrative text: no quotation marks, ` +
+    `no preamble, no title, no explanation.`;
+
+  const ask = (extra = "") =>
+    `${noteLine}\n\nCurrent page narrative:\n${currentText.trim()}\n\nRewrite it now.${extra}`;
+
+  const callOnce = (userMessage) => callWithRetry(
+    () => client.messages.create({
+      model: MODEL,
+      max_tokens: 1024,
+      system,
+      messages: [{ role: "user", content: userMessage }],
+    }),
+    { callKind: "story_gen", onSlowCall },
+  );
+
+  const extract = (response) => {
+    const block = response.content.find((c) => c.type === "text");
+    if (!block) throw new Error(`rewriteNarrative: no text block (stop_reason: ${response.stop_reason}).`);
+    // Strip any stray wrapping quotes the model may add despite instruction.
+    return block.text.trim().replace(/^["'“”]+|["'“”]+$/g, "").trim();
+  };
+
+  let response = await callOnce(ask());
+  let text = extract(response);
+  let usage = response.usage;
+
+  if (Number.isFinite(maxChars) && text.length > maxChars) {
+    // One stricter retry: tell it exactly how far over it is.
+    const over = text.length - maxChars;
+    response = await callOnce(ask(
+      `\n\nYour previous draft was ${text.length} characters — ${over} over the ${maxChars} limit. ` +
+      `Rewrite it to ${maxChars} characters or fewer.`,
+    ));
+    const retryText = extract(response);
+    // Merge token usage across both attempts for an honest cost tally.
+    usage = {
+      input_tokens: (usage?.input_tokens ?? 0) + (response.usage?.input_tokens ?? 0),
+      output_tokens: (usage?.output_tokens ?? 0) + (response.usage?.output_tokens ?? 0),
+    };
+    text = retryText;
+  }
+
+  const overflow = Number.isFinite(maxChars) && text.length > maxChars;
+  return { text, usage, overflow };
+}

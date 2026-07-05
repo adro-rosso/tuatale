@@ -49,6 +49,12 @@ Optional:
                           page rendering. For testing the sheet-gen path
                           without the full $0.48 book render. Pairs with
                           --yes for unattended sheet-only runs.
+  --only-pages <n[,n]>    Re-render ONLY these page numbers; reuse the existing
+                          page-NN.pdf for the rest (surgical per-page re-roll).
+  --text-only             Re-lay the --only-pages narrative over each page's
+                          EXISTING image (pages/page-NN.png) instead of
+                          generating a new one. $0 — no Gemini call. Requires
+                          --only-pages; the raw image must already exist.
 
 Output:
   Creates/uses output/books/<id>/ with character-sheets/, pages/, book.pdf,
@@ -58,7 +64,7 @@ Both --flag value and --flag=value forms are accepted.
 `.trim();
 
 // ---- Arg parsing -----------------------------------------------------------
-const BOOLEAN_FLAGS = new Set(["yes", "auto-confirm", "sheets-only"]);
+const BOOLEAN_FLAGS = new Set(["yes", "auto-confirm", "sheets-only", "text-only"]);
 
 function parseArgs(argv) {
   const args = {};
@@ -358,6 +364,69 @@ const onSlowCall = (event) => {
   try { updateStatus(bookDir, { event }); } catch { /* never break the call path */ }
 };
 
+// ---- Resolve --only-pages + review-station note injection ------------------
+const onlyPages = args["only-pages"]
+  ? new Set(String(args["only-pages"]).split(",").map((n) => parseInt(n.trim(), 10)).filter(Number.isFinite))
+  : null;
+
+// Review-station note injection (opt-in, inert when absent). If the book dir has
+// a review-state.json with a review_notes map, thread each note for the page(s)
+// being (re-)rendered into the pipeline as a per-page revision directive. Purely
+// additive: no file / no notes / notes only for pages not being rendered →
+// pageDirectives stays null → byte-for-byte unchanged behaviour.
+let pageDirectives = null;
+const reviewStatePath = path.join(bookDir, "review-state.json");
+if (fs.existsSync(reviewStatePath)) {
+  try {
+    const rs = JSON.parse(fs.readFileSync(reviewStatePath, "utf8"));
+    const notes = rs?.review_notes ?? {};
+    const dirs = {};
+    for (const [key, value] of Object.entries(notes)) {
+      const pg = parseInt(key, 10);
+      if (!Number.isFinite(pg) || typeof value !== "string" || !value.trim()) continue;
+      if (onlyPages && !onlyPages.has(pg)) continue; // only inject for pages being rendered
+      dirs[pg] = value;
+    }
+    if (Object.keys(dirs).length > 0) {
+      pageDirectives = dirs;
+      console.log(`Review notes: injecting operator directive(s) for page(s) ${Object.keys(dirs).join(", ")}.`);
+    }
+  } catch (err) {
+    console.warn(`(review-state.json present but unreadable: ${err.message}; ignoring notes)`);
+  }
+}
+
+// ---- Text-only re-lay (review station, $0 — no Gemini) ---------------------
+// --text-only re-lays the requested pages' narrative over their EXISTING raw
+// image (pages/page-NN.png) instead of generating a new one. Implemented via
+// generateBook's resolveImageOverride seam: return the on-disk raw image for the
+// target page → renderPageWithTemplate skips the Gemini call and just re-runs
+// layout + screenshot + PDF. Additive/inert: no flag → resolveImageOverride
+// stays null → byte-for-byte unchanged. Requires --only-pages, and the raw image
+// must exist (else we'd silently fall through to a paid Gemini roll — so we fail).
+let resolveImageOverride = null;
+if (args["text-only"]) {
+  if (!onlyPages || onlyPages.size === 0) {
+    console.error("FAIL: --text-only requires --only-pages <n[,n...]> (which page(s) to re-lay).");
+    process.exit(1);
+  }
+  const pagesDirForRelay = path.join(bookDir, "pages");
+  const missing = [];
+  for (const pg of onlyPages) {
+    const raw = path.join(pagesDirForRelay, `page-${String(pg).padStart(2, "0")}.png`);
+    if (!fs.existsSync(raw)) missing.push(pg);
+  }
+  if (missing.length > 0) {
+    console.error(`FAIL: --text-only needs an existing raw image for each page; missing page-NN.png for page(s): ${missing.join(", ")}.`);
+    process.exit(1);
+  }
+  resolveImageOverride = (scene) => {
+    if (!onlyPages.has(scene.page)) return null; // reused pages skip render anyway
+    return path.join(pagesDirForRelay, `page-${String(scene.page).padStart(2, "0")}.png`);
+  };
+  console.log(`Text-only re-lay: reusing existing image(s) for page(s) ${[...onlyPages].join(", ")} (no Gemini call).`);
+}
+
 // ---- Run the pipeline ------------------------------------------------------
 let result;
 try {
@@ -369,9 +438,9 @@ try {
     outputDir: bookDir,
     registry,
     sheetsOnly: Boolean(args["sheets-only"]),
-    onlyPages: args["only-pages"]
-      ? new Set(String(args["only-pages"]).split(",").map((n) => parseInt(n.trim(), 10)).filter(Number.isFinite))
-      : null,
+    onlyPages,
+    pageDirectives,
+    resolveImageOverride,
     emitStatus,
     onSlowCall,
   });

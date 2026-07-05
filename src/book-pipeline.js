@@ -483,6 +483,10 @@ export async function generateBook({
                     // numbers; reuse the existing page-NN.pdf on disk for the
                     // rest. Lets you re-roll specific bad pages without re-rolling
                     // (and randomly regressing) the good ones. Sheets are reused.
+  pageDirectives = null, // Map<number,string> | Record<number,string> | null.
+                    // Review station: an optional per-page operator note appended
+                    // to that page's scene prompt as a revision directive. Additive
+                    // and inert — no entry for a page → reviewNote "" → unchanged.
   emitStatus,
   onSlowCall,
   logger = console,
@@ -933,6 +937,14 @@ export async function generateBook({
   // is governed by the scene, not this directive.
   const helmetColour = process.env.HELMET_COLOUR_LOCK === "off" ? null : bikeColour;
 
+  // Review station: resolve this page's operator note (accepts Map or object;
+  // null/absent → ""). Threaded into the scene prompt as a revision directive.
+  function reviewNoteForPage(page) {
+    if (!pageDirectives) return "";
+    const v = pageDirectives instanceof Map ? pageDirectives.get(page) : pageDirectives[page];
+    return typeof v === "string" ? v : "";
+  }
+
   async function tryRender(scene, templateId) {
     const template = findTemplate(registry, templateId);
     const { subjects, dropped } = resolveSceneSubjects(scene);
@@ -952,6 +964,7 @@ export async function generateBook({
       callContext: { callKind: "page_render", pageNumber: scene.page, onSlowCall },
       bikeColour,
       helmetColour,
+      reviewNote: reviewNoteForPage(scene.page),
     });
   }
 
