@@ -57,6 +57,20 @@ const PENCIL_MEDIUM = {
   climaxClause: "Rich coloured-pencil shading with layered strokes and atmospheric depth",
 };
 
+// Painterly (W-E, 2026-07-06). DISTINCTNESS is the risk: it must NOT read as a
+// watercolour twin. The fills push THICK, OPAQUE paint — visible directional
+// brushstrokes, impasto texture, rich saturated colour — the opposite of
+// watercolour's transparent granular wash.
+const PAINTERLY_MEDIUM = {
+  medium: "oil painting",
+  mediumUK: "oil painting",
+  washWord: "brushwork",
+  styleTail: "thick opaque oil paint with visible directional brushstrokes, rich saturated colour, and impasto texture",
+  edgeDissolve: "loose painterly brushstrokes softening into the paper",
+  wetEdge: "soft loose brush edges",
+  climaxClause: "Thick, richly painted oil brushwork with deep saturated colour and atmospheric depth",
+};
+
 // Anti-vignette / edge-fill emphasis (W-E, 2026-07-06). WATERCOLOUR fills its
 // frame naturally via wet bleed; every OTHER medium (pencil, painterly, ink,
 // flat, cut-paper) tends to render a CONTAINED SPOT with bare paper around it, so
@@ -75,7 +89,11 @@ const PENCIL = "soft children's-book COLOURED PENCIL illustration — gentle han
 // anti-vignette fill emphasis. The SHEET vocab stays bare PENCIL (a reference
 // sheet is a single figure on cream — it SHOULD have paper around it).
 const PENCIL_PAGE = `${PENCIL}. ${EDGE_FILL_EMPHASIS}`;
-const PAINTERLY = "classic GOLDEN-AGE STORYBOOK PAINTING — rich painterly gouache/oil illustration in the warm tradition of vintage children's books, soft brushwork, gentle light, timeless and premium";
+// Painterly (W-E tuned for DISTINCTNESS vs watercolour): thick opaque oil/gouache
+// paint, visible directional brushstrokes + impasto, deep saturated colour — NOT a
+// transparent wash. Page vocab = the medium description + the shared fill emphasis.
+const PAINTERLY = "classic GOLDEN-AGE STORYBOOK OIL PAINTING — rich, painterly illustration in THICK, OPAQUE oil and gouache paint with visible directional brushstrokes and impasto texture, deep saturated colour, warm gentle light, in the timeless tradition of vintage children's-book paintings. This is opaque painted colour, NOT a transparent watercolour wash";
+const PAINTERLY_PAGE = `${PAINTERLY}. ${EDGE_FILL_EMPHASIS}`;
 const INK_WASH = "loose INK-LINE-AND-WATERCOLOUR-WASH illustration — energetic scratchy pen line with light loose colour washes, whimsical and characterful in the spirit of Quentin Blake, expressive linework";
 const FLAT = "warm modern FLAT illustration — clean flat colour fills with soft cel-shading, gentle linework, cosy palette, premium picture-book, clean defined edges";
 const CUTPAPER = "CUT-PAPER COLLAGE illustration — layered hand-painted textured paper shapes assembled into the figure, bold and tactile in the spirit of Eric Carle, visible paper texture and torn/cut edges";
@@ -88,7 +106,7 @@ export const ART_STYLES = {
     medium: WATERCOLOUR_MEDIUM,
   },
   coloured_pencil: { sheet: PENCIL, page: PENCIL_PAGE, medium: PENCIL_MEDIUM },
-  painterly: { sheet: PAINTERLY, page: PAINTERLY }, // medium untuned → fills default to watercolour
+  painterly: { sheet: PAINTERLY, page: PAINTERLY_PAGE, medium: PAINTERLY_MEDIUM },
   ink_wash: { sheet: INK_WASH, page: INK_WASH },
   flat_modern: { sheet: FLAT, page: FLAT },
   cutpaper: { sheet: CUTPAPER, page: CUTPAPER },
