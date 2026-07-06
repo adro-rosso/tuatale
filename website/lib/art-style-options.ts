@@ -32,7 +32,9 @@ export const STYLE_OPTIONS: ReadonlyArray<ArtStyleOption> = [
   // painterly flipped purchasable 2026-07-06 (W-E): painterly medium fills shipped
   // to the worker (c055807), validated on a full oil-painting book.
   { value: 'painterly', label: 'Painterly', blurb: 'Rich golden-age storybook oils.', purchasable: true },
-  { value: 'ink_wash', label: 'Ink & Wash', blurb: 'Loose linework, atmospheric washes.', purchasable: false },
+  // ink_wash flipped purchasable 2026-07-06 (W-E): ink & wash medium fills +
+  // NO_FRAME_EMPHASIS shipped to the worker (f037d45), validated on a full book.
+  { value: 'ink_wash', label: 'Ink & Wash', blurb: 'Loose linework, atmospheric washes.', purchasable: true },
   { value: 'flat_modern', label: 'Flat Modern', blurb: 'Clean shapes, bold modern flats.', purchasable: false },
   { value: 'cutpaper', label: 'Cut-Paper Collage', blurb: 'Layered paper, playful texture.', purchasable: false },
 ];
@@ -51,7 +53,7 @@ export function styleThumb(value: string): string {
 // tuned styles. Kept explicit (not derived from `purchasable`) so a future flip can't
 // reference a sample asset that hasn't been harvested yet. The 4 preview-only styles
 // show only their swatch until each is tuned + shipped.
-export const STYLES_WITH_SAMPLE = ['watercolour', 'coloured_pencil', 'painterly'] as const;
+export const STYLES_WITH_SAMPLE = ['watercolour', 'coloured_pencil', 'painterly', 'ink_wash'] as const;
 
 /** Whether the style has an example-page asset to show in the picker. */
 export function hasStyleSample(value: string): boolean {
