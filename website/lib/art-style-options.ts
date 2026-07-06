@@ -29,7 +29,9 @@ export const STYLE_OPTIONS: ReadonlyArray<ArtStyleOption> = [
   // coloured_pencil flipped purchasable 2026-07-06 (W-E): per-style medium tokens +
   // edge-fill emphasis shipped to the worker (72bf374), validated on a full pencil book.
   { value: 'coloured_pencil', label: 'Coloured Pencil', blurb: 'Textured strokes, hand-drawn warmth.', purchasable: true },
-  { value: 'painterly', label: 'Painterly', blurb: 'Rich golden-age storybook oils.', purchasable: false },
+  // painterly flipped purchasable 2026-07-06 (W-E): painterly medium fills shipped
+  // to the worker (c055807), validated on a full oil-painting book.
+  { value: 'painterly', label: 'Painterly', blurb: 'Rich golden-age storybook oils.', purchasable: true },
   { value: 'ink_wash', label: 'Ink & Wash', blurb: 'Loose linework, atmospheric washes.', purchasable: false },
   { value: 'flat_modern', label: 'Flat Modern', blurb: 'Clean shapes, bold modern flats.', purchasable: false },
   { value: 'cutpaper', label: 'Cut-Paper Collage', blurb: 'Layered paper, playful texture.', purchasable: false },
@@ -49,7 +51,7 @@ export function styleThumb(value: string): string {
 // tuned styles. Kept explicit (not derived from `purchasable`) so a future flip can't
 // reference a sample asset that hasn't been harvested yet. The 4 preview-only styles
 // show only their swatch until each is tuned + shipped.
-export const STYLES_WITH_SAMPLE = ['watercolour', 'coloured_pencil'] as const;
+export const STYLES_WITH_SAMPLE = ['watercolour', 'coloured_pencil', 'painterly'] as const;
 
 /** Whether the style has an example-page asset to show in the picker. */
 export function hasStyleSample(value: string): boolean {

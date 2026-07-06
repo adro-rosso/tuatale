@@ -111,7 +111,7 @@ describe('createCheckoutSession', () => {
 
   it('throws CheckoutError(style_not_purchasable) for a preview-only style — BEFORE creating the session (no charge)', async () => {
     cookieValue.current = 'cookie-uuid-1';
-    draftStore.current = completeDraft({ art_style: 'painterly' }); // preview-only until W-E
+    draftStore.current = completeDraft({ art_style: 'flat_modern' }); // still preview-only (untuned)
     await expect(createCheckoutSession()).rejects.toMatchObject({
       name: 'CheckoutError',
       reason: 'style_not_purchasable',
@@ -131,6 +131,14 @@ describe('createCheckoutSession', () => {
     cookieValue.current = 'cookie-uuid-1';
     draftStore.current = completeDraft({ art_style: 'coloured_pencil' });
     stripeSessionsCreate.mockResolvedValue({ id: 'cs_cp', url: 'https://checkout.stripe.com/c/pay/cs_cp' });
+    await expect(createCheckoutSession()).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(stripeSessionsCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows checkout for painterly (flipped purchasable 2026-07-06, W-E)', async () => {
+    cookieValue.current = 'cookie-uuid-1';
+    draftStore.current = completeDraft({ art_style: 'painterly' });
+    stripeSessionsCreate.mockResolvedValue({ id: 'cs_pt', url: 'https://checkout.stripe.com/c/pay/cs_pt' });
     await expect(createCheckoutSession()).rejects.toBeInstanceOf(RedirectSentinel);
     expect(stripeSessionsCreate).toHaveBeenCalledTimes(1);
   });
