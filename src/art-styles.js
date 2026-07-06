@@ -71,6 +71,22 @@ const PAINTERLY_MEDIUM = {
   climaxClause: "Thick, richly painted oil brushwork with deep saturated colour and atmospheric depth",
 };
 
+// Ink & wash (W-E, 2026-07-06). Must clear TWO styles: distinct from watercolour
+// (transparent wash, NO linework) AND painterly (opaque oil, NO linework). The
+// ANCHOR is VISIBLE INK LINEWORK — clean, confident dark pen outlines — over loose
+// transparent colour washes. Consistency risk: the medium's looseness can drift
+// the face, so the vocab pushes CLEAN, CONTROLLED outlines (NOT scratchy) to hold
+// likeness.
+const INK_WASH_MEDIUM = {
+  medium: "ink-and-wash",
+  mediumUK: "ink-and-wash",
+  washWord: "wash",
+  styleTail: "ink-and-wash illustration with clean, confident dark pen-and-ink outlines and loose transparent colour washes",
+  edgeDissolve: "loose colour wash bleeding into the paper",
+  wetEdge: "loose wet wash edges",
+  climaxClause: "Bold, clean ink linework over rich loose colour washes with atmospheric depth",
+};
+
 // Anti-vignette / edge-fill emphasis (W-E, 2026-07-06). WATERCOLOUR fills its
 // frame naturally via wet bleed; every OTHER medium (pencil, painterly, ink,
 // flat, cut-paper) tends to render a CONTAINED SPOT with bare paper around it, so
@@ -83,6 +99,16 @@ const PAINTERLY_MEDIUM = {
 export const EDGE_FILL_EMPHASIS =
   "Render the illustration richly and fully to all four edges of the frame, covering the whole surface, with no bare white paper and no floating vignette.";
 
+// Anti-frame clause (W-E, 2026-07-06). Ink / graphic media tend to draw a
+// RECTANGULAR BORDER or framed panel around the illustration (observed on ink &
+// wash p4 — a boxed pond vignette). Appended to the page vocab of ONLY the styles
+// that show that tendency (ink & wash now; likely flat_modern + cut-paper when
+// they're tuned). Deliberately NOT part of EDGE_FILL_EMPHASIS and NOT applied to
+// pencil/painterly (live + validated, no border tendency) — their prompts are
+// unperturbed. Reusable pattern, same as EDGE_FILL_EMPHASIS.
+export const NO_FRAME_EMPHASIS =
+  "Do not draw a frame, border, box, or ruled line around the image; the painting bleeds off every edge of the frame.";
+
 // Probe-validated strings for the 5 new styles.
 const PENCIL = "soft children's-book COLOURED PENCIL illustration — gentle hand-drawn pencil-crayon textures, warm layered strokes, soft shading, cosy and tender, visible pencil grain";
 // Page-render vocab for pencil (W-E tuned): the medium description + the shared
@@ -94,7 +120,14 @@ const PENCIL_PAGE = `${PENCIL}. ${EDGE_FILL_EMPHASIS}`;
 // transparent wash. Page vocab = the medium description + the shared fill emphasis.
 const PAINTERLY = "classic GOLDEN-AGE STORYBOOK OIL PAINTING — rich, painterly illustration in THICK, OPAQUE oil and gouache paint with visible directional brushstrokes and impasto texture, deep saturated colour, warm gentle light, in the timeless tradition of vintage children's-book paintings. This is opaque painted colour, NOT a transparent watercolour wash";
 const PAINTERLY_PAGE = `${PAINTERLY}. ${EDGE_FILL_EMPHASIS}`;
-const INK_WASH = "loose INK-LINE-AND-WATERCOLOUR-WASH illustration — energetic scratchy pen line with light loose colour washes, whimsical and characterful in the spirit of Quentin Blake, expressive linework";
+// Ink & wash (W-E tuned): the VISIBLE INK OUTLINE is the signature (distinct from
+// watercolour's line-free wash AND painterly's line-free opaque oil). Linework is
+// CLEAN + CONTROLLED (not scratchy/energetic-Quentin-Blake) so the face holds
+// consistent across pages — the key risk for this looser medium.
+const INK_WASH = "INK-LINE-AND-WATERCOLOUR-WASH children's illustration — clean, confident dark pen-and-ink OUTLINES drawn with a controlled hand, filled with light, loose, transparent watercolour washes that bleed softly around the linework; the visible ink outline is the signature. Characterful but CONTROLLED, NOT scratchy or messy; keep the face and features clean, defined, and consistent";
+// Ink & wash also gets the NO_FRAME clause (its medium tendency to draw a bordered
+// panel — pencil/painterly don't, so they omit it).
+const INK_WASH_PAGE = `${INK_WASH}. ${EDGE_FILL_EMPHASIS} ${NO_FRAME_EMPHASIS}`;
 const FLAT = "warm modern FLAT illustration — clean flat colour fills with soft cel-shading, gentle linework, cosy palette, premium picture-book, clean defined edges";
 const CUTPAPER = "CUT-PAPER COLLAGE illustration — layered hand-painted textured paper shapes assembled into the figure, bold and tactile in the spirit of Eric Carle, visible paper texture and torn/cut edges";
 
@@ -107,7 +140,7 @@ export const ART_STYLES = {
   },
   coloured_pencil: { sheet: PENCIL, page: PENCIL_PAGE, medium: PENCIL_MEDIUM },
   painterly: { sheet: PAINTERLY, page: PAINTERLY_PAGE, medium: PAINTERLY_MEDIUM },
-  ink_wash: { sheet: INK_WASH, page: INK_WASH },
+  ink_wash: { sheet: INK_WASH, page: INK_WASH_PAGE, medium: INK_WASH_MEDIUM },
   flat_modern: { sheet: FLAT, page: FLAT },
   cutpaper: { sheet: CUTPAPER, page: CUTPAPER },
 };
