@@ -24,6 +24,15 @@ export function StyleForm({ initial }: StyleFormProps) {
   const [selected, setSelected] = useState<string>(initial);
   void state; // the picker always submits a valid value; no field errors to show
 
+  // Derive the "available to order now" copy from the purchasable set, so it never
+  // goes stale as styles are flipped purchasable (W-E rollout).
+  const purchasableLabels = STYLE_OPTIONS.filter((o) => o.purchasable).map((o) => o.label);
+  const purchasableCount = purchasableLabels.length;
+  const purchasableList =
+    purchasableCount <= 1
+      ? purchasableLabels[0] ?? ''
+      : `${purchasableLabels.slice(0, -1).join(', ')} and ${purchasableLabels[purchasableCount - 1]}`;
+
   // Match each tile's background to its thumbnail's own paper colour so the swatch
   // melts into the tile (no rectangle seam against the page cream). Thumbnails are
   // same-origin (/style-thumbs), so the canvas isn't tainted. Mean of the 4 source
@@ -124,8 +133,8 @@ export function StyleForm({ initial }: StyleFormProps) {
 
       <Body size="caption">
         Every page of the book is painted in the style you pick here. You can change it any time
-        before you order. Watercolour and Coloured Pencil are available to order now; the other
-        styles are preview-only while we perfect them.
+        before you order. {purchasableList} {purchasableCount === 1 ? 'is' : 'are'} available to
+        order now; the other styles are preview-only while we perfect them.
       </Body>
 
       <div className="pt-md flex justify-end">
