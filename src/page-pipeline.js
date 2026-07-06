@@ -26,6 +26,7 @@ import { detectCleanRegion } from "./region-detection.js";
 import { fitTextToRegion } from "./auto-fit.js";
 import { generateImage } from "./gemini.js";
 import { stripNarrativeMarkup, expandNarrativeMarkup } from "./text-utils.js";
+import { fillMediumTokens } from "./art-styles.js";
 
 const GEMINI_IMAGE_USD_PER_CALL = 0.04;
 
@@ -580,6 +581,7 @@ export async function renderPageWithTemplate({
   bikeColour = null,        // Spec D-B: canonical bike colour for this book, or null
   helmetColour = null,      // Spec D-H: helmet colour (= bike colour), or null
   reviewNote = "",          // Review station: per-page operator directive, or "" (inert)
+  styleMedium = null,       // W-E: per-style MEDIUM-token fills, or null (→ watercolour default)
 }) {
   const timing = {
     imageGenMs: 0,
@@ -695,6 +697,11 @@ export async function renderPageWithTemplate({
         // Type B: compositionPromptTemplate has no placeholders, use verbatim
         templateComposition = config.imageGeneration.compositionPromptTemplate;
       }
+
+      // W-E: fill the template composition's {{MEDIUM:key}} tokens with the chosen
+      // style's medium vocabulary. Absent styleMedium → per-key watercolour default,
+      // so watercolour is byte-identical to pre-W-E (guarded by test-medium-tokens.js).
+      templateComposition = fillMediumTokens(templateComposition, styleMedium);
 
       const styleLine = config.imageGeneration.styleOverride || sceneStyle;
       const compositionLine = config.imageGeneration.customCompositionRules

@@ -1006,6 +1006,10 @@ export async function generateStory(input, options = {}) {
     // page-render vocab (W-D): the chosen style's `page` string, replacing the
     // per-template styleOverride. watercolour → the rich Sophie-Blackall string.
     pageStyle: resolveStyle(input.style).page,
+    // W-E: per-style MEDIUM-token fills for the template compositions (the
+    // watercolour-baked medium phrases are now {{MEDIUM:key}} tokens). Absent on
+    // legacy stories → the render defaults per-key to watercolour (byte-identical).
+    styleMedium: resolveStyle(input.style).medium,
     composition_rules: COMPOSITION_RULES,
     negative_prompt: NEGATIVE_PROMPT,
     scenes: claudeOutput.scenes.map((s) => ({ ...s, narrative_text: stripNarrativeDashes(s.narrative_text) })),

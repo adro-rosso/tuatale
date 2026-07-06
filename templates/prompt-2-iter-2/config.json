@@ -25,7 +25,7 @@
   "autoFit": null,
   "imageGeneration": {
     "customCompositionRules": "full body, clean uncluttered background, consistent framing, face clearly visible.",
-    "compositionPromptTemplate": "protagonist and main action positioned in the RIGHT 55% of the frame. The LEFT ~40% of the frame is where the story text sits, on cream paper beside the painting — so it must be the QUIETEST, most uncluttered part of the scene: open sky, distant landscape, soft atmospheric wash, room to breathe, with NO faces and NO key objects there. The LEFT edge of the illustration should DISSOLVE into the page like watercolor wash absorbing into paper — irregular, organic, wet-edge bleeding, not a clean rectangular boundary — so the painting melts toward the text rather than ending on a hard line. The painting should feel like it's spreading across the page, not pasted onto it."
+    "compositionPromptTemplate": "protagonist and main action positioned in the RIGHT 55% of the frame. The LEFT ~40% of the frame is where the story text sits, on cream paper beside the painting — so it must be the QUIETEST, most uncluttered part of the scene: open sky, distant landscape, soft atmospheric {{MEDIUM:washWord}}, room to breathe, with NO faces and NO key objects there. The LEFT edge of the illustration should DISSOLVE into the page like {{MEDIUM:edgeDissolve}} — irregular, organic, {{MEDIUM:wetEdge}}, not a clean rectangular boundary — so the painting melts toward the text rather than ending on a hard line. The painting should feel like it's spreading across the page, not pasted onto it."
   },
   "rendering": {
     "templateHtmlPath": "template.html",

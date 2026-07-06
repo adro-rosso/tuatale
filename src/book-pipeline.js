@@ -965,6 +965,9 @@ export async function generateBook({
       bikeColour,
       helmetColour,
       reviewNote: reviewNoteForPage(scene.page),
+      // W-E: per-style MEDIUM-token fills for the template composition. Absent on
+      // legacy stories → renderPageWithTemplate defaults per-key to watercolour.
+      styleMedium: story.styleMedium,
     });
   }
 
