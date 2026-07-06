@@ -25,6 +25,10 @@ export default async function ChildStepPage() {
         gender: draft?.child_gender ?? '',
         appearance: draft?.child_appearance ?? '',
         background: (draft as { background?: string | null } | null)?.background ?? '',
+        // '' when the draft has no override → the card shows the age-derived
+        // default but stores NULL (worker derives from band). A concrete value
+        // means the parent previously overrode it → respected on return.
+        reading_level: (draft as { reading_level?: string | null } | null)?.reading_level ?? '',
         ...featuresToFormValues(draft?.child_features),
       }}
     />

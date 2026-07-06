@@ -165,6 +165,19 @@ describe('createOrderFromDraft', () => {
     expect(createOrderSpy.mock.calls[0]![0]!.background).toBeNull();
   });
 
+  it('copies an overridden reading_level into the order payload', async () => {
+    await createOrderFromDraft({
+      draft: fakeDraft({ reading_level: 'advanced' }) as never,
+      stripeSession: fakeStripeSession(),
+    });
+    expect(createOrderSpy.mock.calls[0]![0]!.reading_level).toBe('advanced');
+  });
+
+  it('reading_level → null when untouched (worker derives from the age band)', async () => {
+    await createOrderFromDraft({ draft: fakeDraft() as never, stripeSession: fakeStripeSession() });
+    expect(createOrderSpy.mock.calls[0]![0]!.reading_level).toBeNull();
+  });
+
   it('copies child_features into the order payload', async () => {
     const features = { hair_colour: 'brown', hair_style: 'tousled', skin_tone: 'tan', eye_colour: 'brown' };
     await createOrderFromDraft({

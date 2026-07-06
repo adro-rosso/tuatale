@@ -23,6 +23,10 @@ export interface ChildFormValues {
   appearance: string;
   /** Optional parent-stated background/heritage (free text). '' = unset. */
   background: string;
+  /** Reading level (prose difficulty). '' = untouched → the card shows the
+   *  age-derived default but stores NULL (worker derives from the age band).
+   *  A concrete value means the parent deliberately overrode the default. */
+  reading_level: string;
   // Structured IDENTITY axes — flat for form round-tripping ('' = unset).
   hair_colour: string;
   hair_style: string;

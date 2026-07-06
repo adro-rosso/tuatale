@@ -55,6 +55,25 @@ export const STYLE_VALUES = [
 ] as const;
 export const artStyleSchema = z.enum(STYLE_VALUES).default('watercolour');
 
+// Reading level (prose difficulty). MIRRORS the pipeline keys in src/anthropic.js
+// READING_LEVELS (simplest / standard / advanced) — kept in sync by a static
+// parity assertion in the schema test (production Zod can't import the root src
+// module). Controls PROSE only; the child's age still drives the character visual.
+// OPTIONAL by design: the wizard writes a concrete value ONLY when the parent
+// overrides the age-derived default. Untouched → undefined → stored NULL → the
+// worker's resolveReadingLevel derives the level from the age band.
+export const READING_LEVEL_VALUES = ['simplest', 'standard', 'advanced'] as const;
+export type ReadingLevel = (typeof READING_LEVEL_VALUES)[number];
+export const readingLevelSchema = z.enum(READING_LEVEL_VALUES).optional();
+// Age band → default reading level (mirrors src/anthropic.js BAND_TO_LEVEL). The
+// wizard uses this to show the age-derived default highlight; the worker remains
+// the source of truth for the actual default when reading_level is NULL.
+export const READING_LEVEL_BY_BAND: Record<string, ReadingLevel> = {
+  '3-5': 'simplest',
+  '5-7': 'standard',
+  '7-9': 'advanced',
+};
+
 // Optional custom dedication (front-matter). Blank → the auto-default
 // "For {name}, with love" renders. Trimmed; ~120-char cap (one short line on
 // the dedication page). Placement-independent: whatever step collects it uses

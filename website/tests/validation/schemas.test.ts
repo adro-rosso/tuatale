@@ -15,6 +15,9 @@ import {
   backgroundSchema,
   BACKGROUND_MAX,
   VALIDATION_COPY,
+  readingLevelSchema,
+  READING_LEVEL_VALUES,
+  READING_LEVEL_BY_BAND,
 } from '@/lib/validation/schemas';
 
 const validChild = {
@@ -279,5 +282,38 @@ describe('backgroundSchema', () => {
     const r = backgroundSchema.safeParse('x'.repeat(BACKGROUND_MAX + 1));
     expect(r.success).toBe(false);
     if (!r.success) expect(r.error.issues[0]?.message).toBe(VALIDATION_COPY.TOO_LONG);
+  });
+});
+
+describe('readingLevelSchema', () => {
+  it('accepts each of the three levels', () => {
+    for (const lvl of READING_LEVEL_VALUES) {
+      expect(readingLevelSchema.safeParse(lvl).success).toBe(true);
+    }
+  });
+
+  it('is optional (undefined passes → stored NULL server-side)', () => {
+    const r = readingLevelSchema.safeParse(undefined);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).toBeUndefined();
+  });
+
+  it('rejects an unknown level and the empty string', () => {
+    expect(readingLevelSchema.safeParse('genius').success).toBe(false);
+    expect(readingLevelSchema.safeParse('').success).toBe(false); // '' is normalised to undefined upstream (|| undefined)
+  });
+
+  it('READING_LEVEL_BY_BAND maps every age band to its default level', () => {
+    expect(READING_LEVEL_BY_BAND['3-5']).toBe('simplest');
+    expect(READING_LEVEL_BY_BAND['5-7']).toBe('standard');
+    expect(READING_LEVEL_BY_BAND['7-9']).toBe('advanced');
+  });
+
+  // STATIC PARITY (Adro's call — no shared module import; anthropic.js throws
+  // without an API key at import). READING_LEVEL_VALUES MUST mirror the pipeline
+  // keys in src/anthropic.js READING_LEVELS (simplest/standard/advanced) + the
+  // BAND_TO_LEVEL map there. If the pipeline levels ever change, update BOTH.
+  it('mirrors the src/anthropic.js READING_LEVELS keys verbatim (values + order)', () => {
+    expect([...READING_LEVEL_VALUES]).toEqual(['simplest', 'standard', 'advanced']);
   });
 });

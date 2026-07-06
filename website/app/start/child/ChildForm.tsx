@@ -17,6 +17,8 @@ import {
   EYE_COLOURS,
   BUILDS,
   GLASSES_VALUES,
+  READING_LEVEL_VALUES,
+  READING_LEVEL_BY_BAND,
 } from '@/lib/validation/schemas';
 
 interface ChildFormProps {
@@ -72,6 +74,10 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
   const [ageRange, setAgeRange] = useState<string>(fieldValue('age_range'));
   const [appearance, setAppearance] = useState<string>(fieldValue('appearance'));
   const [background, setBackground] = useState<string>(fieldValue('background'));
+  // Reading-level OVERRIDE. '' = untouched (the card highlights the age-derived
+  // default but submits '' → NULL server-side, so the book tracks the child's
+  // age band). A concrete value = the parent deliberately overrode it.
+  const [readingLevel, setReadingLevel] = useState<string>(fieldValue('reading_level'));
 
   const canvasSelections = useMemo(
     () => ({ gender, hair_colour: feat.hair_colour, hair_style: feat.hair_style, eye_colour: feat.eye_colour, glasses: feat.glasses }),
@@ -132,6 +138,14 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
             </fieldset>
           </Field>
         </div>
+      </section>
+
+      {/* ---- Reading level (prose difficulty; defaults from age, overridable) ----
+           Co-located right after the essentials so it sits next to age (which
+           drives its default) without crowding the required fields. */}
+      <section className={CARD}>
+        <SectionHead title="Reading level" />
+        <ReadingLevelPicker ageRange={ageRange} value={readingLevel} onChange={setReadingLevel} />
       </section>
 
       {/* ---- Bring them to life (every field optional) ---- */}
@@ -223,6 +237,68 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
         </Button>
       </div>
     </form>
+  );
+}
+
+// Reading-level picker: 3 options, defaulted from the age band, parent-overridable.
+// The highlight follows `value || derived(ageRange)`, but the SUBMITTED value
+// (hidden input) is `value` alone — '' until the parent actually clicks a level.
+// So an untouched picker stores NULL (worker derives from the band), and the
+// highlight keeps tracking the age field; a click pins a concrete override that
+// then ignores age changes. A sample page for the highlighted level shows the
+// difference so the choice isn't made blind (Adro's standing requirement).
+function ReadingLevelPicker({
+  ageRange,
+  value,
+  onChange,
+}: {
+  ageRange: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const derived = READING_LEVEL_BY_BAND[ageRange] ?? '';
+  const effective = value || derived; // highlighted level (may be '' before an age is picked)
+  const sample = effective || 'standard'; // sample image fallback before an age is chosen
+
+  return (
+    <div className="space-y-md">
+      {/* Carries ONLY the override; '' when untouched → NULL server-side. */}
+      <input type="hidden" name="reading_level" value={value} />
+
+      <div className="gap-md flex" role="group" aria-label="Reading level">
+        {READING_LEVEL_VALUES.map((lvl) => {
+          const selected = effective === lvl;
+          return (
+            <button
+              key={lvl}
+              type="button"
+              onClick={() => onChange(lvl)}
+              aria-pressed={selected}
+              className={`font-body text-near-black bg-cream px-md py-sm flex-1 cursor-pointer rounded border-2 text-center capitalize transition-colors ${
+                selected ? 'border-iron-oxide bg-cream-deep' : 'border-warm-grey-light hover:border-iron-oxide'
+              }`}
+            >
+              {lvl}
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="font-body text-warm-grey text-caption">
+        Matched to your child&apos;s age — adjust if they read above or below it.
+      </p>
+
+      <figure className="border-warm-grey-light bg-cream mx-auto max-w-[22rem] overflow-hidden rounded-xl border">
+        <img
+          src={`/samples/reading-level/${sample}.webp`}
+          alt={`A sample ${sample} reading-level page`}
+          className="block w-full"
+        />
+        <figcaption className="font-body text-warm-grey text-caption px-sm py-xs text-center">
+          A sample page at this reading level.
+        </figcaption>
+      </figure>
+    </div>
   );
 }
 

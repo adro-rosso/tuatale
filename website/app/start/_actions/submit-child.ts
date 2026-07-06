@@ -7,7 +7,7 @@ import { updateDraftByCookieId } from '@/db/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import type { FieldErrors } from '@/lib/validation/validate';
 import { type ChildFormValues, STRUCTURED_KEYS, buildChildFeatures } from '@/lib/child-form';
-import { backgroundSchema } from '@/lib/validation/schemas';
+import { backgroundSchema, readingLevelSchema } from '@/lib/validation/schemas';
 
 export interface SubmitChildState {
   errors: FieldErrors;
@@ -25,6 +25,7 @@ function readFormValues(formData: FormData): ChildFormValues {
     gender: get('gender'),
     appearance: get('appearance'),
     background: get('background'),
+    reading_level: get('reading_level'),
   } as ChildFormValues;
   for (const k of STRUCTURED_KEYS) v[k] = get(k);
   return v;
@@ -57,6 +58,12 @@ export async function submitChildStep(
   const bgParsed = backgroundSchema.safeParse(input.background || undefined);
   const background = bgParsed.success ? (bgParsed.data ?? null) : (input.background.trim().slice(0, 120) || null);
 
+  // Reading level. NULL unless the parent explicitly overrode the age-derived
+  // default (the card submits '' when untouched). '' / unknown → null → the
+  // worker's resolveReadingLevel derives from the age band. Never blocks the step.
+  const rlParsed = readingLevelSchema.safeParse(input.reading_level || undefined);
+  const reading_level = rlParsed.success ? (rlParsed.data ?? null) : null;
+
   const cookieId = await getDraftCookieFromRequest();
   if (!cookieId) redirect('/start/reset');
 
@@ -67,6 +74,7 @@ export async function submitChildStep(
     child_appearance: result.data.appearance ?? '',
     child_features: (result.data.features ?? null) as never,
     background,
+    reading_level,
     current_step: 'secondaries',
   } as never);
 

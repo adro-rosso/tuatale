@@ -101,6 +101,7 @@ export async function createOrderFromDraft(
     art_style?: string;
     dedication_message?: string | null;
     background?: string | null;
+    reading_level?: string | null;
   } = {
     customer_email: customerEmail,
     child_name: draft.child_name,
@@ -114,6 +115,9 @@ export async function createOrderFromDraft(
     dedication_message: (draft as { dedication_message?: string | null }).dedication_message ?? null,
     // Optional child background/heritage (parent's words); null → no heritage clause.
     background: (draft as { background?: string | null }).background ?? null,
+    // Reading level (prose difficulty); null → worker derives from the age band.
+    // Cast like art_style/background — not yet in the generated Database types.
+    reading_level: (draft as { reading_level?: string | null }).reading_level ?? null,
     secondaries: draft.secondaries,
     theme: draft.theme,
     theme_template_id: draft.theme_template_id,
