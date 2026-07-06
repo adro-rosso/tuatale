@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { submitStyleStep, type SubmitStyleState } from '@/app/start/_actions/submit-style';
-import { STYLE_OPTIONS, styleThumb } from '@/lib/art-style-options';
+import { STYLE_OPTIONS, styleThumb, hasStyleSample, styleSample } from '@/lib/art-style-options';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 
@@ -105,10 +105,27 @@ export function StyleForm({ initial }: StyleFormProps) {
         })}
       </div>
 
+      {/* Example page for the SELECTED style — shown only for the purchasable,
+          page-vocab-tuned styles (watercolour + coloured pencil). Same Mila scene
+          per style, so a parent sees the medium difference, not the scene. */}
+      {hasStyleSample(selected) && (
+        <figure className="border-warm-grey-light bg-cream mx-auto max-w-[26rem] overflow-hidden rounded-xl border">
+          {/* eslint-disable-next-line @next/next/no-img-element -- static /public sample */}
+          <img
+            src={styleSample(selected)}
+            alt={`A sample book page in the ${STYLE_OPTIONS.find((o) => o.value === selected)?.label ?? selected} style`}
+            className="block w-full"
+          />
+          <figcaption className="px-sm py-xs font-body text-warm-grey text-caption text-center">
+            A sample book page in this style.
+          </figcaption>
+        </figure>
+      )}
+
       <Body size="caption">
         Every page of the book is painted in the style you pick here. You can change it any time
-        before you order. Watercolour is available to order now; the other styles are
-        preview-only while we perfect them.
+        before you order. Watercolour and Coloured Pencil are available to order now; the other
+        styles are preview-only while we perfect them.
       </Body>
 
       <div className="pt-md flex justify-end">

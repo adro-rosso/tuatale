@@ -48,17 +48,17 @@ export async function createCheckoutSession(): Promise<never> {
     );
   }
 
-  // PRE-PAYMENT purchasable-style gate (MIN-SAFE rollout). Only watercolour is
-  // book-grade today; the other styles are preview-only. Block BEFORE creating
-  // the Stripe session so a preview-only style can never be charged (gating in
-  // the post-payment webhook would mean charged-then-rejected). The payment page
-  // pre-empts this with a friendly "switch to Watercolour" prompt; this is the
-  // hard backstop.
+  // PRE-PAYMENT purchasable-style gate. Purchasable = the page-vocab-tuned,
+  // book-grade styles (isPurchasableStyle: watercolour + coloured pencil today;
+  // the rest are preview-only). Block BEFORE creating the Stripe session so a
+  // preview-only style can never be charged (gating in the post-payment webhook
+  // would mean charged-then-rejected). The payment page pre-empts this with a
+  // friendly "switch to a purchasable style" prompt; this is the hard backstop.
   const artStyle = (draft as { art_style?: string | null }).art_style ?? 'watercolour';
   if (!isPurchasableStyle(artStyle)) {
     throw new CheckoutError(
       'style_not_purchasable',
-      `Art style "${artStyle}" is preview-only; only watercolour is purchasable right now.`,
+      `Art style "${artStyle}" is preview-only and can't be ordered yet.`,
     );
   }
 

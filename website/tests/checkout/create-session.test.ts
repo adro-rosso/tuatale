@@ -127,6 +127,14 @@ describe('createCheckoutSession', () => {
     expect(stripeSessionsCreate).toHaveBeenCalledTimes(1);
   });
 
+  it('allows checkout for coloured_pencil (flipped purchasable 2026-07-06, W-E)', async () => {
+    cookieValue.current = 'cookie-uuid-1';
+    draftStore.current = completeDraft({ art_style: 'coloured_pencil' });
+    stripeSessionsCreate.mockResolvedValue({ id: 'cs_cp', url: 'https://checkout.stripe.com/c/pay/cs_cp' });
+    await expect(createCheckoutSession()).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(stripeSessionsCreate).toHaveBeenCalledTimes(1);
+  });
+
   it('creates a Stripe session with correct line items and metadata, then redirects', async () => {
     cookieValue.current = 'cookie-uuid-1';
     draftStore.current = completeDraft();

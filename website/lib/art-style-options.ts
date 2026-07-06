@@ -26,7 +26,9 @@ export interface ArtStyleOption {
 
 export const STYLE_OPTIONS: ReadonlyArray<ArtStyleOption> = [
   { value: 'watercolour', label: 'Watercolour', blurb: 'Soft washes, warm and gentle.', purchasable: true },
-  { value: 'coloured_pencil', label: 'Coloured Pencil', blurb: 'Textured strokes, hand-drawn warmth.', purchasable: false },
+  // coloured_pencil flipped purchasable 2026-07-06 (W-E): per-style medium tokens +
+  // edge-fill emphasis shipped to the worker (72bf374), validated on a full pencil book.
+  { value: 'coloured_pencil', label: 'Coloured Pencil', blurb: 'Textured strokes, hand-drawn warmth.', purchasable: true },
   { value: 'painterly', label: 'Painterly', blurb: 'Rich golden-age storybook oils.', purchasable: false },
   { value: 'ink_wash', label: 'Ink & Wash', blurb: 'Loose linework, atmospheric washes.', purchasable: false },
   { value: 'flat_modern', label: 'Flat Modern', blurb: 'Clean shapes, bold modern flats.', purchasable: false },
@@ -38,7 +40,24 @@ export function isPurchasableStyle(value: string | null | undefined): boolean {
   return STYLE_OPTIONS.some((o) => o.value === value && o.purchasable);
 }
 
-/** Static /public path of the style's swatch portrait. */
+/** Static /public path of the style's swatch portrait (the small tile image). */
 export function styleThumb(value: string): string {
   return `/style-thumbs/${value}.png`;
+}
+
+// Styles with a rendered EXAMPLE PAGE for the picker — the purchasable, page-vocab-
+// tuned styles. Kept explicit (not derived from `purchasable`) so a future flip can't
+// reference a sample asset that hasn't been harvested yet. The 4 preview-only styles
+// show only their swatch until each is tuned + shipped.
+export const STYLES_WITH_SAMPLE = ['watercolour', 'coloured_pencil'] as const;
+
+/** Whether the style has an example-page asset to show in the picker. */
+export function hasStyleSample(value: string): boolean {
+  return (STYLES_WITH_SAMPLE as readonly string[]).includes(value);
+}
+
+/** Static /public path of the style's example PAGE (same Mila scene per style, so
+ *  the picker is a true medium comparison). Only valid when hasStyleSample(value). */
+export function styleSample(value: string): string {
+  return `/samples/art-style/${value}.webp`;
 }
