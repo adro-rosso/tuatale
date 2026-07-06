@@ -20,9 +20,12 @@ describe("art-styles source of truth", () => {
     expect(ART_STYLES.watercolour.sheet).toBe(WATERCOLOUR);
   });
 
-  it("ZERO-CHANGE: shared composition + negative are the pre-W-B constants", () => {
+  it("shared composition + hardened negative prompt", () => {
     expect(COMPOSITION_RULES).toBe("full body, centered subject, clean uncluttered background, consistent framing, face clearly visible");
-    expect(NEGATIVE_PROMPT).toBe("photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, watermark");
+    // NEGATIVE_PROMPT hardened 2026-07-06 (reading-level Step 2): the bare "text"
+    // let Gemini paint garbled lettering into a page; expanded to explicit
+    // letters/words/captions/lettering/numbers/signage so no book gets painted text.
+    expect(NEGATIVE_PROMPT).toBe("photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, letters, words, captions, lettering, numbers, signage, watermark");
   });
 
   it("resolves a non-default style + unknown → watercolour", () => {

@@ -418,8 +418,11 @@ export const THINKING_TYPE = "adaptive";
 // registry — see buildStorySchema(). This means Anthropic's server-side
 // validation rejects unknown template IDs without us needing to post-parse.
 // Exported so tests can verify the enum contents.
-export function buildStorySchema(registry) {
+export function buildStorySchema(registry, readingLevel = "standard") {
   const templateIds = registry.map((t) => t.id);
+  // The per-page prose length in the narrative_text description is reading-level
+  // conditioned (single source of truth: READING_LEVELS). Unknown → standard.
+  const narrativeLengthDesc = (READING_LEVELS[readingLevel] ?? READING_LEVELS.standard).schemaDesc;
   return {
     type: "object",
     required: ["title", "character", "companion_characters", "scenes", "cover_concept", "cover_subjects"],
@@ -470,7 +473,7 @@ export function buildStorySchema(registry) {
             },
             narrative_text: {
               type: "string",
-              description: "3-5 sentences of read-aloud prose for this page. Do not use em dashes (—) or en dashes (–) in this text; use a comma, or a separate sentence, instead. You MAY optionally use the sparing emphasis markup ([[em:word]], [[sfx:word]], [[line:sentence]]) defined in the system prompt — but most pages should have none, and the per-book budgets there are strict.",
+              description: `${narrativeLengthDesc}. Do not use em dashes (—) or en dashes (–) in this text; use a comma, or a separate sentence, instead. You MAY optionally use the sparing emphasis markup ([[em:word]], [[sfx:word]], [[line:sentence]]) defined in the system prompt — but most pages should have none, and the per-book budgets there are strict.`,
             },
             subjects_present: {
               type: "array",
@@ -520,15 +523,17 @@ export function buildStorySchema(registry) {
 //
 // The {{TEMPLATE_REGISTRY_DESCRIPTION}} placeholder is substituted at
 // generateStory() call time from the on-disk template registry.
-export const SYSTEM_PROMPT_TEMPLATE = `You are a children's picture-book author writing personalised bedtime stories for parents to read aloud to their 4-7-year-old children.
+export const SYSTEM_PROMPT_TEMPLATE = `You are a children's picture-book author writing personalised bedtime stories for parents to read aloud to their {{AUDIENCE}}.
 
 Your job is to produce ONE complete 12-page story per request. You generate: a title; a character description for the protagonist; companion-character descriptions (one paragraph each) for any companions listed in the input (empty array if none); 12 numbered scenes (each declaring which subjects are present); a cover concept; and the cover subjects list. The book's visual style, composition rules, and image-safety constraints are set elsewhere — focus entirely on title, character(s), story, and cover.
 
 VOICE AND AUDIENCE
 
-Write for 4-7-year-olds in third-person, present-tense narration. Vocabulary should be accessible to that age — concrete nouns, active verbs, simple sentence structures — but never condescending. "She looked up at the moon" beats "Sarah observed the lunar orb." Warmth in tone: like a kind narrator who likes the protagonist. Avoid talking down. Avoid quirky-adult-narrator self-awareness ("little did she know...", "but that's a story for another day...").
+Write for {{AUDIENCE}} in third-person, present-tense narration. Match vocabulary and sentence complexity to the story's reading level (defined under READING LEVEL below) — concrete nouns and active verbs throughout, but never condescending. "She looked up at the moon" beats "Sarah observed the lunar orb." Warmth in tone: like a kind narrator who likes the protagonist. Avoid talking down. Avoid quirky-adult-narrator self-awareness ("little did she know...", "but that's a story for another day...").
 
 PUNCTUATION: do NOT use em dashes (—) or en dashes (–) in narrative_text or the title. Where you would reach for a dash, use a comma, or end the sentence and begin a new one. The em dash reads as machine-written and breaks the read-aloud cadence of picture-book prose.
+
+{{READING_LEVEL_RULES}}
 
 STORY ARC
 
@@ -548,7 +553,7 @@ Each scene has an \`action\` and a \`narrative_text\`. They serve different jobs
 
 - \`action\` is for the illustrator. It must be VISUALLY CONCRETE — a specific moment an illustrator can draw without inventing details. "Lila kneels in the tall grass cupping a firefly in her hands" is drawable. "Lila feels wonder" is not. Pick the most picture-able moment in each scene. Always show the protagonist in the action.
 
-- \`narrative_text\` is what the parent reads aloud. 3-5 sentences. Write it for rhythm, not just information. Read it aloud in your head — if it's a mouthful or thuds, rewrite it. Children's-book prose has cadence: short next to long, soft consonants where they count, occasional repetition for emphasis ("step, step, step"). Don't merely describe what the action shows — the narrative continues the story, gives the protagonist's interior, sets up the next moment.
+- \`narrative_text\` is what the parent reads aloud. {{PROSE_LENGTH}} (per the READING LEVEL rules above). Write it for rhythm, not just information. Read it aloud in your head — if it's a mouthful or thuds, rewrite it. Children's-book prose has cadence: short next to long, soft consonants where they count, occasional repetition for emphasis ("step, step, step"). Don't merely describe what the action shows — the narrative continues the story, gives the protagonist's interior, sets up the next moment.
 
 EMPHASIS MARKUP (use VERY sparingly — seasoning, not decoration)
 
@@ -579,6 +584,7 @@ Selection rules:
    - Rule 1 (max_narrative_chars) always wins. Never move a scene to a template whose character limit its narrative exceeds, even to break a run — a too-long narrative must stay on a template that can hold it.
    - Never use the climactic full-bleed template (prompt-6-iter-1) to break up a run. It stays reserved for the single genuine story climax. Adjacent-page variety comes from the workhorse templates, not from deploying the climactic template more often.
 5. CROWDED-SCENE LAYOUT: for scenes where THREE OR MORE ref-anchored characters (subjects_present) appear together, do NOT use a split-column / text-beside-image layout (a template whose summary describes a dedicated side text column, e.g. prompt-2-iter-2). Those reserve a third of the width for text, which crops wide group compositions and pushes one character off-frame. Instead pick a FULL-WIDTH layout (the illustration spans the whole page with text below or overlaid). To make one qualify, keep the scene's narrative_text short enough to fit that template's max_narrative_chars. This is a HARD constraint for 3+ character scenes, above the rule-4 variety preference (but still under rule 1).
+6. READING-LEVEL LAYOUT: if this story's reading level is SIMPLEST (see the READING LEVEL section above), the short-text FILL template (prompt-7-iter-1) is your DEFAULT workhorse for most pages. It is purpose-built for 1 to 2 short sentences: a large illustration with big, warm text on a compact cream strip, so a brief page fills the page instead of reading sparse, which is exactly what happens when a 40-to-140-character SIMPLEST page lands on the 300-character workhorses (prompt-2-iter-2, prompt-3-iter-2, prompt-8-iter-1). At the SIMPLEST level, choose prompt-7-iter-1 for the majority of pages and keep each narrative within its 150-character cap. You may still vary to another template for a genuinely different beat, and the full-bleed climax template (prompt-6-iter-1) stays reserved for the one true climax. This preference applies ONLY at the SIMPLEST reading level; at STANDARD and ADVANCED, ignore it and select normally. It sits under rule 1 (never exceed a template's char cap) and does not override the rule-5 crowded-scene constraint.
 
 For each scene, populate layout_intent with:
 - template_id: one of the IDs listed above
@@ -768,6 +774,86 @@ PREFERRED COMPOSITION SHAPES at N=4 (all-four scenes):
 
 These rules ensure the engine's reference-budget ceiling is respected. They do not apply when only 2-3 subjects are in a scene (subset scenes can use any composition).`;
 
+// ---- Reading level (prose difficulty; 2026-07-02) --------------------------
+// Reading level controls the PROSE ONLY — sentence count, vocabulary, sentence
+// structure, repetition. The child's AGE still drives every character/visual
+// reference (character age in the description, appearance). Three levels; the
+// age BAND supplies the default, an explicit reading_level overrides. Mirrors
+// the buildMulticharRulesBlock pattern: pure, exported, the single source of
+// truth for BOTH the injected {{READING_LEVEL_RULES}} block AND the de-hard-
+// coded {{AUDIENCE}} / {{PROSE_LENGTH}} phrases AND the schema narrative_text
+// description (so the three can never drift out of agreement).
+//
+// Char bands are reconciled with the template caps: the largest page template
+// holds 300 chars, so ADVANCED targets 200-300 (never 360, which would overflow
+// every template). SIMPLEST's ~150 upper end pairs with the short-text template.
+export const READING_LEVELS = {
+  simplest: {
+    audience: "very young children just being read to",
+    proseLength: "1 to 2 short sentences",
+    schemaDesc: "1 to 2 short sentences (about 40 to 140 characters) of read-aloud prose for this page",
+    rules: `READING LEVEL — SIMPLEST (read-aloud for the very young)
+
+Write every page's narrative_text at the simplest level:
+- LENGTH: 1 to 2 short sentences per page (about 40 to 140 characters). Never more than 2 sentences. Each page is at least one COMPLETE sentence, never a bare fragment.
+- VOCABULARY: high-frequency, concrete words only — things a young child can see, touch, or do. No abstract or stretch words.
+- SENTENCES: single-clause subject-verb-object only. No subordinate clauses, no similes, no metaphors.
+- REFRAIN: choose ONE short, memorable refrain (a repeated line or phrase) and repeat it 3 to 5 times across the twelve pages at natural beats. Introduce it near the opening and bring it back on the final page, so the book bookends on the refrain. The refrain is the book's spine.
+- Favour the short-text template (about 150-char cap) for these pages so a short page does not read sparse.`,
+  },
+  standard: {
+    audience: "young children",
+    proseLength: "3 to 4 sentences",
+    schemaDesc: "3 to 4 sentences (about 140 to 260 characters) of read-aloud prose for this page",
+    rules: `READING LEVEL — STANDARD (confident early reader)
+
+Write every page's narrative_text at a standard picture-book level:
+- LENGTH: 3 to 4 sentences per page (about 140 to 260 characters).
+- VOCABULARY: mostly concrete words, with a few stretch words whose meaning is made clear by the surrounding sentence.
+- SENTENCES: mostly simple sentences, with an occasional compound sentence (joined with "and", "but", "so"). Keep clause-nesting light.
+- REPETITION: light and optional — a gentle echo is welcome but not required; no mandatory refrain.`,
+  },
+  advanced: {
+    audience: "older picture-book readers",
+    proseLength: "4 to 5 sentences",
+    schemaDesc: "4 to 5 sentences (about 200 to 300 characters) of read-aloud prose for this page",
+    rules: `READING LEVEL — ADVANCED (fluent reader)
+
+Write every page's narrative_text at an advanced picture-book level:
+- LENGTH: 4 to 5 sentences per page (about 200 to 300 characters). Keep every page at or under 300 characters so it fits the page templates.
+- VOCABULARY: richer and more varied, with occasional figurative language (a simile or image) and roughly one new or stretch word per page, used so its meaning is clear from context.
+- SENTENCES: compound and complex sentences with embedded clauses are welcome; you may build mild suspense across sentences.
+- REPETITION: minimal — rely on narrative momentum rather than a refrain.`,
+  },
+};
+
+// Age band ("3-5" / "5-7" / "7-9", the wizard's AGE_RANGES enum) → default level.
+const BAND_TO_LEVEL = { "3-5": "simplest", "5-7": "standard", "7-9": "advanced" };
+
+/**
+ * Resolve the reading level for a story. Precedence:
+ *   1. explicit reading_level (validated against READING_LEVELS)
+ *   2. the real age BAND (input.ageRange) — preferred, lossless
+ *   3. lossy age-int fallback (direct/legacy callers with no band; the bands
+ *      overlap at 5 and 7, so this is only a best-effort last resort)
+ * Always returns a valid READING_LEVELS key.
+ */
+export function resolveReadingLevel({ reading_level, ageRange, age } = {}) {
+  if (reading_level && READING_LEVELS[reading_level]) return reading_level;
+  if (ageRange && BAND_TO_LEVEL[ageRange]) return BAND_TO_LEVEL[ageRange];
+  if (Number.isFinite(age)) return age <= 4 ? "simplest" : age <= 6 ? "standard" : "advanced";
+  return "standard";
+}
+
+/**
+ * The {{READING_LEVEL_RULES}} substitution — the rules block for the resolved
+ * level. Mirrors buildMulticharRulesBlock: pure + single source of truth, used
+ * by both generateStory and the prompt-scope test. Unknown level → standard.
+ */
+export function buildReadingLevelRulesBlock(level) {
+  return (READING_LEVELS[level] ?? READING_LEVELS.standard).rules;
+}
+
 // ---- Public API ------------------------------------------------------------
 
 /**
@@ -842,10 +928,22 @@ export async function generateStory(input, options = {}) {
   // At N=1 both are empty and the placeholder collapses to "" — no behavioral
   // change from the single-protagonist pipeline.
   const multicharRules = buildMulticharRulesBlock(input.secondaries);
+  // Reading level (prose difficulty). Optional input.reading_level overrides;
+  // otherwise defaults from the real age BAND (input.ageRange), falling back to
+  // the integer age. Controls prose ONLY — the character/visual age is untouched.
+  const readingLevel = resolveReadingLevel({
+    reading_level: input.reading_level,
+    ageRange: input.ageRange,
+    age: input.child?.age,
+  });
+  const levelDef = READING_LEVELS[readingLevel];
   const systemPrompt = SYSTEM_PROMPT_TEMPLATE
     .replace(/\{\{TEMPLATE_REGISTRY_DESCRIPTION\}\}/g, templateRegistryDescription)
-    .replace(/\{\{MULTICHAR_RULES\}\}/g, multicharRules);
-  const schema = buildStorySchema(registry);
+    .replace(/\{\{MULTICHAR_RULES\}\}/g, multicharRules)
+    .replace(/\{\{READING_LEVEL_RULES\}\}/g, buildReadingLevelRulesBlock(readingLevel))
+    .replace(/\{\{AUDIENCE\}\}/g, levelDef.audience)
+    .replace(/\{\{PROSE_LENGTH\}\}/g, levelDef.proseLength);
+  const schema = buildStorySchema(registry, readingLevel);
 
   // Compact input summary surfaced in MaxTokensError + ShapeValidationError
   // diagnostics + status.json when the response is truncated/malformed. Theme
@@ -860,6 +958,7 @@ export async function generateStory(input, options = {}) {
     subjects_count: 1 + (input.secondaries ?? []).length,
     scenes_requested: 12,
     theme: input.theme,
+    reading_level: readingLevel,
   };
 
   // Bounded one-retry on shape-validation failure. See SHAPE_ERR_MARKER

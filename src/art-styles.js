@@ -12,7 +12,7 @@
 export const COMPOSITION_RULES =
   "full body, centered subject, clean uncluttered background, consistent framing, face clearly visible";
 export const NEGATIVE_PROMPT =
-  "photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, watermark";
+  "photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, letters, words, captions, lettering, numbers, signage, watermark";
 
 // Probe-validated strings for the 5 new styles (sheet === page for now).
 const PENCIL = "soft children's-book COLOURED PENCIL illustration — gentle hand-drawn pencil-crayon textures, warm layered strokes, soft shading, cosy and tender, visible pencil grain";

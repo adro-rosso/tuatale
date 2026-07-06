@@ -98,6 +98,7 @@ export function buildMetaObject(input, story, usage) {
       secondaries: input.secondaries,
       theme: input.theme,
       ageRange: input.ageRange,
+      reading_level: input.reading_level,
     },
     story: { title: story?.title ?? null },
     generatedAt: new Date().toISOString(),

@@ -1,41 +1,38 @@
 {
   "id": "prompt-7-iter-1",
-  "deferred": true,
-  "description": "SCRAPPED 2026-05-24 — kept on disk for the test-output/ failure-mode evidence (3-scene N=3 validation showed Gemini reliably ignored 'small vignette / abundant cream' size language even with composition prompt iteration and 16:9 aspect pin; modes ranged from 'mild creep' to 'frame-filling' — see SESSION_NOTES). Quiet-vignette template attempt: small contained watercolor vignette in upper-center with abundant cream surround, short tender text below. Lesson banked: prompt-engineering Gemini for structural size compliance (small/contained painted area) is unreliable; reliable size control requires CSS-side architecture (see prompt-7 v2 three-band prototype, also not shipped because the v1-firefly source was busy enough that feathering the shrunk raster looked marginal — the breath-page concept needs either subject-isolation or a different layout path that hasn't been found). EXCLUDED from registry by `deferred: true`. Quiet/breath-page slot remains open if a future approach proves reliable. Type C (no region detection, fixed textRegion + auto-fit).",
+  "description": "Short-text FILL band (v2 rebuild, 2026-07-06). The v1 'small vignette / abundant cream' breath-page was SCRAPPED 2026-05-24 for unreliable Gemini size compliance (the vignette-shrink rationale is preserved in git history). This v2 reuses the slot with the PROVEN prompt-3-iter-2 architecture instead: a wide watercolour band across the TOP ~70% of the page (object-fit:cover, soft feather into the cream), and a COMPACT cream text band below, sized + large-fonted so a SHORT narrative (about 150 chars or fewer) FILLS it instead of leaving a big empty text area. Purpose: the SIMPLEST reading-level workhorse — 1 to 2 short board-book sentences per page that would read sparse on the 300-char workhorses (prompt-2/3/8). Type C (fixed config.textRegion + auto-fit). Auto-fit sizes the short text UP toward maxFontSize so a 46-char page reads as a big, warm line under a big illustration, not a lonely sentence in white space.",
   "selection_metadata": {
-    "summary": "Small contained watercolor vignette floating in upper portion of an otherwise blank cream page. Abundant cream framing on all sides. Short tender text centered below the vignette. Quiet, still, contemplative feel — for breath/pause beats.",
+    "summary": "A large illustration band on top with one or two SHORT lines of big, warm text on a compact cream strip below. For very short, simple, board-book narration — the text is set large so a brief sentence fills the page instead of reading sparse.",
     "max_narrative_chars": 150,
     "aesthetic_intent": [
-      "quiet",
-      "still",
-      "tender",
-      "reflective",
-      "pause",
-      "breath",
-      "contemplative"
+      "simple",
+      "board-book",
+      "very-short-text",
+      "young-reader",
+      "warm",
+      "gentle"
     ]
   },
   "typography": {
-    "fontFamily": "Architects Daughter",
-    "maxFontSize": 14,
-    "minFontSize": 10,
-    "lineHeight": 1.7,
-    "letterSpacing": "0.01em",
+    "fontFamily": "EB Garamond",
+    "maxFontSize": 32,
+    "minFontSize": 20,
+    "lineHeight": 1.45,
+    "letterSpacing": "0.005em",
     "color": "#3D2418",
-    "fontVariantNumeric": null
+    "fontVariantNumeric": "oldstyle-nums"
   },
   "regionDetection": null,
   "autoFit": {},
   "textRegion": {
-    "x": 0.25,
-    "y": 0.58,
-    "width": 0.5,
-    "height": 0.22
+    "x": 0.10,
+    "y": 0.735,
+    "width": 0.80,
+    "height": 0.19
   },
   "imageGeneration": {
-    "aspectRatio": "16:9",
-    "customCompositionRules": "single focal subject, intimate scale, calm posture, face clearly visible.",
-    "compositionPromptTemplate": "The image is a 1408×768 landscape frame, cropped at render to 1.29:1 (~15% trimmed from each horizontal edge), so critical scene content must sit within the CENTRAL 70% of frame width.\n\nCRITICAL LAYOUT — SMALL VIGNETTE, ABUNDANT CREAM: This is NOT a full-bleed illustration. This is NOT a half-page illustration. This is a SMALL CONTAINED WATERCOLOR VIGNETTE — significantly smaller than typical illustrations — floating in the upper-center of an otherwise blank cream page. The painted vignette occupies approximately 32% of frame width and 38% of frame height. The vignette is centered horizontally. The vignette's TOP edge sits approximately 10% down from the top of the frame; its BOTTOM edge sits approximately 48% down from the top of the frame. The bottom 52% of the frame is BLANK CREAM with nothing painted on it.\n\nTHE ABUNDANT CREAM SURROUND: The painted vignette is surrounded on ALL FOUR SIDES by BLANK CREAM PAPER — the exact cream of the page background, with nothing painted on it: no paint, no wash, no texture, no scene content, no ground, no shadow, no atmospheric extension. The cream extends above the vignette, below the vignette, and to the left and right of the vignette. This abundant cream is INTENTIONAL and ESSENTIAL — the cream framing the vignette IS the design, signalling a quiet, breathing, contemplative moment. Do NOT fill the cream zones with painted content. Do NOT extend the painted scene outside its vignette boundary. Do NOT paint atmospheric haze, ground, sky, or environmental extension into the cream. The emptiness is the point.\n\nTHE VIGNETTE EDGES: The vignette has soft, organic painted edges that bleed naturally into the cream paper on all four sides — irregular watercolor edges where wash absorbs into paper fiber. NOT a hard rectangle. NOT a hard circle. NOT a clean geometric shape. The edges are uneven, irregular, painterly — a wash that fades into cream on every side.\n\nTHE BLANK CREAM TEXT ZONE: The lower portion of the frame (roughly the bottom half) is BLANK CREAM — this is where the story text will be placed. Keep this zone entirely free of painted content.\n\nThe painted vignette: watercolor wash with visible pigment granulation, atmospheric, intimate. A single focal subject (the protagonist, or a small contained scene with the protagonist as focus). The vignette feels like a small jewel — a quiet, contained moment of stillness."
+    "customCompositionRules": "full body, clean uncluttered background, consistent framing, face clearly visible.",
+    "compositionPromptTemplate": "Paint a FULL watercolor scene that fills the frame edge to edge — do NOT leave any blank cream area inside the image. Full-bleed watercolour reaching all four edges of the frame: no cream or white border, no vignette, no floating spot-illustration, no framed inset. The painting bleeds off every edge.\n\nPLACEMENT: keep the protagonist and the main focal action in the UPPER TWO-THIRDS of the frame, roughly centred and generously sized. The BOTTOM THIRD of the frame is the calmest, least-detailed part of the composition — a soft, open wash such as quiet ground, calm water, or gentle foreground — with no faces, no key action, and no important objects there. This quiet lower band is purely a compositional choice for a restful, uncluttered foreground.\n\nDo not paint, letter, or write any text, letters, words, captions, numbers, or signage anywhere in the image.\n\nSTYLE: warm, friendly, storybook watercolor with visible pigment granulation and soft organic edges, an inviting picture-book moment for a very young reader."
   },
   "rendering": {
     "templateHtmlPath": "template.html",

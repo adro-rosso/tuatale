@@ -114,8 +114,12 @@ export function adaptOrderToPipelineInput(order) {
     // Optional custom dedication (front matter). null/blank → the auto-default
     // renders. Free text; the front-matter builder trims + caps + HTML-escapes it.
     dedicationMessage: order.dedication_message ?? null,
-    // ageRange is carried for completeness; generateStory does not read it, but
-    // it documents the bucket the integer age came from.
+    // Age BAND (the wizard AGE_RANGES enum). generateStory reads this to default
+    // the reading level losslessly (the integer child.age is a lossy midpoint).
     ageRange: order.age_range,
+    // Reading level (prose difficulty). Optional — the website/DB half adds the
+    // column; until then it is undefined and generateStory defaults from ageRange.
+    // A present value overrides the band default.
+    reading_level: order.reading_level ?? undefined,
   };
 }

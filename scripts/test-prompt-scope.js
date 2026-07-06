@@ -36,6 +36,9 @@ import {
   N4_COMPOSITION_SHAPES_RULE,
   SYSTEM_PROMPT_TEMPLATE,
   buildStorySchema,
+  READING_LEVELS,
+  resolveReadingLevel,
+  buildReadingLevelRulesBlock,
 } from "../src/anthropic.js";
 
 function assert(condition, message) {
@@ -296,6 +299,110 @@ console.log("Test 12 (Heritage) — HERITAGE AND BACKGROUND frame in CHARACTER D
   assert(/do not stereotype, caricature, or exaggerate/i.test(SYSTEM_PROMPT_TEMPLATE), "no-stereotype/caricature instruction present");
   assert(SYSTEM_PROMPT_TEMPLATE.includes("never reduce the child to a single trait"), "individual-first instruction present");
   console.log("  PASS (heritage frame: render faithfully + with dignity + no stereotype/caricature)");
+}
+
+// ---- Test 13 — Reading level: default mapping (band + age fallback) ----
+console.log();
+console.log("Test 13 (Reading level) — resolveReadingLevel: override → band → age fallback");
+{
+  // Explicit override wins.
+  assert(resolveReadingLevel({ reading_level: "advanced", ageRange: "3-5", age: 3 }) === "advanced",
+    "explicit reading_level must override band + age");
+  assert(resolveReadingLevel({ reading_level: "bogus", ageRange: "3-5" }) === "simplest",
+    "invalid reading_level must be ignored, fall through to band");
+  // Band mapping (lossless, preferred).
+  assert(resolveReadingLevel({ ageRange: "3-5" }) === "simplest", "band 3-5 → simplest");
+  assert(resolveReadingLevel({ ageRange: "5-7" }) === "standard", "band 5-7 → standard");
+  assert(resolveReadingLevel({ ageRange: "7-9" }) === "advanced", "band 7-9 → advanced");
+  // Lossy age-int fallback (no band).
+  assert(resolveReadingLevel({ age: 4 }) === "simplest", "age 4 → simplest");
+  assert(resolveReadingLevel({ age: 6 }) === "standard", "age 6 → standard");
+  assert(resolveReadingLevel({ age: 8 }) === "advanced", "age 8 → advanced");
+  // Nothing → standard (safe default).
+  assert(resolveReadingLevel({}) === "standard", "no signal → standard");
+  console.log("  PASS (override → band → age fallback precedence correct)");
+}
+
+// ---- Test 14 — Reading level: rules block per level (right one, not others) ----
+console.log();
+console.log("Test 14 (Reading level) — buildReadingLevelRulesBlock returns the correct level block");
+{
+  const simplest = buildReadingLevelRulesBlock("simplest");
+  const standard = buildReadingLevelRulesBlock("standard");
+  const advanced = buildReadingLevelRulesBlock("advanced");
+  assert(simplest.includes("READING LEVEL — SIMPLEST"), "simplest heading present");
+  assert(simplest.includes("40 to 140 characters"), "simplest char band present (floor relaxed to 40)");
+  assert(simplest.includes("never a bare fragment"), "simplest complete-sentence guard present");
+  assert(simplest.includes("bookends on the refrain"), "simplest refrain-bookend instruction present");
+  assert(!simplest.includes("ADVANCED"), "simplest block must not leak advanced content");
+  assert(standard.includes("READING LEVEL — STANDARD") && standard.includes("140 to 260 characters"),
+    "standard heading + char band present");
+  assert(advanced.includes("READING LEVEL — ADVANCED") && advanced.includes("200 to 300 characters"),
+    "advanced heading + char band present (200-300, reconciled with 300 template cap)");
+  assert(!advanced.includes("360"), "advanced must NOT reference the old 360-char band (would overflow templates)");
+  // Unknown level → standard (safe default), never throws.
+  assert(buildReadingLevelRulesBlock("bogus") === READING_LEVELS.standard.rules, "unknown level → standard block");
+  console.log("  PASS (each level returns its own block; advanced reconciled to <=300; unknown → standard)");
+}
+
+// ---- Test 15 — Reading level: schema narrative_text desc is level-conditioned ----
+console.log();
+console.log("Test 15 (Reading level) — buildStorySchema narrative_text description varies by level");
+{
+  const descFor = (lvl) =>
+    buildStorySchema([{ id: "prompt-3-iter-2" }], lvl).properties.scenes.items.properties.narrative_text.description;
+  assert(descFor("simplest").includes("1 to 2 short sentences"), "simplest schema desc: 1-2 short sentences");
+  assert(descFor("standard").includes("3 to 4 sentences"), "standard schema desc: 3-4 sentences");
+  assert(descFor("advanced").includes("4 to 5 sentences"), "advanced schema desc: 4-5 sentences");
+  // Backward compat: the 1-arg call still works and defaults to standard.
+  assert(buildStorySchema([{ id: "prompt-3-iter-2" }]).properties.scenes.items.properties.narrative_text.description
+    .includes("3 to 4 sentences"), "1-arg buildStorySchema defaults to standard");
+  // Dash ban still echoed regardless of level.
+  assert(/do not use em dashes/i.test(descFor("advanced")), "dash ban still present in level-conditioned desc");
+  console.log("  PASS (schema narrative_text desc is level-conditioned; 1-arg defaults to standard; dash ban intact)");
+}
+
+// ---- Test 16 — Reading level: placeholders resolve (no {{...}} left, age preserved) ----
+console.log();
+console.log("Test 16 (Reading level) — system prompt still carries the reading-level placeholders");
+{
+  // The template must carry the three placeholders so generateStory can fill them.
+  assert(SYSTEM_PROMPT_TEMPLATE.includes("{{AUDIENCE}}"), "{{AUDIENCE}} placeholder present");
+  assert(SYSTEM_PROMPT_TEMPLATE.includes("{{PROSE_LENGTH}}"), "{{PROSE_LENGTH}} placeholder present");
+  assert(SYSTEM_PROMPT_TEMPLATE.includes("{{READING_LEVEL_RULES}}"), "{{READING_LEVEL_RULES}} placeholder present");
+  // The old hard-coded audience/sentence strings must be GONE.
+  assert(!SYSTEM_PROMPT_TEMPLATE.includes("4-7-year-old"), "hard-coded '4-7-year-old' audience must be removed");
+  assert(!/reads aloud\. 3-5 sentences\./.test(SYSTEM_PROMPT_TEMPLATE), "hard-coded '3-5 sentences' prose length must be removed");
+  console.log("  PASS (placeholders present; hard-coded audience + sentence-count removed)");
+}
+
+// ---- Test 17 — Simplest FILL-template selection preference (rule 6) ----
+console.log();
+console.log("Test 17 (Step 2) — TEMPLATE SELECTION rule 6 steers SIMPLEST → prompt-7-iter-1");
+{
+  assert(SYSTEM_PROMPT_TEMPLATE.includes("READING-LEVEL LAYOUT"), "rule 6 heading present");
+  assert(/prompt-7-iter-1[\s\S]{0,120}(default|workhorse)/i.test(SYSTEM_PROMPT_TEMPLATE)
+    || /(default|workhorse)[\s\S]{0,120}prompt-7-iter-1/i.test(SYSTEM_PROMPT_TEMPLATE),
+    "rule 6 names prompt-7-iter-1 as the SIMPLEST default workhorse");
+  assert(SYSTEM_PROMPT_TEMPLATE.includes("only at the SIMPLEST reading level")
+    || SYSTEM_PROMPT_TEMPLATE.includes("ONLY at the SIMPLEST reading level"),
+    "rule 6 scopes the preference to SIMPLEST (STANDARD/ADVANCED ignore it)");
+  console.log("  PASS (rule 6 present, names the FILL template, scoped to SIMPLEST)");
+}
+
+// ---- Test 18 — prompt-7 FILL template is in the registry (reactivated) ----
+console.log();
+console.log("Test 18 (Step 2) — prompt-7-iter-1 reactivated in the template registry");
+{
+  const { loadTemplateRegistry } = await import("../src/template-registry.js");
+  const registry = await loadTemplateRegistry();
+  const p7 = registry.find((t) => t.id === "prompt-7-iter-1");
+  assert(p7, "prompt-7-iter-1 must be in the registry (deferred flag removed)");
+  assert(p7.selection_metadata.max_narrative_chars === 150, "prompt-7 cap is 150");
+  assert(p7.regionDetection === null && p7.autoFit !== null && p7.autoFit !== undefined,
+    "prompt-7 is Type C (no region detection + autoFit) — dependable banded, not the scrapped vignette");
+  assert(p7.textRegion && p7.textRegion.height <= 0.22, "prompt-7 uses a compact text band (fills, not sparse)");
+  console.log("  PASS (prompt-7 in registry, 150 cap, Type C, compact fill band)");
 }
 
 console.log();

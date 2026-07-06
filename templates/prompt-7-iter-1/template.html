@@ -2,124 +2,87 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>template — prompt-7-iter-1</title>
+<title>template — prompt-7-iter-1 (short-text FILL band)</title>
 
-<!-- Architects Daughter primary (consistent with prompt-3 — the hand-lettered
-     storybook voice). Patrick Hand + Caveat preloaded as fallbacks. -->
+<!-- EB Garamond — the same warm humanist serif as prompt-3 / the cover, so
+     a Simplest book set in this template matches the rest of the catalogue. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;500;600&family=Patrick+Hand&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
 
 <style>
   /* ---- Page size + reset ---------------------------------------------
-     Landscape letter. Cream #F0E8D8 (same as prompt-3 — consistency, and
-     this template depends heavily on the cream-paper feel since the
-     cream IS the design). No page margin — the image bleeds edge-to-edge
-     but the painted vignette inside the image is small and centered,
-     surrounded by cream-painted-by-Gemini that visually merges with the
-     CSS page cream. */
-  @page {
-    size: 11in 8.5in;
-    margin: 0;
-  }
+     Landscape letter. Solid cream page background — this guarantees the
+     text strip is clean cream regardless of the illustration (the proven
+     prompt-3-iter-2 architecture; the SCRAPPED v1 vignette relied on Gemini
+     painting the cream, which was unreliable). */
+  @page { size: 11in 8.5in; margin: 0; }
   html, body {
     margin: 0;
     padding: 0;
     width: 11in;
     height: 8.5in;
     overflow: hidden;
-    background-color: #F0E8D8;
+    background-color: #FAF9F0;
   }
 
-  .page {
-    position: relative;
-    width: 11in;
-    height: 8.5in;
-  }
+  .page { position: relative; width: 11in; height: 8.5in; }
 
-  /* ---- Image layer --------------------------------------------------
-     Fills the entire page (object-fit: cover). The image's INTERNAL
-     composition (small painted vignette in upper-center + abundant
-     blank cream painted by Gemini surrounding it) does the architectural
-     work. The Gemini cream merges visually with the CSS page cream
-     because both are #F0E8D8 — the painted vignette appears to float
-     on the cream page. */
+  /* ---- Image band (top 70%) -----------------------------------------
+     A LARGE illustration band — bigger than prompt-3's 64% — so a page with
+     only a short line or two of text still reads FULL: the image dominates
+     and the compact text band below is filled by big type. The lower edge
+     feathers into the cream so the painting melts into paper rather than
+     ending on a hard line. object-position:center top anchors the subject
+     (upper two-thirds of the source) and crops the calm bottom under the
+     feather. */
   .image-layer {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
-    height: 100%;
+    height: 70%;
   }
   .image-layer img {
     width: 100%;
     height: 100%;
-    /* Source 1408×768 (1.83:1) into page 792×612 (1.29:1) → cover scales
-       by height, cropping ~15% from each horizontal edge. The vignette
-       is composed in the source's central 70% (per composition prompt)
-       so survives the crop. */
     object-fit: cover;
-    object-position: center center;
+    object-position: center top;
     display: block;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 82%, transparent 100%);
+            mask-image: linear-gradient(to bottom, black 0%, black 82%, transparent 100%);
   }
 
   /* ---- Text layer (Type C — fixed config-declared box) --------------
      page-pipeline injects top/left/width/height from config.textRegion +
-     the auto-fit font-size at render time. Static values here are the
-     fallback matching config.textRegion {x:0.25, y:0.58, w:0.50, h:0.22}.
-     Narrower column than prompt-3 (50% vs 80%) — short tender text
-     reads better in a contained column. Higher up (y:0.58 vs y:0.70)
-     so text floats in the middle of the lower cream half, with 20% page
-     height of cream below (vs prompt-3's 5%) — explicitly applies the
-     prompt-3 center-align lesson, generous bottom breathing room. */
+     the auto-fit font-size via a !important dynamicCss block. The static
+     values below are fallbacks mirroring config.textRegion
+     {x:0.10, y:0.735, w:0.80, h:0.19} — a compact box in the bottom cream
+     strip (below the 70% image band). Flex-centers the short narrative so a
+     big single line or two sit centred in the band. The strip is solid cream
+     by construction, so no backdrop / halo is needed. */
   .text-layer {
     position: absolute;
-    top: 58%;
-    left: 25%;
-    width: 50%;
-    height: 22%;
+    top: 73.5%;
+    left: 10%;
+    width: 80%;
+    height: 19%;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-  /* ---- Text backdrop ------------------------------------------------
-     Feathered translucent cream behind the text — same pattern as
-     prompt-3. Invisible on clean cream (cream-on-cream); only becomes a
-     legibility aid if a painted element intrudes. Opacity 0.30 carried
-     forward from prompt-3 (tuned 2026-05-21). On this template the
-     vignette is well above the text region so intrusion is rare — but
-     the halo + backdrop are still defence-in-depth. */
-  .text-backdrop {
-    position: absolute;
-    inset: 0;
-    background-color: #F0E8D8;
-    opacity: 0.30;
-    z-index: 0;
-    -webkit-mask-image:
-      linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
-    -webkit-mask-composite: source-in;
-    mask-image:
-      linear-gradient(to right, transparent 0%, black 18%, black 82%, transparent 100%),
-      linear-gradient(to bottom, transparent 0%, black 22%, black 78%, transparent 100%);
-    mask-composite: intersect;
-  }
   .narrative {
-    position: relative;
-    z-index: 1;
-    font-family: "Architects Daughter", "Patrick Hand", "Caveat", cursive, serif;
-    /* 14pt — smaller than prompt-3's 16pt. Deliberately quieter, more
-       intimate; the smaller type reads as a hush, matching the design
-       intent. Auto-fit can drop to minFontSize 10pt if overflow. */
-    font-size: 14pt;
+    font-family: "EB Garamond", Garamond, "Times New Roman", serif;
+    /* Fallback size; Type C auto-fit injects the actual size (up to config
+       maxFontSize 32pt) so a short narrative fills the band at a big, warm
+       size instead of reading sparse. */
+    font-size: 30pt;
     font-weight: 400;
-    /* 1.7 line-height — extra air between lines vs prompt-3's 1.6,
-       matching the airy design. */
-    line-height: 1.7;
+    line-height: 1.45;
     color: #3D2418;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.005em;
+    font-variant-numeric: oldstyle-nums;
     text-align: center;
-    text-shadow: 0 0 5px #F0E8D8, 0 0 5px #F0E8D8, 0 0 3px #F0E8D8;
   }
 </style>
 </head>
@@ -129,7 +92,6 @@
       <img src="{{IMAGE_URL}}" alt="">
     </div>
     <div class="text-layer">
-      <div class="text-backdrop"></div>
       <div class="narrative">{{NARRATIVE_TEXT}}</div>
     </div>
   </div>

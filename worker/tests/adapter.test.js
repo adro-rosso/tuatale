@@ -129,12 +129,18 @@ describe("adaptOrderToPipelineInput", () => {
   it("maps child + theme + ageRange, empty secondaries → []", () => {
     const input = adaptOrderToPipelineInput({ ...baseOrder, secondaries: [] });
     expect(input).toEqual({
-      child: { name: "Elena", age: 5, gender: "girl", appearance: "wavy auburn hair, freckles, yellow rain boots" },
+      // background absent on this legacy order → null (heritage clause omitted).
+      child: { name: "Elena", age: 5, gender: "girl", appearance: "wavy auburn hair, freckles, yellow rain boots", background: null },
       secondaries: [],
       theme: "lost in the park",
       // art_style absent on this legacy order → defaults to watercolour (W-C).
       style: "watercolour",
+      // dedication_message absent → null (auto-default renders).
+      dedicationMessage: null,
       ageRange: "5-7",
+      // reading_level absent on this order → undefined (generateStory defaults
+      // from ageRange). toEqual ignores undefined, listed here for documentation.
+      reading_level: undefined,
     });
   });
 
