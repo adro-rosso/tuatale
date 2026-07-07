@@ -87,6 +87,20 @@ const INK_WASH_MEDIUM = {
   climaxClause: "Bold, clean ink linework over rich loose colour washes with atmospheric depth",
 };
 
+// Cut-paper (W-E, 2026-07-06). Expected HARDEST on likeness: torn-paper collage
+// reassembles the face from paper shapes per render, so a specific child may not
+// survive. Fills push the collage look; the page/sheet vocab carries the
+// keep-her-specific-features lever (as flat modern did — which failed the bar).
+const CUTPAPER_MEDIUM = {
+  medium: "cut-paper collage",
+  mediumUK: "cut-paper collage",
+  washWord: "paper texture",
+  styleTail: "cut-paper collage of layered torn and cut textured paper shapes with visible paper grain and hand-cut edges, in the tactile spirit of Eric Carle",
+  edgeDissolve: "a soft torn-paper edge fading at the border",
+  wetEdge: "a soft torn-paper edge",
+  climaxClause: "Bold layered cut-paper shapes with rich collage texture and strong graphic depth",
+};
+
 // Anti-vignette / edge-fill emphasis (W-E, 2026-07-06). WATERCOLOUR fills its
 // frame naturally via wet bleed; every OTHER medium (pencil, painterly, ink,
 // flat, cut-paper) tends to render a CONTAINED SPOT with bare paper around it, so
@@ -129,7 +143,11 @@ const INK_WASH = "INK-LINE-AND-WATERCOLOUR-WASH children's illustration — clea
 // panel — pencil/painterly don't, so they omit it).
 const INK_WASH_PAGE = `${INK_WASH}. ${EDGE_FILL_EMPHASIS} ${NO_FRAME_EMPHASIS}`;
 const FLAT = "warm modern FLAT illustration — clean flat colour fills with soft cel-shading, gentle linework, cosy palette, premium picture-book, clean defined edges";
-const CUTPAPER = "CUT-PAPER COLLAGE illustration — layered hand-painted textured paper shapes assembled into the figure, bold and tactile in the spirit of Eric Carle, visible paper texture and torn/cut edges";
+// Cut-paper (W-E). Distinct by default; the decisive risk is LIKENESS SURVIVAL —
+// the likeness lever lives in BOTH sheet + page vocab. Gets BOTH clauses (graphic
+// medium: anti-vignette + anti-drawn-border).
+const CUTPAPER = "CUT-PAPER COLLAGE children's illustration — the whole scene built from layered, torn and cut pieces of textured painted paper (in the tactile spirit of Eric Carle), with visible paper grain and hand-cut/torn edges. Keep the child's SPECIFIC features and likeness clearly recognizable and consistent — the exact hair shape and colour, face, skin tone, and outfit — a specific, individual child, NOT a generic paper-craft figure";
+const CUTPAPER_PAGE = `${CUTPAPER}. ${EDGE_FILL_EMPHASIS} ${NO_FRAME_EMPHASIS}`;
 
 export const ART_STYLES = {
   watercolour: {
@@ -142,7 +160,7 @@ export const ART_STYLES = {
   painterly: { sheet: PAINTERLY, page: PAINTERLY_PAGE, medium: PAINTERLY_MEDIUM },
   ink_wash: { sheet: INK_WASH, page: INK_WASH_PAGE, medium: INK_WASH_MEDIUM },
   flat_modern: { sheet: FLAT, page: FLAT },
-  cutpaper: { sheet: CUTPAPER, page: CUTPAPER },
+  cutpaper: { sheet: CUTPAPER, page: CUTPAPER_PAGE, medium: CUTPAPER_MEDIUM },
 };
 
 export const DEFAULT_STYLE = "watercolour";
