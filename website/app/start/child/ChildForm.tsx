@@ -25,6 +25,9 @@ interface ChildFormProps {
   initial: ChildFormValues;
   /** Art style chosen in the prior step — the live character preview renders in it. */
   artStyle: string;
+  /** Current draft id — required for the preview cost-control attribution
+   *  (requestPreview blocks a null draftId). Threaded from the child page. */
+  draftId: string | null;
 }
 
 const initialState: SubmitChildState = { errors: {} };
@@ -44,7 +47,7 @@ function ageFromRange(range: string): number {
   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
 
-export function ChildForm({ initial, artStyle }: ChildFormProps) {
+export function ChildForm({ initial, artStyle, draftId }: ChildFormProps) {
   const [state, formAction, isPending] = useActionState(submitChildStep, initialState);
   const errors = state.errors;
   const fieldValue = (k: keyof ChildFormValues): string => state.values?.[k] ?? initial[k] ?? '';
@@ -175,7 +178,7 @@ export function ChildForm({ initial, artStyle }: ChildFormProps) {
                 freeText={appearance || undefined}
                 background={background || undefined}
                 artStyle={artStyle}
-                draftId={null}
+                draftId={draftId}
               />
             ) : (
               <div className="space-y-md">

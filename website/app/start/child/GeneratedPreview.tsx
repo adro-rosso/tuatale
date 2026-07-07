@@ -16,7 +16,11 @@ import type { RequestPreviewInput } from '@/lib/preview/types';
 import { PreviewProgress } from './PreviewProgress';
 
 const POLL_MS = 1500;
-const TIMEOUT_MS = 75_000;
+// Must exceed the worker's PREVIEW image budget (fail-fast + retry + 2× hedge,
+// ~135s ceiling in src/gemini.js) so the UI never bails MID-RETRY. The worker
+// marks the row done/failed at the real outcome; this is just the fallback for a
+// worker that never updates the row. (2026-07-07)
+const TIMEOUT_MS = 150_000;
 
 type Phase = 'idle' | 'generating' | 'done' | 'failed';
 
@@ -65,7 +69,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
       const poll = async () => {
         if (Date.now() - startedAt > TIMEOUT_MS) {
           setPhase('failed');
-          setError('That one got stuck. Try again. (You haven’t been charged.)');
+          setError('Our art engine is busy right now — give it another try in a moment. (You haven’t been charged.)');
           return;
         }
         try {
@@ -78,7 +82,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
           }
           if (s.status === 'failed') {
             setPhase('failed');
-            setError('That one got stuck. Try again. (You haven’t been charged.)');
+            setError('Our art engine is busy right now — give it another try in a moment. (You haven’t been charged.)');
             return;
           }
         } catch {

@@ -19,6 +19,7 @@ export default async function ChildStepPage() {
   return (
     <ChildForm
       artStyle={artStyle}
+      draftId={draft?.id ?? null}
       initial={{
         name: draft?.child_name ?? '',
         age_range: draft?.age_range ?? '',
