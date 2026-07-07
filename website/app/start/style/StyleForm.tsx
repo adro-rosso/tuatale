@@ -95,8 +95,9 @@ export function StyleForm({ initial }: StyleFormProps) {
                   onLoad={(e) => sampleCorner(opt.value, e.currentTarget)}
                   className="h-full w-full object-cover"
                 />
-                {/* MIN-SAFE: preview-only styles are previewable but not yet
-                    purchasable (only watercolour is book-grade until W-E). */}
+                {/* Preview-only styles are previewable but not purchasable. As of
+                    2026-07-06 only flat_modern remains preview-only (the flat idiom
+                    can't hold the child's specific likeness — see art-style-options). */}
                 {!opt.purchasable && (
                   <span className="bg-near-black/70 px-xs py-3xs absolute right-1 top-1 rounded font-body text-[10px] uppercase tracking-wide text-cream">
                     Preview only

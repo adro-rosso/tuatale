@@ -16,10 +16,13 @@ export interface ArtStyleOption {
   label: string;
   blurb: string;
   /**
-   * MIN-SAFE rollout (W-E gate): only watercolour is book-grade today, so it is
-   * the only PURCHASABLE style. The other five are previewable-but-not-purchasable
-   * until their per-style page-vocab is tuned (W-E, needs real gens). Visitors can
-   * preview any style; checkout is gated to purchasable ones (create-checkout-session).
+   * W-E rollout gate: a style is PURCHASABLE once its per-style page-vocab is
+   * tuned + validated on a full book and shipped to the worker. As of 2026-07-06
+   * five are purchasable (watercolour, coloured_pencil, painterly, ink_wash,
+   * cutpaper); flat_modern stays previewable-but-not-purchasable (the flat idiom
+   * genericizes the child's face at the sheet stage — likeness can't survive).
+   * Visitors can preview any style; checkout is gated to purchasable ones
+   * (create-checkout-session).
    */
   purchasable: boolean;
 }
@@ -36,7 +39,11 @@ export const STYLE_OPTIONS: ReadonlyArray<ArtStyleOption> = [
   // NO_FRAME_EMPHASIS shipped to the worker (f037d45), validated on a full book.
   { value: 'ink_wash', label: 'Ink & Wash', blurb: 'Loose linework, atmospheric washes.', purchasable: true },
   { value: 'flat_modern', label: 'Flat Modern', blurb: 'Clean shapes, bold modern flats.', purchasable: false },
-  { value: 'cutpaper', label: 'Cut-Paper Collage', blurb: 'Layered paper, playful texture.', purchasable: false },
+  // cutpaper flipped purchasable 2026-07-06 (W-E): cut-paper medium fills + BOTH
+  // EDGE_FILL_EMPHASIS + NO_FRAME_EMPHASIS + likeness lever shipped to the worker
+  // (0befd3c), validated on a full 12-page book — face stayed smooth-rendered +
+  // specific on all 12 despite the collage medium.
+  { value: 'cutpaper', label: 'Cut-Paper Collage', blurb: 'Layered paper, playful texture.', purchasable: true },
 ];
 
 /** Whether a style value may be PURCHASED (not just previewed). Unknown → false. */
@@ -51,9 +58,9 @@ export function styleThumb(value: string): string {
 
 // Styles with a rendered EXAMPLE PAGE for the picker — the purchasable, page-vocab-
 // tuned styles. Kept explicit (not derived from `purchasable`) so a future flip can't
-// reference a sample asset that hasn't been harvested yet. The 4 preview-only styles
-// show only their swatch until each is tuned + shipped.
-export const STYLES_WITH_SAMPLE = ['watercolour', 'coloured_pencil', 'painterly', 'ink_wash'] as const;
+// reference a sample asset that hasn't been harvested yet. The preview-only style
+// (flat_modern) shows only its swatch.
+export const STYLES_WITH_SAMPLE = ['watercolour', 'coloured_pencil', 'painterly', 'ink_wash', 'cutpaper'] as const;
 
 /** Whether the style has an example-page asset to show in the picker. */
 export function hasStyleSample(value: string): boolean {
