@@ -51,25 +51,19 @@ setGlobalDispatcher(
 // below uses to decide what's retryable.
 const ai = new GoogleGenAI({ apiKey });
 
-// Selective retry policy:
+// Base retry policy (SDK error shapes):
 //   - Retry on 5xx (500, 502, 503, 504) — transient Google-side failures.
 //   - Retry on fast network errors (ECONNRESET, ETIMEDOUT) — quick to discover.
-//   - Retry ONCE on slow undici timeouts — they already burned 10 min each;
-//     two retries would push worst-case wall time past 30 min per call.
-//   - Do NOT retry on 429 — that's our pacing problem and we want it visible.
+//   - Retry ONCE on slow undici timeouts.
+//   - Do NOT retry 429 RESOURCE_EXHAUSTED — credits/pacing; fail-fast and let it
+//     surface (D2 fatal-stop classifies it as blocked-on-credits).
 const RETRYABLE_5XX = [500, 502, 503, 504];
 const FAST_NETWORK_CODES = ["ECONNRESET", "ETIMEDOUT"];
 const SLOW_TIMEOUT_CODES = ["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"];
-
-// Backoff schedules — list length = max retries for that category.
 const BACKOFF_CHEAP = [5000, 15000];   // 5xx + fast network: 2 retries
 const BACKOFF_AFTER_TIMEOUT = [10000]; // slow timeouts + "fetch failed": 1 retry
 
-/**
- * Classify an error into a retry category. Returns null if not retryable
- * (e.g. 429, 4xx other than 408, validation errors, unknown shapes).
- */
-function classifyError(err) {
+function baseClassify(err) {
   const status = err instanceof ApiError ? err.status : null;
   if (status !== null && RETRYABLE_5XX.includes(status)) {
     return { reason: `${status} from Google`, backoffs: BACKOFF_CHEAP };
@@ -81,22 +75,113 @@ function classifyError(err) {
   if (code && SLOW_TIMEOUT_CODES.includes(code)) {
     return { reason: `network error (${code})`, backoffs: BACKOFF_AFTER_TIMEOUT };
   }
-  // Catch-all for any other "fetch failed" — treat as a slow timeout because
-  // we can't tell how much wall time it already burned.
   if (typeof err?.message === "string" && err.message.includes("fetch failed")) {
-    return {
-      reason: `network error (${code ?? "fetch failed"})`,
-      backoffs: BACKOFF_AFTER_TIMEOUT,
-    };
+    return { reason: `network error (${code ?? "fetch failed"})`, backoffs: BACKOFF_AFTER_TIMEOUT };
   }
-  return null;
+  return null; // 429 and everything else: not retryable → fail-fast
 }
 
-// Thin adapter that binds Gemini's classifyError to the shared wall-ceiling
-// runner. Kept as a local function so existing call sites (generateImage)
-// don't need to know about classifyError plumbing.
-function callWithRetry(fn, callContext = {}) {
-  return sharedCallWithRetry(fn, callContext, classifyError);
+// ---- Fail-fast + retry + hedge (2026-07-07) --------------------------------
+// The Gemini image API periodically STALLS: a call hangs with no response until
+// the 300s wall ceiling, turning a transient blip into a hard failure. We add a
+// PER-ATTEMPT timeout that aborts a hung call fast (via the SDK abortSignal) and
+// retries WITHIN the same wall ceiling — so a brief stall recovers instead of
+// failing. wall-ceiling.js is untouched: the per-attempt abort lives here in the
+// thunk, and its timeout is just another retryable error class.
+//
+// Parameterized per caller so the BOOK reliability contract is preserved:
+//   - BOOK retries stay inside the shared 300s ceiling (no wallCeilingMs override),
+//     and timeoutBackoffs is long enough that the CEILING — not backoff exhaustion
+//     — terminates a SUSTAINED outage → the bubbled error stays a WallCeilingError
+//     (→ D2 fatal-stop + R3 resume, unchanged). Only BRIEF stalls now recover.
+//   - 429 is never retried (baseClassify → null); D2 still sees the 429 → fatal.
+//   - PREVIEW is aggressive: short attempts, more retries, a lower ceiling, and a
+//     2× HEDGE (parallel branches, first success wins). Hedge is PREVIEW-ONLY.
+class AttemptTimeoutError extends Error {
+  constructor(ms) { super(`attempt exceeded ${Math.round(ms / 1000)}s per-attempt timeout (hang)`); this.name = "AttemptTimeoutError"; this.isAttemptTimeout = true; }
+}
+class HedgeCancelledError extends Error {
+  constructor() { super("hedge branch cancelled (a sibling attempt won)"); this.name = "HedgeCancelledError"; this.isHedgeCancelled = true; }
+}
+
+const RETRY_PROFILES = {
+  // perAttemptMs: abort one attempt after this long → retry.
+  // timeoutBackoffs: retry schedule for per-attempt timeouts (list length = max retries).
+  // wallCeilingMs: PREVIEW lowers it (fail-fast interactive path); BOOK omits it → shared 300s.
+  // hedge: parallel branches (PREVIEW only; 1 = no hedge).
+  preview: { perAttemptMs: 45_000, timeoutBackoffs: [1000, 1000, 1000], wallCeilingMs: 135_000, hedge: 2 },
+  book:    { perAttemptMs: 70_000, timeoutBackoffs: [1500, 1500, 1500, 1500, 1500, 1500], hedge: 1 },
+};
+function profileFor(callKind) {
+  return callKind === "preview_mint" ? RETRY_PROFILES.preview : RETRY_PROFILES.book;
+}
+
+function isCreditError(err) {
+  const status = (err instanceof ApiError ? err.status : null) ?? err?.status ?? err?.last_error?.status ?? null;
+  return status === 429 || (typeof err?.message === "string" && err.message.includes("RESOURCE_EXHAUSTED"));
+}
+
+function buildRequest(prompt, referenceImages, options) {
+  const parts = [
+    { text: prompt },
+    ...referenceImages.map((buf) => ({ inlineData: { data: buf.toString("base64"), mimeType: "image/png" } })),
+  ];
+  const config = { responseModalities: [Modality.IMAGE] };
+  if (options.aspectRatio) config.imageConfig = { aspectRatio: options.aspectRatio };
+  return { parts, config };
+}
+
+function extractImage(response) {
+  const responseParts = response?.candidates?.[0]?.content?.parts ?? [];
+  const imagePart = responseParts.find((p) => p.inlineData?.data);
+  if (!imagePart) {
+    const blockReason = response?.promptFeedback?.blockReason;
+    throw new Error(
+      `No image returned from Gemini.${blockReason ? ` Prompt was blocked: ${blockReason}.` : ""} ` +
+      `Response parts received: ${responseParts.map((p) => Object.keys(p).join("|")).join(", ") || "none"}.`
+    );
+  }
+  return Buffer.from(imagePart.inlineData.data, "base64");
+}
+
+// One generation branch: per-attempt fail-fast + retry inside the wall ceiling.
+// externalSignal (hedge) aborts this branch when a sibling wins → non-retryable.
+async function generateBranch(prompt, referenceImages, options, callContext, deps, externalSignal) {
+  const { parts, config } = buildRequest(prompt, referenceImages, options);
+  const profile = profileFor(callContext.callKind);
+  const perAttemptMs = callContext.perAttemptTimeoutMs ?? profile.perAttemptMs;
+  const genContent = deps.generateContent ?? ((args) => ai.models.generateContent(args));
+
+  const thunk = () => {
+    const ac = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ac.abort(); }, perAttemptMs);
+    const onExternal = () => ac.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) ac.abort();
+      else externalSignal.addEventListener("abort", onExternal, { once: true });
+    }
+    return genContent({ model: MODEL, contents: parts, config: { ...config, abortSignal: ac.signal } })
+      .catch((err) => {
+        if (timedOut) throw new AttemptTimeoutError(perAttemptMs);
+        if (externalSignal?.aborted) throw new HedgeCancelledError();
+        throw err;
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        if (externalSignal) externalSignal.removeEventListener("abort", onExternal);
+      });
+  };
+
+  const classify = (err) => {
+    if (err?.isHedgeCancelled) return null;                                       // cancelled loser: stop
+    if (err?.isAttemptTimeout) return { reason: "per-attempt timeout (hang)", backoffs: profile.timeoutBackoffs };
+    return baseClassify(err);                                                     // 429 → null (fail-fast)
+  };
+
+  const ctx = { ...callContext, wallCeilingMs: callContext.wallCeilingMs ?? profile.wallCeilingMs };
+  const response = await sharedCallWithRetry(thunk, ctx, classify);
+  return extractImage(response);
 }
 
 /**
@@ -120,59 +205,34 @@ function callWithRetry(fn, callContext = {}) {
  *   (structured WallCeilingError after 5min) and to wire status.json
  *   slow_call + retry events. Omitted = ceiling still enforced, but the
  *   structured error has minimal context and no status events fire.
+ * @param {object} [deps] - Test seam: { generateContent } overrides the SDK
+ *   call so retry/hedge behaviour can be exercised without hitting Google.
  * @returns {Promise<Buffer>} The generated PNG as raw bytes, ready to be
  *   written to disk with fs.writeFileSync(path, buffer).
  */
-export async function generateImage(prompt, referenceImages = [], options = {}, callContext = {}) {
-  // Build the multimodal `contents` array. Each entry is a "Part" — either
-  // a text part or an inlineData part wrapping a base64-encoded image.
-  // We put the text first, then any reference images.
-  const parts = [
-    { text: prompt },
-    ...referenceImages.map((buf) => ({
-      inlineData: {
-        data: buf.toString("base64"),
-        mimeType: "image/png",
-      },
-    })),
-  ];
+export async function generateImage(prompt, referenceImages = [], options = {}, callContext = {}, deps = {}) {
+  const profile = profileFor(callContext.callKind);
 
-  const requestConfig = {
-    // Image-capable models can return text OR images. Without this line,
-    // the model sometimes returns a description of what it would have drawn
-    // instead of the image itself.
-    responseModalities: [Modality.IMAGE],
-  };
-  if (options.aspectRatio) {
-    requestConfig.imageConfig = { aspectRatio: options.aspectRatio };
+  // PREVIEW: hedge — N parallel branches, first success wins, cancel the losers.
+  // Never used for book pages (book profile hedge = 1).
+  if (profile.hedge > 1) {
+    const controllers = Array.from({ length: profile.hedge }, () => new AbortController());
+    const branches = controllers.map((ac) =>
+      generateBranch(prompt, referenceImages, options, callContext, deps, ac.signal));
+    branches.forEach((p) => p.catch(() => {})); // swallow post-win loser rejections (no unhandledRejection)
+    try {
+      const winner = await Promise.any(branches);
+      controllers.forEach((ac) => ac.abort()); // cancel the losing branches
+      return winner;
+    } catch (agg) {
+      const errs = agg?.errors ?? [agg];
+      const credit = errs.find(isCreditError);            // fail-fast on credits: surface "top up"
+      if (credit) throw credit;
+      const real = errs.find((e) => !(e instanceof HedgeCancelledError));
+      throw real ?? errs[0];
+    }
   }
 
-  const response = await callWithRetry(
-    () => ai.models.generateContent({
-      model: MODEL,
-      contents: parts,
-      config: requestConfig,
-    }),
-    callContext,
-  );
-
-  // Pull the image out of the response. Shape:
-  //   response.candidates[0].content.parts[] -> mix of { text } and { inlineData }
-  // We want the first inlineData part (the PNG).
-  const responseParts = response?.candidates?.[0]?.content?.parts ?? [];
-  const imagePart = responseParts.find((p) => p.inlineData?.data);
-
-  if (!imagePart) {
-    // Surface diagnostics without leaking the prompt or any secret.
-    const blockReason = response?.promptFeedback?.blockReason;
-    throw new Error(
-      `No image returned from Gemini.${blockReason ? ` Prompt was blocked: ${blockReason}.` : ""} ` +
-      `Response parts received: ${
-        responseParts.map((p) => Object.keys(p).join("|")).join(", ") || "none"
-      }.`
-    );
-  }
-
-  // Decode the base64 payload to a Node Buffer.
-  return Buffer.from(imagePart.inlineData.data, "base64");
+  // BOOK / default: a single fail-fast+retry branch inside the 300s ceiling.
+  return generateBranch(prompt, referenceImages, options, callContext, deps, null);
 }
