@@ -20,6 +20,7 @@ import puppeteer from "puppeteer";
 import { fitTextToRegion } from "./auto-fit.js";
 import { maskName } from "./text-utils.js";
 import { generateImage as realGenerateImage } from "./gemini.js";
+import { pickTitleColor } from "./cover-title-color.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.join(__dirname, "..", "templates");
@@ -35,15 +36,13 @@ function escHtml(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// ---- Generic single-page Puppeteer render (shared by cover + front matter) --
-// Substitutes {{KEY}} placeholders from `subs` (HTML-escaped) into the
-// template, then prints a one-page PDF + a screenshot PNG. Mirrors
+// ---- Generic single-page Puppeteer render ---------------------------------
+// Prints a one-page PDF + a screenshot PNG from a full HTML string. Mirrors
 // page-pipeline's renderPdfWithDynamicCss launch flags (PUPPETEER_LAUNCH_ARGS
-// for --no-sandbox on Fly) + per-render temp-html hygiene.
-export async function renderTemplatePage({ templateHtmlPath, pageSize, subs, outputDir, outName, rawSubs = {} }) {
-  let html = fs.readFileSync(templateHtmlPath, "utf8");
-  for (const [k, v] of Object.entries(subs)) html = html.replaceAll(`{{${k}}}`, escHtml(v));
-  for (const [k, v] of Object.entries(rawSubs)) html = html.replaceAll(`{{${k}}}`, String(v)); // pre-escaped / numeric
+// for --no-sandbox on Fly) + per-render temp-html hygiene. Shared by the
+// {{KEY}}-substitution front-matter pages (renderTemplatePage) AND the cover
+// builders (which assemble their HTML in-code rather than from a disk template).
+export async function renderHtmlToPdf({ html, pageSize, outputDir, outName }) {
   const tmp = path.join(os.tmpdir(), `daboo-fm-${crypto.randomUUID()}.html`);
   fs.writeFileSync(tmp, html, "utf8");
 
@@ -70,6 +69,15 @@ export async function renderTemplatePage({ templateHtmlPath, pageSize, subs, out
     try { fs.unlinkSync(tmp); } catch {}
   }
   return { pdfPath, pngPath };
+}
+
+// Substitutes {{KEY}} placeholders from `subs` (HTML-escaped) + `rawSubs`
+// (pre-escaped / numeric) into a disk template, then renders it.
+export async function renderTemplatePage({ templateHtmlPath, pageSize, subs, outputDir, outName, rawSubs = {} }) {
+  let html = fs.readFileSync(templateHtmlPath, "utf8");
+  for (const [k, v] of Object.entries(subs)) html = html.replaceAll(`{{${k}}}`, escHtml(v));
+  for (const [k, v] of Object.entries(rawSubs)) html = html.replaceAll(`{{${k}}}`, String(v));
+  return renderHtmlToPdf({ html, pageSize, outputDir, outName });
 }
 
 function loadTemplate(dir) {
@@ -108,25 +116,125 @@ export async function renderFrontMatterPage({ kind, subs, outputDir, outName }) 
 }
 
 // ---- Cover (the one paid piece) --------------------------------------------
-// Render a Variant-C cover from a hero image: auto-fit the title into the panel
-// (interior's fitTextToRegion), substitute, render. (src-side twin of
-// scripts/render-cover.mjs so the worker can call it.)
-export async function renderCoverPage({ title, subtitle, imagePath, outputDir, outName = "cover" }) {
-  const { config, htmlPath } = loadTemplate("cover-iter-1");
-  const pageWpt = parseInches(config.rendering.pageSize.width) * 72;
-  const pageHpt = parseInches(config.rendering.pageSize.height) * 72;
-  const t = config.typography;
+// Cover typography redesign (2026-07-07). Two title treatments, selectable per
+// cover via `coverTitleStyle` (the review-UI toggle will drive this later):
+//   'integrated' (default) — HYBRID: a warm chunky Fredoka title sitting on the
+//       hero's reserved calm zone over a SOFTENED gradient scrim (darkens the
+//       art as little as possible while guaranteeing title contrast on any hero).
+//       titleColor 'auto' (DEFAULT) samples the hero's title zone → espresso on a
+//       light zone, cream on a dark/ambiguous one (cover-title-color.js). 'cream'
+//       (soft dark scrim, any hero) and 'espresso' (soft light scrim, light zones
+//       only) force a fixed colour; cream is the fallback within 'auto'.
+//   'band' — the redesigned Treatment-C: an inset rounded cream "plate" (soft
+//       shadow, not a flat full-width rectangle) with the same warm Fredoka.
+// Both replace the old thin EB-Garamond serif. "for {name}" is the smallest
+// element; "A Tuatale Book" is a legible mark (bottom colophon on integrated,
+// inside the plate on band). Titles hand-balanced to <=2 lines (no orphans).
+const COVER_PAGE_SIZE = { width: "11in", height: "8.5in" };
+const TUATALE_MARK = "A Tuatale Book";
+const COVER_FONTS_LINK =
+  `<link rel="preconnect" href="https://fonts.googleapis.com">` +
+  `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>` +
+  `<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&family=Nunito:ital,wght@0,700;1,600&display=swap" rel="stylesheet">`;
+const COVER_BASE_CSS = `
+  @page { size: 11in 8.5in; margin: 0; }
+  html,body{margin:0;padding:0;width:11in;height:8.5in;overflow:hidden;background:#FAF9F0;}
+  .cover{position:relative;width:11in;height:8.5in;}
+  .hero{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center center;display:block;}`;
+
+// Balance a title into <=2 lines at the word boundary minimising the two lines'
+// character-count difference — avoids an orphan trailing word. Titles of <=3
+// words stay on one line.
+export function balanceTitleLines(title) {
+  const words = String(title ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length <= 3) return [words.join(" ")];
+  let best = { i: 1, diff: Infinity };
+  for (let i = 1; i < words.length; i++) {
+    const left = words.slice(0, i).join(" ");
+    const right = words.slice(i).join(" ");
+    const diff = Math.abs(left.length - right.length);
+    if (diff < best.diff) best = { i, diff };
+  }
+  return [words.slice(0, best.i).join(" "), words.slice(best.i).join(" ")];
+}
+
+// Largest Fredoka size at which the longest balanced line fits the title band
+// width. measureText loads Fredoka@400 (a touch narrower than the rendered 700),
+// so the region is already kept conservative by the caller.
+async function fitCoverTitleSize(lines, { maxFontSize, minFontSize, regionWidthPt }) {
+  const longest = lines.reduce((a, b) => (a.length >= b.length ? a : b), "");
   const fit = await fitTextToRegion({
-    text: title,
-    region: { width: config.titleRegion.widthFrac * pageWpt, height: config.titleRegion.heightFrac * pageHpt },
-    fontFamily: t.fontFamily, lineHeight: t.lineHeight, maxFontSize: t.maxFontSize, minFontSize: t.minFontSize, letterSpacing: t.letterSpacing,
+    text: longest,
+    region: { width: regionWidthPt, height: maxFontSize * 2 },
+    fontFamily: "Fredoka", lineHeight: 1.0, maxFontSize, minFontSize, letterSpacing: "0",
   });
-  const fontSize = fit.fits ? fit.fontSize : t.minFontSize;
-  return renderTemplatePage({
-    templateHtmlPath: htmlPath, pageSize: config.rendering.pageSize, outputDir, outName,
-    subs: { TITLE: title, SUBTITLE: subtitle },
-    rawSubs: { IMAGE_URL: pathToFileURL(imagePath).href, TITLE_FONT_SIZE: fontSize },
-  });
+  return fit.fits ? fit.fontSize : minFontSize;
+}
+
+function buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleColor }) {
+  const cream = titleColor !== "espresso";
+  // Softened vs prototype B: peak opacity ~0.46 (was 0.66), feathered to nothing.
+  const scrim = cream
+    ? "linear-gradient(to top, rgba(18,12,6,0.46) 0%, rgba(18,12,6,0.30) 26%, rgba(18,12,6,0.10) 58%, rgba(18,12,6,0) 100%)"
+    : "linear-gradient(to top, rgba(250,246,235,0.62) 0%, rgba(250,246,235,0.42) 28%, rgba(250,246,235,0.12) 62%, rgba(250,246,235,0) 100%)";
+  const titleCol = cream ? "#FBF3E1" : "#2B1A0D";
+  const titleShadow = cream
+    ? "0 1px 3px rgba(0,0,0,.55),0 2px 12px rgba(0,0,0,.38)"
+    : "0 1px 2px rgba(255,252,244,.65),0 2px 10px rgba(255,252,244,.45)";
+  const nameCol = cream ? "#ECDCBF" : "#6E4A2C";
+  const markCol = cream ? "#F3E7CE" : "#5A3D24";
+  const softShadow = cream ? "0 1px 3px rgba(0,0,0,.5)" : "0 1px 2px rgba(255,252,244,.6)";
+  // The colophon can sit on a very light lower zone (soft scrim barely darkens it),
+  // where a light cream mark goes faint. Give it a stronger dark outline-glow so it
+  // reads on ANY hero (2026-07-07 colophon fix); espresso keeps a light halo.
+  const markShadow = cream ? "0 1px 2px rgba(0,0,0,.72),0 0 7px rgba(0,0,0,.5)" : "0 1px 2px rgba(255,252,244,.65)";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${COVER_FONTS_LINK}<style>${COVER_BASE_CSS}
+  .scrim{position:absolute;left:0;right:0;bottom:0;height:42%;background:${scrim};}
+  .lower{position:absolute;left:7%;right:7%;bottom:0.66in;text-align:center;}
+  .title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:${fontSizePt}pt;line-height:1.0;margin:0;color:${titleCol};text-shadow:${titleShadow};}
+  .forname{font-family:'Nunito',sans-serif;font-style:italic;font-weight:600;font-size:15pt;margin:0.15in 0 0;color:${nameCol};text-shadow:${softShadow};}
+  .mark{position:absolute;left:0;right:0;bottom:0.32in;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:11.5pt;letter-spacing:0.32em;text-transform:uppercase;color:${markCol};text-shadow:${markShadow};}
+  </style></head><body><div class="cover">
+    <img class="hero" src="${heroUrl}" alt="">
+    <div class="scrim"></div>
+    <div class="lower"><h1 class="title">${linesHtml}</h1><p class="forname">for ${escHtml(name)}</p></div>
+    <div class="mark">${TUATALE_MARK}</div>
+  </div></body></html>`;
+}
+
+function buildBandCoverHtml({ heroUrl, linesHtml, name, fontSizePt }) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">${COVER_FONTS_LINK}<style>${COVER_BASE_CSS}
+  .plate{position:absolute;left:8%;right:8%;bottom:0.44in;padding:0.24in 0.5in 0.32in;text-align:center;background:linear-gradient(to bottom, rgba(248,242,227,0.975), rgba(242,233,212,0.975));border-radius:26px;box-shadow:0 12px 34px rgba(44,30,14,.30),0 2px 7px rgba(44,30,14,.20);}
+  .mark{font-family:'Nunito',sans-serif;font-weight:700;font-size:11pt;letter-spacing:0.32em;text-transform:uppercase;color:#A2825F;margin:0 0 0.08in;}
+  .title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:${fontSizePt}pt;line-height:1.0;margin:0;color:#2B1A0D;}
+  .forname{font-family:'Nunito',sans-serif;font-style:italic;font-weight:600;font-size:13pt;margin:0.1in 0 0;color:#7A5636;}
+  </style></head><body><div class="cover">
+    <img class="hero" src="${heroUrl}" alt="">
+    <div class="plate"><div class="mark">${TUATALE_MARK}</div><h1 class="title">${linesHtml}</h1><p class="forname">for ${escHtml(name)}</p></div>
+  </div></body></html>`;
+}
+
+export async function renderCoverPage({ title, name, imagePath, outputDir, outName = "cover", coverTitleStyle = "integrated", titleColor = "auto", subtitle = null }) {
+  // Backward-compat: older callers passed subtitle "A story for X" — derive name.
+  if (!name && subtitle) {
+    const m = /for\s+(.+?)\.?$/i.exec(subtitle);
+    name = m ? m[1].trim() : subtitle;
+  }
+  const lines = balanceTitleLines(title);
+  const linesHtml = lines.map(escHtml).join("<br>");
+  const pageWpt = parseInches(COVER_PAGE_SIZE.width) * 72;
+  const isBand = coverTitleStyle === "band";
+  const maxFontSize = isBand ? 50 : 54;
+  const regionWidthPt = pageWpt * (isBand ? 0.80 : 0.82);
+  const fontSizePt = await fitCoverTitleSize(lines, { maxFontSize, minFontSize: 28, regionWidthPt });
+  const heroUrl = pathToFileURL(imagePath).href;
+  // 'auto' → sample the hero's title zone and pick espresso (light) / cream (dark
+  // or ambiguous). Default stays the locked 'cream'. Ignored for the band path.
+  const resolvedColor = titleColor === "auto" ? await pickTitleColor(imagePath) : titleColor;
+  const html = isBand
+    ? buildBandCoverHtml({ heroUrl, linesHtml, name, fontSizePt })
+    : buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleColor: resolvedColor });
+  return renderHtmlToPdf({ html, pageSize: COVER_PAGE_SIZE, outputDir, outName });
 }
 
 // Generate the cover hero image (~$0.04). Reuses the SAME reference sheets the
@@ -161,12 +269,14 @@ export async function generateCoverHero({ story, childName, childAge, sheets }, 
  * Deps injectable for tests/preview ($0): pass a stub generateImage, or
  * withCover:false + a coverImagePath to reuse an existing hero (the harness path).
  */
-export async function assembleFrontMatter({ story, childName, childAge, sheets, generatedAtIso, dedicationMessage = null, outputDir, withCover = true, coverImagePath = null }, deps = {}) {
+export async function assembleFrontMatter({ story, childName, childAge, sheets, generatedAtIso, dedicationMessage = null, outputDir, withCover = true, coverImagePath = null, coverTitleStyle = "integrated" }, deps = {}) {
   fs.mkdirSync(outputDir, { recursive: true });
   let cost = 0;
   const front = [];
 
-  // Cover (paid unless an existing hero is reused).
+  // Cover (paid unless an existing hero is reused). coverTitleStyle selects the
+  // typographic treatment (integrated hybrid default | band); the review-UI
+  // toggle will thread a per-cover choice here later.
   let heroPath = coverImagePath;
   if (withCover && !heroPath) {
     const buf = await generateCoverHero({ story, childName, childAge, sheets }, deps);
@@ -175,7 +285,7 @@ export async function assembleFrontMatter({ story, childName, childAge, sheets, 
     fs.writeFileSync(heroPath, buf);
   }
   if (heroPath) {
-    const cov = await renderCoverPage({ title: story.title, subtitle: `A story for ${childName}`, imagePath: heroPath, outputDir, outName: "00-cover" });
+    const cov = await renderCoverPage({ title: story.title, name: childName, imagePath: heroPath, outputDir, outName: "00-cover", coverTitleStyle });
     front.push(cov.pdfPath);
   }
 
