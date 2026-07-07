@@ -33,10 +33,16 @@ describe("art-styles source of truth", () => {
     expect(resolveStyle("nope").style).toBe(WATERCOLOUR);
   });
 
-  it("W-D: the 5 new styles use page === sheet (probe string) until W-E", () => {
-    for (const k of ["coloured_pencil", "painterly", "ink_wash", "flat_modern", "cutpaper"]) {
-      expect(ART_STYLES[k].page).toBe(ART_STYLES[k].sheet);
+  it("W-E: tuned styles extend the sheet with page-vocab clauses; flat_modern (sole preview-only) stays page === sheet", () => {
+    // W-E (2026-07-06/07) gave the 4 purchasable non-watercolour styles a `.page`
+    // = `.sheet` + EDGE_FILL_EMPHASIS (and NO_FRAME_EMPHASIS for the graphic media),
+    // so page must EXTEND the sheet: start with it, but differ.
+    for (const k of ["coloured_pencil", "painterly", "ink_wash", "cutpaper"]) {
+      expect(ART_STYLES[k].page).not.toBe(ART_STYLES[k].sheet);
+      expect(ART_STYLES[k].page.startsWith(ART_STYLES[k].sheet)).toBe(true);
     }
+    // flat_modern is the only remaining preview-only style — untuned, page === sheet.
+    expect(ART_STYLES.flat_modern.page).toBe(ART_STYLES.flat_modern.sheet);
   });
 
   it("validateArtStyle: null/absent → default, known passes, unknown THROWS", () => {
