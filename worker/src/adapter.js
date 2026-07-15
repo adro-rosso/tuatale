@@ -77,6 +77,10 @@ export function adaptSecondary(s, index) {
   // Forward a photos array if present (forward-compat with the deferred
   // child-photo workstream; the pipeline ignores it today).
   if (Array.isArray(s.photos)) adapted.photos = s.photos;
+  // Photo-anchor plumbing (probe, 2026-07-07): first photo = a Supabase Storage
+  // path; expose it as photoPath so the worker can download it to a local file
+  // and book-pipeline can photo-anchor this secondary's view-0.
+  if (Array.isArray(s.photos) && s.photos[0]) adapted.photoPath = s.photos[0];
   return adapted;
 }
 
@@ -87,22 +91,42 @@ export function adaptSecondary(s, index) {
  * @returns {{ child: object, secondaries: object[], theme: string, ageRange: string }}
  */
 export function adaptOrderToPipelineInput(order) {
+  // Pet-as-hero (book_type='pet'): the protagonist is a non-human pet, not a child.
+  const isPet = (order.book_type ?? "child") === "pet";
   const child = {
     name: order.child_name,
     age: order.child_age,
-    gender: order.child_gender,
+    // Pet: no gender (pets have none). Child: forward as-is.
+    gender: isPet ? undefined : order.child_gender,
     appearance: order.child_appearance,
     // Optional parent-stated background/heritage (free text). null/absent → no
     // heritage clause. composeStorySeedAppearance weaves it in (not gated by
     // FEATURES_COMPOSE — heritage is always honoured); the HERITAGE frame governs render.
     background: order.background ?? null,
   };
-  // Hard boundary for structured features: validate against the contract (enum
-  // values + gender-gated hair_style). Out-of-contract / unknown values THROW
-  // here — bad data must fail loud, not reach the pipeline silently. null/absent
-  // (legacy orders, free-text path) -> undefined -> features omitted (no change).
-  const features = validateChildFeatures(order.child_features, order.child_gender);
-  if (features) child.features = features;
+  if (isPet) {
+    // Non-human protagonist: species/breed + multi-photo anchor. No structured
+    // features (a pet has none). photo_urls shape for pets: { pet: ["uploads/…", …] }.
+    // book-pipeline's pet path (FEATURES_PET_HERO) reads subject_type + animal_kind +
+    // photo_paths; the worker downloads photo_paths to local files pre-render.
+    child.subject_type = "non_human";
+    if (order.animal_kind) child.animal_kind = order.animal_kind;
+    const petPhotos = Array.isArray(order.photo_urls?.pet)
+      ? order.photo_urls.pet
+      : (order.photo_urls?.pet ? [order.photo_urls.pet] : []);
+    if (petPhotos.length) child.photo_paths = petPhotos;
+  } else {
+    // Hard boundary for structured features: validate against the contract (enum
+    // values + gender-gated hair_style). Out-of-contract / unknown values THROW
+    // here — bad data must fail loud, not reach the pipeline silently. null/absent
+    // (legacy orders, free-text path) -> undefined -> features omitted (no change).
+    const features = validateChildFeatures(order.child_features, order.child_gender);
+    if (features) child.features = features;
+    // Photo-anchor plumbing (probe, 2026-07-07): the primary's uploaded photo lives
+    // in Supabase Storage; expose its path so the worker downloads it to a local file
+    // before the pipeline reads it. photo_urls shape: { child?: "uploads/<hash>.png" }.
+    if (order.photo_urls?.child) child.photoPath = order.photo_urls.child;
+  }
   return {
     child,
     secondaries: (order.secondaries ?? []).map(adaptSecondary),

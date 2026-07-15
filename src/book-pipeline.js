@@ -166,7 +166,12 @@ function extractBikeColour(story) {
 export function buildSubjectSheetBasePrompt(subject, story) {
   let subjectLabel;
   if (subject.isProtagonist) {
-    subjectLabel = `a ${subject.age}-year-old child`;
+    // Pet-hero (FEATURES_PET_HERO): the protagonist is a non-human pet, not a child.
+    // Label it as a pet animal (species carried by animalKind if provided); the
+    // Appearance line below holds the breed/coat detail.
+    subjectLabel = subject.subject_type === "non_human"
+      ? `a pet ${subject.animalKind || "animal"}`
+      : `a ${subject.age}-year-old child`;
   } else if (subject.subject_type === "human") {
     subjectLabel = subject.isAdult
       ? `an adult named ${subject.name}`
@@ -226,8 +231,13 @@ export function deemphasiseMarkWording(appearance) {
 // meta.inputs.secondaries[] (for id / subject_type / appearance_markers).
 export function buildSubjectListForSheetGen(story, meta, protagonistName, protagonistAge) {
   const GENDERS = new Set(["boy", "girl", "non_binary"]);
+  // Pet-hero (FEATURES_PET_HERO, default off): the protagonist is a non-human pet.
+  // Gender is not required (pets have none), the gender-driven compose path is skipped,
+  // and appearance/markers come straight from the pet's description + coat-colour text.
+  const petHero = process.env.FEATURES_PET_HERO === "on"
+    && meta?.inputs?.child?.subject_type === "non_human";
   const protagonistGender = meta?.inputs?.child?.gender;
-  if (typeof protagonistGender !== "string" || !GENDERS.has(protagonistGender)) {
+  if (!petHero && (typeof protagonistGender !== "string" || !GENDERS.has(protagonistGender))) {
     throw new Error(
       `meta.inputs.child.gender is required and must be one of: ${[...GENDERS].join(", ")}. ` +
       `Got: ${JSON.stringify(protagonistGender)}. ` +
@@ -235,30 +245,53 @@ export function buildSubjectListForSheetGen(story, meta, protagonistName, protag
     );
   }
   const subjects = [];
+  // Photo-anchor references: multiple same-subject photos (photo_paths) preferred —
+  // covering all identifying features is the validated pet-likeness path (probe
+  // 2026-07-09). Falls back to the single legacy photoPath. Humans: unchanged.
+  const childPhotoPaths = Array.isArray(meta?.inputs?.child?.photo_paths) && meta.inputs.child.photo_paths.length
+    ? meta.inputs.child.photo_paths
+    : (meta?.inputs?.child?.photoPath ? [meta.inputs.child.photoPath] : null);
   subjects.push({
     id: "protagonist",
     name: protagonistName,
     age: protagonistAge,
     // Spec D-M Stage-3 lever 2 (de-emphasis, default-on) wraps the description.
-    // Spec structured-inputs (FEATURES_COMPOSE, default off): outfit injected into
-    // the protagonist prose; descriptive features compose the markers spine.
+    // Pet-hero: raw pet description (no gender-based compose). Human: unchanged
+    // (FEATURES_COMPOSE off → story.character; on → outfit injected into the prose).
     character_description: deemphasiseMarkWording(
-      process.env.FEATURES_COMPOSE === "on"
-        ? injectOutfit(story.character, { gender: protagonistGender }, meta?.inputs?.child?.features)
-        : story.character,
+      petHero
+        ? story.character
+        : (process.env.FEATURES_COMPOSE === "on"
+            ? injectOutfit(story.character, { gender: protagonistGender }, meta?.inputs?.child?.features)
+            : story.character),
     ),
-    markers: process.env.FEATURES_COMPOSE === "on"
-      ? (composeAppearance(meta?.inputs?.child?.features, meta?.inputs?.child?.appearance, meta?.inputs?.child?.background) || null)
-      : (meta?.inputs?.child?.appearance ?? null),
-    subject_type: "human",
-    gender: protagonistGender,
+    // Pet-hero: raw appearance/coat text as the markers spine. Human: unchanged
+    // (composed features spine when FEATURES_COMPOSE on, else raw appearance).
+    markers: petHero
+      ? (meta?.inputs?.child?.appearance ?? null)
+      : (process.env.FEATURES_COMPOSE === "on"
+          ? (composeAppearance(meta?.inputs?.child?.features, meta?.inputs?.child?.appearance, meta?.inputs?.child?.background) || null)
+          : (meta?.inputs?.child?.appearance ?? null)),
+    subject_type: petHero ? "non_human" : "human",
+    gender: petHero ? null : protagonistGender,
     anchor: "tier2", // protagonist is always ref-anchored
     isProtagonist: true,
     viewCount: 3,
     sheetPathPrefix: "sheet", // → sheet-NN.png (legacy convention; unchanged)
+    // Pet species/breed for the sheet label (optional; e.g. "dog"). Human → null.
+    animalKind: petHero ? (meta?.inputs?.child?.animal_kind ?? null) : null,
     // Photo-anchor (opt-in via meta; absent → unchanged behaviour). When set, the
-    // view-0 sheet mint uses this photo as its reference (the proven preview path).
+    // view-0 sheet mint uses these photo(s) as its reference (the proven preview path).
     photoPath: meta?.inputs?.child?.photoPath ?? null,
+    photoPaths: childPhotoPaths,
+    // Scene-aware wardrobe (FEATURES_WARDROBE, default off): a map of situational
+    // outfit variants for the protagonist, e.g. { keeper: "a goalkeeper kit ..." }.
+    // Each is minted as a full sheet set CHAINED from the base view-1 (same face,
+    // swapped outfit — the proven probe mechanism), and pages pick the set by their
+    // scene.outfit tag. Absent / flag off → unchanged single-outfit behaviour.
+    wardrobe: (process.env.FEATURES_WARDROBE === "on"
+      && meta?.inputs?.child?.wardrobe && typeof meta.inputs.child.wardrobe === "object")
+      ? meta.inputs.child.wardrobe : null,
   });
   const companions = Array.isArray(story.companion_characters) ? story.companion_characters : [];
   const metaSecs = Array.isArray(meta?.inputs?.secondaries) ? meta.inputs.secondaries : [];
@@ -526,6 +559,10 @@ export async function generateBook({
   // Section A — character sheets
   // =====================================================================
   let sheetBuffers = [];
+  // Scene-aware wardrobe: protagonist's variant sheet sets, keyed by variant name
+  // (e.g. { keeper: [buf,buf,buf] }). Populated in Section A when FEATURES_WARDROBE
+  // is on and the protagonist carries a wardrobe map; consumed in Section B.
+  const protagonistVariantSheets = {};
   let sheetsActualCost = 0;
   let sheetsCompletedCount = totalSheetsNeeded - sheetsToMintCount;
   const sheetResults = [];
@@ -659,14 +696,22 @@ export async function generateBook({
     // Photo-anchor (opt-in): when the subject carries a photoPath, view-0 is minted
     // WITH the photo as its reference (the proven preview path — photo → view-0,
     // which then chains to views 2-3). Absent → unchanged reference-less anchor.
-    let photoBuf = null;
-    if (subject.photoPath) {
+    // Read all provided photo(s) for the view-0 anchor. Multiple same-subject photos
+    // covering all identifying features = the validated pet-likeness path (probe
+    // 2026-07-09); a single legacy photoPath still works via photoPaths = [photoPath].
+    const photoBufs = [];
+    const photoSrcs = subject.photoPaths?.length
+      ? subject.photoPaths
+      : (subject.photoPath ? [subject.photoPath] : []);
+    for (const src of photoSrcs) {
       try {
-        photoBuf = fs.readFileSync(subject.photoPath);
-        log.log(`    ↳ ${subject.name}: photo-anchored view-0 (${subject.photoPath})`);
+        photoBufs.push(fs.readFileSync(src));
       } catch (e) {
-        log.warn(`    ⚠ ${subject.name}: photoPath unreadable (${subject.photoPath}) — minting without photo anchor: ${e.message}`);
+        log.warn(`    ⚠ ${subject.name}: photo unreadable (${src}) — skipping this reference: ${e.message}`);
       }
+    }
+    if (photoBufs.length) {
+      log.log(`    ↳ ${subject.name}: photo-anchored view-0 (${photoBufs.length} photo${photoBufs.length === 1 ? "" : "s"})`);
     }
     let anchorBuf = null; // Spec D-M Stage-3: view-1 buffer (minted OR reused), ref for views 2-3
     for (let i = 0; i < subject.viewCount; i++) {
@@ -690,18 +735,29 @@ export async function generateBook({
       // Photo-anchor: view-0 mints WITH the photo as reference + a translate-the-
       // photograph directive (the proven preview path). Views 2-3 still chain off
       // the minted view-0 (anchorBuf) as before.
-      const usePhoto = i === 0 && photoBuf;
-      const refs = usePhoto ? [photoBuf] : chainedSheetRefs(i, anchorBuf);
+      const usePhoto = i === 0 && photoBufs.length > 0;
+      const refs = usePhoto ? photoBufs : chainedSheetRefs(i, anchorBuf);
+      const isPet = subject.subject_type === "non_human";
       const photoRef = usePhoto
-        ? `\n\nThe reference image is a PHOTOGRAPH of the person to depict. Translate them ` +
-          `into the illustration style above — same face shape, features, and hair as the ` +
-          `photo, recognisably the same person; do NOT reproduce photographic detail, ` +
-          `lighting, or background.`
+        ? (isPet
+            ? `\n\nThe reference image(s) are PHOTOGRAPHS of the specific pet to depict. ` +
+              `Translate it into the illustration style above — same species, breed, coat ` +
+              `colour, and markings as the photos, recognisably the SAME individual animal ` +
+              `(not a generic example of the breed); do NOT reproduce photographic detail, ` +
+              `lighting, or background.`
+            : `\n\nThe reference image is a PHOTOGRAPH of the person to depict. Translate them ` +
+              `into the illustration style above — same face shape, features, and hair as the ` +
+              `photo, recognisably the same person; do NOT reproduce photographic detail, ` +
+              `lighting, or background.`)
         : "";
       const matchRef = !usePhoto && refs.length
-        ? `\n\nThis is the SAME child as in the reference image — keep the IDENTICAL outfit ` +
-          `(same shirt, shorts, and shoes, same colours), the same face and hair, and any facial ` +
-          `mark on the SAME side of the face; only the camera angle changes from the reference.`
+        ? (isPet
+            ? `\n\nThis is the SAME individual animal as in the reference image — keep the ` +
+              `identical face, coat colour, and markings; only the camera angle changes from ` +
+              `the reference.`
+            : `\n\nThis is the SAME child as in the reference image — keep the IDENTICAL outfit ` +
+              `(same shirt, shorts, and shoes, same colours), the same face and hair, and any facial ` +
+              `mark on the SAME side of the face; only the camera angle changes from the reference.`)
         : "";
       const fullPrompt = `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${matchRef}`;
       const t0 = Date.now();
@@ -775,6 +831,41 @@ export async function generateBook({
       }
       sheetBuffers = subjectBufs;
       subjectSheetStatus[subject.id] = { sheetFiles: subjectSucceededFiles, skipped: false };
+
+      // Scene-aware wardrobe: mint each variant as a full sheet set CHAINED from the
+      // base view-1 anchor (same face, swapped outfit — the proven probe mechanism).
+      // Views 2-3 chain from the variant's own view-1 so the variant set self-agrees.
+      if (subject.wardrobe && anchorBuf) {
+        for (const [variantKey, variantOutfit] of Object.entries(subject.wardrobe)) {
+          if (typeof variantOutfit !== "string" || !variantOutfit.trim()) continue;
+          log.log(`  👕 wardrobe "${variantKey}" — minting ${subject.viewCount} views (chained from base)…`);
+          const vBufs = [];
+          let vAnchor = null;
+          for (let vi = 0; vi < subject.viewCount; vi++) {
+            const vRefs = vi === 0 ? [anchorBuf] : chainedSheetRefs(vi, vAnchor);
+            const outfitDirective = vi === 0
+              ? `\n\nWARDROBE CHANGE: this is the SAME child as the reference image — keep the IDENTICAL face, hair, skin tone, and proportions — but now dressed in ${variantOutfit.trim()}. Change ONLY the clothing to this outfit; do NOT keep the reference's previous clothes.`
+              : `\n\nThis is the SAME child as in the reference image — keep the same face, hair, AND this outfit; only the camera angle changes.`;
+            const vPrompt = `${basePrompt}\n\nView for this image: ${CHARACTER_SHEET_PROMPTS[vi]}.${outfitDirective}`;
+            const vFilename = `${subject.sheetPathPrefix}-${variantKey}-${String(vi + 1).padStart(2, "0")}.png`;
+            try {
+              const vt0 = Date.now();
+              const vbuf = await generateImage(vPrompt, vRefs, {}, {
+                callKind: "sheet_mint", subjectName: `${subject.name} [${variantKey}]`, view: vi + 1, onSlowCall,
+              });
+              fs.writeFileSync(path.join(sheetsDir, vFilename), vbuf);
+              vBufs.push(vbuf);
+              if (vi === 0) vAnchor = vbuf;
+              sheetsActualCost += GEMINI_IMAGE_USD_PER_CALL;
+              log.log(`    → ${vFilename}  (${((Date.now() - vt0) / 1000).toFixed(1)}s)`);
+            } catch (e) {
+              log.warn(`    ✗ wardrobe[${variantKey}] view ${vi + 1}: ${e?.message ?? e}`);
+            }
+          }
+          if (vBufs.length >= 2) protagonistVariantSheets[variantKey] = vBufs;
+          else log.warn(`  ⚠ wardrobe "${variantKey}": only ${vBufs.length} views — its scenes fall back to the base outfit.`);
+        }
+      }
     } else {
       if (subjectBufs.length < subject.viewCount) {
         log.warn();
@@ -851,9 +942,12 @@ export async function generateBook({
       name: childName,
       age: childAge,
       description: maskName(deemphasiseMarkWording(story.character), childName), // Spec D-M Stage-3 lever 2 (gated)
-      subjectType: "human",
+      // Pet-hero: reflect the real protagonist subject_type (drives view allocation +
+      // the scene render prompt). Was hardcoded "human".
+      subjectType: (subjectList.find((s) => s.isProtagonist)?.subject_type) ?? "human",
       isProtagonist: true,
       allSheets: sheetBuffers,
+      variantSheets: protagonistVariantSheets, // scene-aware wardrobe: { variantKey: [bufs] }
       mintedSheetCount: sheetBuffers.length,
       skipped: protagonistStatus?.skipped === true,
     };
@@ -918,12 +1012,20 @@ export async function generateBook({
     const subjects = protagonistFirst.map((name) => {
       const m = subjectMetaByName[name];
       const viewsCount = allocation[m.id];
+      // Scene-aware wardrobe: the protagonist renders from the variant sheet set that
+      // matches this scene's outfit tag when it exists; otherwise the base sheets.
+      // Non-protagonist subjects and untagged/"default" scenes are unchanged.
+      let sheetSource = m.allSheets;
+      const outfit = scene.outfit;
+      if (m.isProtagonist && outfit && outfit !== "default" && m.variantSheets?.[outfit]?.length) {
+        sheetSource = m.variantSheets[outfit];
+      }
       return {
         name: m.name,
         age: m.age,
         description: m.description,
         subjectType: m.subjectType,
-        sheets: m.allSheets.slice(0, viewsCount),
+        sheets: sheetSource.slice(0, viewsCount),
       };
     });
     return { subjects, allocation, dropped };

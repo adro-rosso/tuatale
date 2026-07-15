@@ -74,7 +74,7 @@ describeIntegration('proxy — first-visit cookie minting', () => {
 
     const draft = await getDraftByCookieId(cookie!.value, client);
     expect(draft).not.toBeNull();
-    expect(draft?.current_step).toBe('style'); // W-F: 'style' is now the first step
+    expect(draft?.current_step).toBe('hero'); // pet-as-hero: 'hero' is now the first step
     expect(draft?.status).toBe('active');
   });
 

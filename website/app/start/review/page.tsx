@@ -28,18 +28,34 @@ export default async function ReviewStepPage() {
       }>)
     : [];
 
+  // Pet-as-hero: the protagonist is a pet — show kind + coat + photo count, no gender.
+  const isPet = (draft as { book_type?: string | null } | null)?.book_type === 'pet';
+  const animalKind = (draft as { animal_kind?: string | null } | null)?.animal_kind ?? null;
+  const petPhotos = (draft as { photo_urls?: { pet?: string[] } | null } | null)?.photo_urls?.pet;
+  const petPhotoCount = Array.isArray(petPhotos) ? petPhotos.length : 0;
+
   return (
     <div className="space-y-xl">
       <Body className="text-warm-grey text-center">
         One last look. Anything you&apos;d like to change?
       </Body>
 
-      <ReviewSection title="About your child" editHref="/start/child">
-        <Field label="Name" value={draft?.child_name} />
-        <Field label="Age range" value={formatAgeRange(draft?.age_range)} />
-        <Field label="Gender" value={formatGender(draft?.child_gender)} />
-        <Field label="Appearance" value={draft?.child_appearance} multiline />
-      </ReviewSection>
+      {isPet ? (
+        <ReviewSection title="About your pet" editHref="/start/child">
+          <Field label="Name" value={draft?.child_name} />
+          <Field label="Kind" value={animalKind} />
+          <Field label="Reading age" value={formatAgeRange(draft?.age_range)} />
+          <Field label="Coat & markings" value={draft?.child_appearance} multiline />
+          <Field label="Photos" value={petPhotoCount ? `${petPhotoCount} added` : null} />
+        </ReviewSection>
+      ) : (
+        <ReviewSection title="About your child" editHref="/start/child">
+          <Field label="Name" value={draft?.child_name} />
+          <Field label="Age range" value={formatAgeRange(draft?.age_range)} />
+          <Field label="Gender" value={formatGender(draft?.child_gender)} />
+          <Field label="Appearance" value={draft?.child_appearance} multiline />
+        </ReviewSection>
+      )}
 
       <ReviewSection
         title={secondaries.length === 0 ? 'Companions' : `Companions (${secondaries.length})`}
@@ -90,7 +106,7 @@ export default async function ReviewStepPage() {
             </Heading>
           </div>
           <Body size="caption" className="text-warm-grey">
-            Add a dedication? e.g. &ldquo;For Maya, on your 6th birthday&rdquo;. Leave blank for the
+            Add a dedication? e.g. {isPet ? <>&ldquo;For Biscuit, our best friend&rdquo;</> : <>&ldquo;For Maya, on your 6th birthday&rdquo;</>}. Leave blank for the
             default.
           </Body>
           <textarea
@@ -98,7 +114,7 @@ export default async function ReviewStepPage() {
             rows={2}
             maxLength={120}
             defaultValue={dedication}
-            placeholder="For Maya, on your 6th birthday"
+            placeholder={isPet ? 'For Biscuit, our best friend' : 'For Maya, on your 6th birthday'}
             className="font-body text-body border-warm-grey-light bg-cream p-sm focus:border-iron-oxide w-full rounded-lg border-2 focus:outline-none"
           />
         </section>

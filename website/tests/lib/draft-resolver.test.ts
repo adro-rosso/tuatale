@@ -81,7 +81,7 @@ describeIntegration('draft-resolver', () => {
       if (result.kind === 'created') {
         expect(result.draft.cookie_id).toBe(result.newCookieId);
         expect(result.draft.status).toBe('active');
-        expect(result.draft.current_step).toBe('style'); // W-F: 'style' is now the first step
+        expect(result.draft.current_step).toBe('hero'); // pet-as-hero: 'hero' is now the first step
       }
     });
 

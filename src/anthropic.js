@@ -628,7 +628,7 @@ Keep every specific marker the customer provided; only inflect the gender coding
 
 When gender is \`non_binary\`, write neutral styling — no "boy's" / "girl's" / "boyish" / "girlish" framing; describe the customer's markers without gendered styling vocabulary.
 
-COMPANIONS
+{{PROTAGONIST_KIND_OVERRIDE}}COMPANIONS
 
 When the input lists Companions (one or more under "Companions:"), they appear in the story alongside the protagonist. The PROTAGONIST remains the EMOTIONAL CENTER of every story — their name is on the cover, they are who the customer bought the book for, their arc is the story's spine. Companions PARTICIPATE — they have presence, voice, and meaningful interaction — but they are NEVER co-protagonists. The protagonist drives, decides, and grows; companions support, react, and accompany.
 
@@ -689,6 +689,22 @@ The cover has a translucent title panel across the bottom, so the concept MUST s
 Keep it to 2-4 sentences: vivid and specific, an art-direction note an illustrator could paint from.
 
 Also output \`cover_subjects\`: at this product launch, this MUST be EXACTLY a single-element array containing the protagonist's name — \`[<protagonist_name>]\`. The protagonist is the cover's anchored subject. Even if your \`cover_concept\` narrative mentions a companion as part of the scene's atmosphere, \`cover_subjects\` only ever contains the protagonist at launch. Do not include companions in \`cover_subjects\`.`;
+
+// Pet-hero override (FEATURES_PET_HERO, 2026-07-09). Substituted into the
+// {{PROTAGONIST_KIND_OVERRIDE}} slot (right before COMPANIONS) ONLY for pet-hero
+// books; "" otherwise (human books are byte-identical). It flips the three
+// human-specific protagonist sections above — CHARACTER DESCRIPTION, Pronouns,
+// and Gender-coded styling — for a non-human protagonist, and leaves everything
+// else (arc, template selection, companions, cover) untouched. Ends with a blank
+// line so COMPANIONS stays separated after substitution.
+export const PET_PROTAGONIST_OVERRIDE = `PROTAGONIST IS A PET (this book)
+
+The protagonist of THIS story is a real ANIMAL — a pet — not a child. This section OVERRIDES the CHARACTER DESCRIPTION, Pronouns, and Gender-coded styling rules above FOR THE PROTAGONIST ONLY (human companions still follow them):
+- CHARACTER DESCRIPTION for the pet: describe it the way an illustrator would before drawing it — species and breed; body size and build; coat colour and texture; distinctive markings; ear and tail shape; muzzle; and eye colour. Lead with the pet's name. Keep to physically-concrete, drawable, symmetric-and-intrinsic features that travel on every page (the PHYSICALLY CONCRETE and persistent-appearance rules above still apply — no interpretive/personality adjectives, no single-sided items). A pet wears NO clothing unless the input explicitly gives it a persistent accessory such as a collar; do not invent outfits. No heritage clause; no human gender-coded styling.
+- PRONOUNS: the pet has no Gender field. Ignore the protagonist pronoun and gender-styling rules above; refer to the pet with natural pronouns that fit the story ("it" or "they", or "he"/"she" if the input's wording implies one) and keep that choice CONSISTENT across the description and all twelve scenes.
+- Everything else is unchanged: the pet is the EMOTIONAL CENTER and appears in EVERY scene; the owner and any other characters are COMPANIONS handled exactly per the rules below (a human owner is [REF-ANCHORED]).
+
+`;
 
 // ---- Multi-character discipline rules (2026-05-31, generalized 2026-06-01) -
 // Two separate rules with different activation gates, both injected via the
@@ -937,10 +953,15 @@ export async function generateStory(input, options = {}) {
     age: input.child?.age,
   });
   const levelDef = READING_LEVELS[readingLevel];
+  // Pet-hero (FEATURES_PET_HERO, default off): a non-human protagonist swaps the
+  // human CHARACTER DESCRIPTION / gender sections for the pet override. Same gating
+  // as book-pipeline.js; flag off → override collapses to "" (byte-identical).
+  const petHero = process.env.FEATURES_PET_HERO === "on" && input.child?.subject_type === "non_human";
   const systemPrompt = SYSTEM_PROMPT_TEMPLATE
     .replace(/\{\{TEMPLATE_REGISTRY_DESCRIPTION\}\}/g, templateRegistryDescription)
     .replace(/\{\{MULTICHAR_RULES\}\}/g, multicharRules)
     .replace(/\{\{READING_LEVEL_RULES\}\}/g, buildReadingLevelRulesBlock(readingLevel))
+    .replace(/\{\{PROTAGONIST_KIND_OVERRIDE\}\}/g, petHero ? PET_PROTAGONIST_OVERRIDE : "")
     .replace(/\{\{AUDIENCE\}\}/g, levelDef.audience)
     .replace(/\{\{PROSE_LENGTH\}\}/g, levelDef.proseLength);
   const schema = buildStorySchema(registry, readingLevel);
@@ -1364,7 +1385,7 @@ function composeStorySeedAppearance(child) {
   return spine || mark || "";
 }
 
-function formatUserMessage(input) {
+export function formatUserMessage(input) {
   const { child, theme } = input ?? {};
   const secondaries = input?.secondaries ?? [];
   if (!child || typeof child.name !== "string" || typeof child.age !== "number") {
@@ -1373,7 +1394,11 @@ function formatUserMessage(input) {
       `Received: ${JSON.stringify(child)}`
     );
   }
-  if (typeof child.gender !== "string" || !VALID_GENDERS.has(child.gender)) {
+  // Pet-hero (FEATURES_PET_HERO, default off): a non-human protagonist has no gender.
+  // Same gating as book-pipeline.js — flag off ⇒ the gender requirement still applies
+  // (byte-identical to the human path).
+  const petHero = process.env.FEATURES_PET_HERO === "on" && child.subject_type === "non_human";
+  if (!petHero && (typeof child.gender !== "string" || !VALID_GENDERS.has(child.gender))) {
     throw new Error(
       `Invalid input: 'child.gender' is required and must be one of: ${[...VALID_GENDERS].join(", ")}. ` +
       `Got: ${JSON.stringify(child.gender)}.`
@@ -1445,12 +1470,18 @@ function formatUserMessage(input) {
     );
   }
 
-  const lines = [
-    `Child:`,
-    `  Name: ${child.name}`,
-    `  Age: ${child.age}`,
-    `  Gender: ${child.gender}`,
-  ];
+  const lines = petHero
+    ? [
+        `Pet (the protagonist — a real animal, not a child):`,
+        `  Name: ${child.name}`,
+        ...(child.animal_kind ? [`  Kind: ${child.animal_kind}`] : []),
+      ]
+    : [
+        `Child:`,
+        `  Name: ${child.name}`,
+        `  Age: ${child.age}`,
+        `  Gender: ${child.gender}`,
+      ];
   // If appearance is omitted, Sonnet invents visual details from name/age
   // alone. Acceptable for MVP but worth knowing — appearance is the main
   // personalisation lever.
@@ -1461,7 +1492,9 @@ function formatUserMessage(input) {
   // the markers wiring in book-pipeline.js (both compose from the same raw
   // features+appearance → identical spine, no double-compose). Outfit is NOT seeded
   // here — it's injected deterministically post-Sonnet (injectOutfit).
-  const seedAppearance = composeStorySeedAppearance(child);
+  // Pet: the appearance is the pet's raw coat/markings text as given (no human
+  // heritage/features compose). Human: unchanged composed seed.
+  const seedAppearance = petHero ? (child.appearance ?? "") : composeStorySeedAppearance(child);
   if (seedAppearance) {
     lines.push(`  Appearance: ${seedAppearance}`);
   }
@@ -1491,7 +1524,7 @@ function formatUserMessage(input) {
   lines.push(`Theme: ${theme}`);
   lines.push(``);
   lines.push(
-    `Write a 12-page bedtime story for this child based on the theme. ` +
+    `Write a 12-page bedtime story for this ${petHero ? "pet" : "child"} based on the theme. ` +
     `Generate the character description${secondaries.length > 0 ? "s (protagonist + companions)" : ""}, the twelve scenes (each declaring subjects_present), the cover concept, and the cover_subjects list per the system prompt.`
   );
 

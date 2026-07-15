@@ -487,8 +487,12 @@ export function buildScenePrompt({
   // discourage Gemini from rendering the name as image text).
   if (subjects.length === 1) {
     const s = subjects[0];
+    // Pet-hero: a non-human protagonist alone on the page is labelled a pet animal,
+    // not "a child" (the sheets are the dominant likeness signal; this label just
+    // sets the subject kind). Human protagonist wording is unchanged.
+    const soloLabel = s.subjectType === "non_human" ? "a pet animal" : `a ${s.age}-year-old child`;
     return [
-      `Subject: a ${s.age}-year-old child.`,
+      `Subject: ${soloLabel}.`,
       `Appearance: ${s.description}.`,
       `Style: ${styleLine}.`,
       `Composition: ${compositionLine}`,

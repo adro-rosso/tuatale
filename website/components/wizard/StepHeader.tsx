@@ -17,30 +17,33 @@ import { Body } from '@/components/ui/Body';
  */
 interface StepHeaderProps {
   childName: string | null;
+  bookType: string;
 }
 
-function heading(step: WizardStep, childName: string | null): string {
-  // Fallback: when child_name isn't known yet (step 1 itself or
-  // brand-new draft), use the neutral wording.
-  const them = childName ?? 'them';
+function heading(step: WizardStep, name: string | null, isPet: boolean): string {
+  // `name` is the protagonist's name (the child's, or the pet's) once typed.
   switch (step) {
+    case 'hero':
+      return "Who's the book about?";
+    case 'style':
+      return 'Choose your art style';
     case 'child':
-      return 'About your child';
+      return isPet ? 'About your pet' : 'About your child';
     case 'secondaries':
-      return childName ? `Friends and family for ${childName}` : 'Friends and family';
+      return name ? `Friends and family for ${name}` : 'Friends and family';
     case 'theme':
-      return childName ? `Choose a theme for ${childName}'s story` : 'Choose a theme';
+      return name ? `Choose a theme for ${name}'s story` : 'Choose a theme';
     case 'preview':
-      return childName ? `See a glimpse of ${childName}'s book` : 'See a glimpse';
+      return name ? `See a glimpse of ${name}'s book` : 'See a glimpse';
     case 'review':
       return 'Review the details';
     case 'payment':
       return 'Almost there';
   }
-  return them; // unreachable, satisfies TS exhaustiveness
+  return name ?? 'them'; // unreachable, satisfies TS exhaustiveness
 }
 
-export function StepHeader({ childName }: StepHeaderProps) {
+export function StepHeader({ childName, bookType }: StepHeaderProps) {
   const segment = useSelectedLayoutSegment();
   if (!segment || !isWizardStep(segment)) return null;
   const i = stepIndex(segment);
@@ -51,7 +54,7 @@ export function StepHeader({ childName }: StepHeaderProps) {
         Step {i + 1} of {WIZARD_STEPS.length}
       </Body>
       <Heading level="2" italic>
-        {heading(segment, childName)}
+        {heading(segment, childName, bookType === 'pet')}
       </Heading>
     </header>
   );

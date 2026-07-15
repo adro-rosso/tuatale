@@ -23,6 +23,7 @@ import { promises as fsp } from "node:fs";
 import { generateStory as realGenerateStory } from "../../src/anthropic.js";
 import { generateBook as realGenerateBook } from "../../src/book-pipeline.js";
 import { adaptOrderToPipelineInput } from "./adapter.js";
+import { downloadPhoto } from "./preview.js";
 import { uploadBookPdf as realUploadBookPdf } from "./storage.js";
 import { getOrderById as realGetOrderById } from "./db.js";
 import { IncompletePipelineError } from "./incomplete-pipeline-error.js";
@@ -107,6 +108,58 @@ export function buildMetaObject(input, story, usage) {
 }
 
 /**
+ * Photo-anchor plumbing (probe, 2026-07-07). For each subject (primary + each
+ * secondary) whose adapter set a Storage `photoPath`, download the bytes from the
+ * previews bucket into <scratch>/photos/<key>.png and rewrite photoPath to that
+ * local file — so book-pipeline's per-subject photo anchor (book-pipeline.js:261+309)
+ * reads a real file. A failed download degrades gracefully to composed appearance.
+ */
+async function downloadSubjectPhotos(input, scratchDir, deps = {}) {
+  const dl = deps.downloadPhoto ?? downloadPhoto;
+  const photoDir = path.join(scratchDir, "photos");
+  const one = async (subject, key) => {
+    // Multi-photo anchor (pet-hero): download every photo_paths entry → local files
+    // and rewrite the array to local paths (book-pipeline reads child.photo_paths).
+    if (Array.isArray(subject?.photo_paths) && subject.photo_paths.length) {
+      const locals = [];
+      for (let j = 0; j < subject.photo_paths.length; j++) {
+        const sp = subject.photo_paths[j];
+        if (!sp) continue;
+        try {
+          const buf = await dl(sp);
+          await fsp.mkdir(photoDir, { recursive: true });
+          const local = path.join(photoDir, `${key}-${j + 1}.png`);
+          await fsp.writeFile(local, buf);
+          locals.push(local);
+          console.log(`  📷 photo-anchor: ${subject.name} ← ${sp} → ${path.basename(local)} (${buf.length} bytes)`);
+        } catch (e) {
+          console.warn(`  ⚠ photo download failed for ${subject.name} (${sp}); skipping this ref: ${e.message}`);
+        }
+      }
+      subject.photo_paths = locals.length ? locals : null;
+      return;
+    }
+    // Single legacy photoPath (child-photo probe / human secondaries).
+    const storagePath = subject?.photoPath;
+    if (!storagePath) return;
+    try {
+      const buf = await dl(storagePath);
+      await fsp.mkdir(photoDir, { recursive: true });
+      const local = path.join(photoDir, `${key}.png`);
+      await fsp.writeFile(local, buf);
+      subject.photoPath = local;
+      console.log(`  📷 photo-anchor: ${subject.name} ← ${storagePath} → ${path.basename(local)} (${buf.length} bytes)`);
+    } catch (e) {
+      console.warn(`  ⚠ photo download failed for ${subject.name} (${storagePath}); composing without photo: ${e.message}`);
+      subject.photoPath = null;
+    }
+  };
+  await one(input.child, "child");
+  const secs = Array.isArray(input.secondaries) ? input.secondaries : [];
+  for (let i = 0; i < secs.length; i++) await one(secs[i], secs[i].id || `companion-${i + 1}`);
+}
+
+/**
  * @param {{ orderId: string, jobId: string }} args
  * @param {object} [deps]  test seam — override any of the collaborators:
  *   { generateStory, generateBook, uploadBookPdf, getOrderById,
@@ -138,6 +191,12 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
     scratchDirOverride || path.join(os.tmpdir(), `tuatale-job-${jobId}`);
   await fsp.mkdir(scratchDir, { recursive: true });
 
+  // Photo-anchor plumbing (probe, 2026-07-07): the adapter set `photoPath` to a
+  // Supabase Storage path for any subject with an uploaded photo, but book-pipeline
+  // reads a LOCAL file (fs.readFileSync). Download each into the scratch dir and
+  // rewrite photoPath to the local path so view-0 mints photo-anchored.
+  await downloadSubjectPhotos(input, scratchDir);
+
   // R3a: if a prior attempt of this job left a checkpoint, restore story + meta +
   // completed sheets into the fresh scratch dir and SKIP generateStory — so
   // generateBook's fingerprint reuse mints only the MISSING sheets. (Restoring the
@@ -157,6 +216,14 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
       story = gen.story;
       usage = gen.usage;
       meta = buildMetaObject(input, gen.story, gen.usage);
+    }
+
+    // KEEP_SCRATCH (local dev): persist story.json + meta.json to the scratch dir
+    // so the review-station cockpit can load a worker-generated book (it requires
+    // story.json). Prod never sets KEEP_SCRATCH. (2026-07-08)
+    if (process.env.KEEP_SCRATCH === "1") {
+      await fsp.writeFile(path.join(scratchDir, "story.json"), JSON.stringify(story, null, 2)).catch(() => {});
+      await fsp.writeFile(path.join(scratchDir, "meta.json"), JSON.stringify(meta, null, 2)).catch(() => {});
     }
 
     // 5. Book (sheets + per-page render + merge). resolveImageOverride is null in
@@ -203,10 +270,17 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
     throw err;
   } finally {
     // Always clean the scratch dir (bytes are safe in Storage if checkpointed).
-    try {
-      await fsp.rm(scratchDir, { recursive: true, force: true });
-    } catch (cleanupError) {
-      console.warn(`Scratch dir cleanup failed (${scratchDir}): ${cleanupError.message}`);
+    // KEEP_SCRATCH=1 (LOCAL DEV ONLY): persist the scratch dir so the review-station
+    // cockpit can load the per-page book dir for a worker-generated book. Prod never
+    // sets it → cleanup still runs. (2026-07-07)
+    if (process.env.KEEP_SCRATCH === "1") {
+      console.log(`  KEEP_SCRATCH: leaving scratch dir for review → ${scratchDir}`);
+    } else {
+      try {
+        await fsp.rm(scratchDir, { recursive: true, force: true });
+      } catch (cleanupError) {
+        console.warn(`Scratch dir cleanup failed (${scratchDir}): ${cleanupError.message}`);
+      }
     }
   }
 }

@@ -190,6 +190,27 @@ export const secondariesArraySchema = z
 
 export type SecondariesInput = z.infer<typeof secondariesArraySchema>;
 
+// ---- Pet-as-hero (book_type='pet') ---------------------------------------------
+// The book's protagonist type. 'child' = the existing product; 'pet' = a pet hero
+// (owner appears as a companion). Mirrors drafts/orders.book_type (default 'child').
+export const BOOK_TYPES = ['child', 'pet'] as const;
+export type BookType = (typeof BOOK_TYPES)[number];
+export const bookTypeSchema = z.enum(BOOK_TYPES).default('child');
+
+// A pet protagonist. No gender; identity is species/breed (animal_kind) + a coat/
+// markings description + photos (persisted separately to draft.photo_urls). age_range
+// is the READER's band (drives reading level), not the pet's age.
+export const ANIMAL_KIND_MAX = 40;
+export const petSchema = z.object({
+  name: z.string().min(1, COPY.REQUIRED).max(50, COPY.TOO_LONG),
+  age_range: z.enum(AGE_RANGES, { message: COPY.CHOOSE_ONE }),
+  // Species/breed, free text (e.g. "golden retriever", "tabby cat", "rabbit").
+  animal_kind: z.string().min(1, COPY.REQUIRED).max(ANIMAL_KIND_MAX, COPY.TOO_LONG),
+  // Coat/markings description — the likeness spine alongside the photos. 30+ chars.
+  appearance: z.string().min(30, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
+});
+export type PetInput = z.infer<typeof petSchema>;
+
 export const themeSchema = z.object({
   theme: z.string().min(20, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
   theme_template_id: z.string().optional(),

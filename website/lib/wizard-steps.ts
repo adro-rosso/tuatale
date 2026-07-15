@@ -13,9 +13,10 @@
  *   - the WizardLayout chrome (compute progress + neighbour steps)
  *   - each step page's `<WizardNav>` (knows where Back / Next go)
  */
-export type WizardStep = 'style' | 'child' | 'secondaries' | 'theme' | 'preview' | 'review' | 'payment';
+export type WizardStep = 'hero' | 'style' | 'child' | 'secondaries' | 'theme' | 'preview' | 'review' | 'payment';
 
 export const WIZARD_STEPS: readonly WizardStep[] = [
+  'hero',
   'style',
   'child',
   'secondaries',
@@ -30,6 +31,7 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
  * Keep the brand voice: warm-literary, never showy.
  */
 export const STEP_HEADINGS: Record<WizardStep, string> = {
+  hero: "Who's the book about?",
   style: 'Choose your art style',
   child: 'About your child',
   secondaries: 'Friends, pets, or favourite toys',

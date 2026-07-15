@@ -54,9 +54,12 @@ export default async function StartLayout({ children }: { children: ReactNode })
       }))
     : [];
 
+  const bookType = (draft as { book_type?: string | null } | null)?.book_type ?? 'child';
+
   return (
     <WizardLayout
       childName={draft?.child_name ?? null}
+      bookType={bookType}
       secondariesForPricing={secondariesForPricing}
     >
       {children}

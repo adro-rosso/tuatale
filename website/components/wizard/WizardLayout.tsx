@@ -11,6 +11,7 @@ interface WizardLayoutProps {
   // Both come from the parent layout's getDraft() call. Null until the
   // customer has typed a name (step 1) and started recording state.
   childName: string | null;
+  bookType: string;
   secondariesForPricing: ReadonlyArray<{ extra_care?: boolean }>;
 }
 
@@ -23,12 +24,12 @@ interface WizardLayoutProps {
  * BELOW the form on mobile so customers see the form first, price
  * second.
  */
-export function WizardLayout({ children, childName, secondariesForPricing }: WizardLayoutProps) {
+export function WizardLayout({ children, childName, bookType, secondariesForPricing }: WizardLayoutProps) {
   return (
     <main className="bg-cream flex min-h-screen flex-col">
       <SiteHeader />
       <ProgressIndicator />
-      <StepHeader childName={childName} />
+      <StepHeader childName={childName} bookType={bookType} />
 
       <section className="flex-1">
         <Container className="py-xl">

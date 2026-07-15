@@ -56,6 +56,27 @@ export async function uploadPhoto(formData: FormData): Promise<{ photoPath: stri
   return { photoPath, photoHash };
 }
 
+/**
+ * Pet-photo upload (pet-as-hero, LAUNCH-OK). Uploads a PNG of the customer's pet to
+ * the uploads bucket and returns its Storage path + content-hash. Unlike uploadPhoto
+ * (child photos, gated behind the privacy/safety review), a PET photo carries no
+ * child-photo legal/safety gate, so this is customer-facing. The browser converts the
+ * chosen image to PNG (downscaled) before calling this; the path is later persisted
+ * into draft.photo_urls.pet by submitPetStep.
+ */
+export async function uploadPetPhoto(formData: FormData): Promise<{ photoPath: string; photoHash: string }> {
+  const file = formData.get('photo');
+  if (!(file instanceof File)) throw new Error('uploadPetPhoto: no photo file');
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const photoHash = createHash('sha256').update(bytes).digest('hex');
+  const photoPath = `uploads/${photoHash}.png`;
+  const { error } = await createServerClient().storage
+    .from(PREVIEW_BUCKET)
+    .upload(photoPath, bytes, { contentType: 'image/png', upsert: true });
+  if (error) throw new Error(`uploadPetPhoto failed: ${error.message}`);
+  return { photoPath, photoHash };
+}
+
 export async function requestPreview(input: RequestPreviewInput): Promise<PreviewResult> {
   const inputHash = computeInputHash(input);
 

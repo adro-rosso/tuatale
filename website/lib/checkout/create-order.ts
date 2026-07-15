@@ -44,17 +44,30 @@ export async function createOrderFromDraft(
   // server-to-server — if anything got mutated between checkout and
   // webhook (race, manual DB tinkering), surface a clear error
   // rather than letting the DB CHECK throw a less-legible one.
-  // Appearance requirement mirrors the Zod rule: a 50+ char free-text description
-  // OR a structured-complete character (the 4 identity axes). One must be present.
-  const hasAppearance = !!draft.child_appearance || isStructuredComplete(draft.child_features);
-  if (
-    !draft.child_name ||
-    !draft.age_range ||
-    !draft.child_gender ||
-    !hasAppearance ||
-    !draft.theme
-  ) {
-    throw new Error(`Draft ${draft.id} is missing required fields when creating order`);
+  // Pet-as-hero (book_type='pet'): the protagonist is a pet, not a child — no gender,
+  // and appearance is the pet's coat/markings free text (no structured features).
+  const bookType = (draft as { book_type?: string | null }).book_type ?? 'child';
+  const isPet = bookType === 'pet';
+  const animalKind = (draft as { animal_kind?: string | null }).animal_kind ?? null;
+  if (isPet) {
+    // Pet: require name (pet name), animal_kind, coat appearance, age_range (drives
+    // reading level + the NOT NULL child_age), and theme. No gender.
+    if (!draft.child_name || !draft.age_range || !animalKind || !draft.child_appearance || !draft.theme) {
+      throw new Error(`Pet draft ${draft.id} is missing required fields (name, animal_kind, appearance, theme) when creating order`);
+    }
+  } else {
+    // Child: appearance requirement mirrors the Zod rule — a 50+ char free-text
+    // description OR a structured-complete character (the 4 identity axes).
+    const hasAppearance = !!draft.child_appearance || isStructuredComplete(draft.child_features);
+    if (
+      !draft.child_name ||
+      !draft.age_range ||
+      !draft.child_gender ||
+      !hasAppearance ||
+      !draft.theme
+    ) {
+      throw new Error(`Draft ${draft.id} is missing required fields when creating order`);
+    }
   }
 
   const customerEmail =
@@ -102,14 +115,21 @@ export async function createOrderFromDraft(
     dedication_message?: string | null;
     background?: string | null;
     reading_level?: string | null;
+    book_type?: string;
+    animal_kind?: string | null;
   } = {
     customer_email: customerEmail,
     child_name: draft.child_name,
     child_age: ageFromRange(draft.age_range),
     age_range: draft.age_range,
-    child_gender: draft.child_gender,
+    // Pet: no gender (column relaxed to nullable, but the generated types still
+    // type it non-null — cast the null like child_features elsewhere). Child: as-is.
+    child_gender: (isPet ? null : draft.child_gender) as never,
     child_appearance: draft.child_appearance,
     child_features: draft.child_features,
+    // Pet-as-hero passthrough (default 'child' / null for the existing product).
+    book_type: bookType,
+    animal_kind: animalKind,
     art_style: safeArtStyle,
     // Optional custom dedication (front matter); null → auto-default at render.
     dedication_message: (draft as { dedication_message?: string | null }).dedication_message ?? null,
