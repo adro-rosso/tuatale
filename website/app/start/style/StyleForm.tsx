@@ -9,6 +9,8 @@ import { Body } from '@/components/ui/Body';
 interface StyleFormProps {
   /** The draft's saved art_style (or the watercolour default for a fresh draft). */
   initial: string;
+  /** 'child' | 'pet' — pet serves the Biscuit tiles + hides the child example page. */
+  bookType: string;
 }
 
 const initialState: SubmitStyleState = { errors: {} };
@@ -19,7 +21,7 @@ const initialState: SubmitStyleState = { errors: {} };
  * input into the server action, which persists draft.art_style and advances to
  * the character step (where previews render in this style).
  */
-export function StyleForm({ initial }: StyleFormProps) {
+export function StyleForm({ initial, bookType }: StyleFormProps) {
   const [state, formAction, isPending] = useActionState(submitStyleStep, initialState);
   const [selected, setSelected] = useState<string>(initial);
   void state; // the picker always submits a valid value; no field errors to show
@@ -90,7 +92,7 @@ export function StyleForm({ initial }: StyleFormProps) {
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- static /public swatch */}
                 <img
-                  src={styleThumb(opt.value)}
+                  src={styleThumb(opt.value, bookType)}
                   alt={`${opt.label} sample`}
                   onLoad={(e) => sampleCorner(opt.value, e.currentTarget)}
                   className="h-full w-full object-cover"
@@ -118,7 +120,7 @@ export function StyleForm({ initial }: StyleFormProps) {
       {/* Example page for the SELECTED style — shown only for the purchasable,
           page-vocab-tuned styles (watercolour + coloured pencil). Same Mila scene
           per style, so a parent sees the medium difference, not the scene. */}
-      {hasStyleSample(selected) && (
+      {hasStyleSample(selected) && bookType !== 'pet' && (
         <figure className="border-warm-grey-light bg-cream mx-auto max-w-[26rem] overflow-hidden rounded-xl border">
           {/* eslint-disable-next-line @next/next/no-img-element -- static /public sample */}
           <img

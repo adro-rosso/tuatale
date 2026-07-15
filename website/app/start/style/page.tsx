@@ -10,7 +10,8 @@ import { StyleForm } from './StyleForm';
 export default async function StyleStepPage() {
   const result = await getDraft();
   const draft = result.kind === 'found' ? result.draft : null;
-  const initial = (draft as { art_style?: string | null } | null)?.art_style ?? 'watercolour';
+  const initial = draft?.art_style ?? 'watercolour';
+  const bookType = draft?.book_type ?? 'child';
 
-  return <StyleForm initial={initial} />;
+  return <StyleForm initial={initial} bookType={bookType} />;
 }

@@ -51,8 +51,13 @@ export function isPurchasableStyle(value: string | null | undefined): boolean {
   return STYLE_OPTIONS.some((o) => o.value === value && o.purchasable);
 }
 
-/** Static /public path of the style's swatch portrait (the small tile image). */
-export function styleThumb(value: string): string {
+/** Static /public path of the style's swatch tile. Pet-as-hero (book_type='pet')
+ *  serves the Biscuit pet tiles for the 5 styles that have them (STYLES_WITH_SAMPLE);
+ *  the preview-only flat_modern has no pet tile → falls back to the child swatch. */
+export function styleThumb(value: string, bookType: string = 'child'): string {
+  if (bookType === 'pet' && (STYLES_WITH_SAMPLE as readonly string[]).includes(value)) {
+    return `/style-thumbs/pet/${value}.png`;
+  }
   return `/style-thumbs/${value}.png`;
 }
 
