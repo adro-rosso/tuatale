@@ -27,6 +27,8 @@ function fakeJob(over: Partial<PipelineJobRow> = {}): PipelineJobRow {
     inngest_run_id: null,
     pdf_url: 'https://r2.tuatale.com/orders/abc/book.pdf',
     generation_metadata: null,
+    checkpoint: null,
+    next_retry_at: null,
     error_message: null,
     error_details: null,
     reviewed_by: 'adro',

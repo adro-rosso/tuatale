@@ -46,9 +46,9 @@ export async function createOrderFromDraft(
   // rather than letting the DB CHECK throw a less-legible one.
   // Pet-as-hero (book_type='pet'): the protagonist is a pet, not a child — no gender,
   // and appearance is the pet's coat/markings free text (no structured features).
-  const bookType = (draft as { book_type?: string | null }).book_type ?? 'child';
+  const bookType = draft.book_type ?? 'child';
   const isPet = bookType === 'pet';
-  const animalKind = (draft as { animal_kind?: string | null }).animal_kind ?? null;
+  const animalKind = draft.animal_kind ?? null;
   if (isPet) {
     // Pet: require name (pet name), animal_kind, coat appearance, age_range (drives
     // reading level + the NOT NULL child_age), and theme. No gender.
@@ -102,7 +102,7 @@ export async function createOrderFromDraft(
   // customer is ALREADY charged, so we must NEVER reject. If a non-purchasable style
   // somehow reached here (pre-gate bypassed / race), coerce to watercolour + log loud,
   // so a paid order always yields a deliverable book (pricing is style-independent).
-  const requestedStyle = (draft as { art_style?: string | null }).art_style ?? 'watercolour';
+  const requestedStyle = draft.art_style ?? 'watercolour';
   const safeArtStyle = isPurchasableStyle(requestedStyle) ? requestedStyle : 'watercolour';
   if (safeArtStyle !== requestedStyle) {
     console.error(
@@ -110,21 +110,13 @@ export async function createOrderFromDraft(
       `non-purchasable art_style "${requestedStyle}" — coerced to watercolour (order ${stripeSession.id}).`,
     );
   }
-  const payload: OrderInsert & {
-    art_style?: string;
-    dedication_message?: string | null;
-    background?: string | null;
-    reading_level?: string | null;
-    book_type?: string;
-    animal_kind?: string | null;
-  } = {
+  const payload: OrderInsert = {
     customer_email: customerEmail,
     child_name: draft.child_name,
     child_age: ageFromRange(draft.age_range),
     age_range: draft.age_range,
-    // Pet: no gender (column relaxed to nullable, but the generated types still
-    // type it non-null — cast the null like child_features elsewhere). Child: as-is.
-    child_gender: (isPet ? null : draft.child_gender) as never,
+    // Pet: no gender (child_gender is nullable since the pet migration). Child: as-is.
+    child_gender: isPet ? null : draft.child_gender,
     child_appearance: draft.child_appearance,
     child_features: draft.child_features,
     // Pet-as-hero passthrough (default 'child' / null for the existing product).
@@ -132,12 +124,11 @@ export async function createOrderFromDraft(
     animal_kind: animalKind,
     art_style: safeArtStyle,
     // Optional custom dedication (front matter); null → auto-default at render.
-    dedication_message: (draft as { dedication_message?: string | null }).dedication_message ?? null,
+    dedication_message: draft.dedication_message ?? null,
     // Optional child background/heritage (parent's words); null → no heritage clause.
-    background: (draft as { background?: string | null }).background ?? null,
+    background: draft.background ?? null,
     // Reading level (prose difficulty); null → worker derives from the age band.
-    // Cast like art_style/background — not yet in the generated Database types.
-    reading_level: (draft as { reading_level?: string | null }).reading_level ?? null,
+    reading_level: draft.reading_level ?? null,
     secondaries: draft.secondaries,
     theme: draft.theme,
     theme_template_id: draft.theme_template_id,

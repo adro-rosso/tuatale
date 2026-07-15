@@ -9,7 +9,7 @@ import { HeroForm } from './HeroForm';
 export default async function HeroStepPage() {
   const result = await getDraft();
   const draft = result.kind === 'found' ? result.draft : null;
-  const initial = (draft as { book_type?: string | null } | null)?.book_type ?? 'child';
+  const initial = draft?.book_type ?? 'child';
 
   return <HeroForm initial={initial} />;
 }

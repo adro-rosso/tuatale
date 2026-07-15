@@ -18,15 +18,15 @@ export default async function ChildStepPage() {
   const artStyle = (draft as { art_style?: string | null } | null)?.art_style ?? 'watercolour';
 
   // Pet-as-hero: when the hero step chose a pet, render the pet form instead.
-  const bookType = (draft as { book_type?: string | null } | null)?.book_type ?? 'child';
+  const bookType = draft?.book_type ?? 'child';
   if (bookType === 'pet') {
-    const petPhotos = (draft as { photo_urls?: { pet?: string[] } | null } | null)?.photo_urls?.pet ?? [];
+    const petPhotos = (draft?.photo_urls as { pet?: string[] } | null)?.pet ?? [];
     return (
       <PetForm
         initial={{
           name: draft?.child_name ?? '',
           age_range: draft?.age_range ?? '',
-          animal_kind: (draft as { animal_kind?: string | null } | null)?.animal_kind ?? '',
+          animal_kind: draft?.animal_kind ?? '',
           appearance: draft?.child_appearance ?? '',
           photos: Array.isArray(petPhotos) ? petPhotos : [],
         }}

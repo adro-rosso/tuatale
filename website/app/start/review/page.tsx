@@ -29,9 +29,9 @@ export default async function ReviewStepPage() {
     : [];
 
   // Pet-as-hero: the protagonist is a pet — show kind + coat + photo count, no gender.
-  const isPet = (draft as { book_type?: string | null } | null)?.book_type === 'pet';
-  const animalKind = (draft as { animal_kind?: string | null } | null)?.animal_kind ?? null;
-  const petPhotos = (draft as { photo_urls?: { pet?: string[] } | null } | null)?.photo_urls?.pet;
+  const isPet = draft?.book_type === 'pet';
+  const animalKind = draft?.animal_kind ?? null;
+  const petPhotos = (draft?.photo_urls as { pet?: string[] } | null)?.pet;
   const petPhotoCount = Array.isArray(petPhotos) ? petPhotos.length : 0;
 
   return (

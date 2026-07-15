@@ -37,7 +37,7 @@ export interface DraftCompletenessResult {
 const isEmpty = (v: unknown) => v === null || v === undefined || v === '';
 
 export function checkDraftCompleteness(draft: Draft): DraftCompletenessResult {
-  const bookType = (draft as { book_type?: string | null }).book_type ?? 'child';
+  const bookType = draft.book_type ?? 'child';
 
   // Pet-as-hero: name, kind, coat appearance, reading age, theme, and ≥1 photo (the
   // pet's likeness comes from photos). No gender / no structured features.
@@ -45,10 +45,10 @@ export function checkDraftCompleteness(draft: Draft): DraftCompletenessResult {
     const missing: RequiredDraftField[] = [];
     if (isEmpty(draft.child_name)) missing.push('child_name');
     if (isEmpty(draft.age_range)) missing.push('age_range');
-    if (isEmpty((draft as { animal_kind?: string | null }).animal_kind)) missing.push('animal_kind');
+    if (isEmpty(draft.animal_kind)) missing.push('animal_kind');
     if (isEmpty(draft.child_appearance)) missing.push('child_appearance');
     if (isEmpty(draft.theme)) missing.push('theme');
-    const petPhotos = (draft as { photo_urls?: { pet?: string[] } | null }).photo_urls?.pet;
+    const petPhotos = (draft.photo_urls as { pet?: string[] } | null)?.pet;
     if (!Array.isArray(petPhotos) || petPhotos.length === 0) missing.push('pet_photos');
     return { complete: missing.length === 0, missing };
   }

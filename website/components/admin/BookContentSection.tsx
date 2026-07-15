@@ -23,6 +23,14 @@ function asSecondaries(json: Json): Secondary[] {
  */
 export function BookContentSection({ order }: { order: OrderRow }) {
   const secondaries = asSecondaries(order.secondaries);
+  // Pet-as-hero orders: the protagonist is a pet — no gender (null), animal_kind +
+  // coat instead. Guard child_gender (nullable since the pet migration) either way.
+  const isPet = order.book_type === 'pet';
+  const trait = isPet
+    ? order.animal_kind
+    : order.child_gender
+      ? order.child_gender.replace('_', ' ')
+      : null;
   return (
     <section className="space-y-md">
       <h2 className="font-body text-warm-grey text-caption tracking-wider uppercase">
@@ -30,11 +38,16 @@ export function BookContentSection({ order }: { order: OrderRow }) {
       </h2>
 
       <div className="border-warm-grey-light bg-cream p-md space-y-sm rounded-md border">
-        <Field label="Child">
-          {order.child_name} · {order.age_range} ·{' '}
-          <span className="capitalize">{order.child_gender.replace('_', ' ')}</span>
+        <Field label={isPet ? 'Pet' : 'Child'}>
+          {order.child_name} · {order.age_range}
+          {trait && (
+            <>
+              {' · '}
+              <span className="capitalize">{trait}</span>
+            </>
+          )}
         </Field>
-        <Field label="Appearance">
+        <Field label={isPet ? 'Coat & markings' : 'Appearance'}>
           <span className="whitespace-pre-wrap">{order.child_appearance}</span>
         </Field>
         <Field label="Theme">
