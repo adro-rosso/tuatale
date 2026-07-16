@@ -1,29 +1,37 @@
 import Link from 'next/link';
 import { Container } from '@/components/ui/Container';
-import { Heading } from '@/components/ui/Heading';
 import { Body } from '@/components/ui/Body';
+import { Card } from '@/components/ui/Card';
+import { buttonClasses } from '@/components/ui/Button';
 import { Wordmark } from '@/components/Wordmark';
 import { SiteHeader } from '@/components/SiteHeader';
 import { WaitlistForm } from '@/components/landing/WaitlistForm';
 import { STYLE_OPTIONS, styleThumb } from '@/lib/art-style-options';
 
 /*
- * Landing page (pre-launch).
+ * Landing page — a SELL page.
  *
- * Honest posture: there's no fulfillment yet, so the primary action is a
- * waitlist signup ("be the first to know"), NOT a buy CTA. The hero block
- * is built so it can flip to a "Create your book → /start" CTA at launch
- * (see LAUNCH_CTA in WaitlistForm) without a redesign.
+ * Primary action is "Create your book" → /start (the wizard). The launch
+ * email capture is demoted to a quiet secondary near the foot, for visitors
+ * who aren't ready to start yet.
  *
  * All imagery is reused from real renders (eval-harness cover + book pages)
  * optimised into /public/landing — no generation, no external calls.
  */
 
-const SAMPLE_PAGES = [
-  { src: '/landing/showcase-leo.webp', alt: 'A boy building a treehouse with his dad, watercolour.' },
-  { src: '/landing/showcase-anneliese.webp', alt: 'A girl exploring a shipwreck on the seabed, watercolour.' },
-  { src: '/landing/showcase-priya.webp', alt: 'A girl and her two cats in a sunlit hallway, watercolour.' },
-  { src: '/landing/showcase-bo.webp', alt: 'A toddler and his grandma in the kitchen, watercolour.' },
+const START = '/start';
+const PRICE = '$79';
+
+// The featured spread (a full real book page) + three art-forward supporting
+// panels cropped to the illustration (text removed) so the row leads with art.
+const FEATURED = {
+  src: '/landing/showcase-leo.webp',
+  alt: 'A boy building a treehouse with his dad, watercolour.',
+};
+const SUPPORTING = [
+  { src: '/landing/showcase-anneliese-art.webp', alt: 'A girl diving down to an underwater shipwreck, watercolour.' },
+  { src: '/landing/showcase-priya-art.webp', alt: 'A girl and her two cats in a sunlit doorway, watercolour.' },
+  { src: '/landing/showcase-bo-art.webp', alt: 'A toddler and his grandma with an old book, watercolour.' },
 ];
 
 const STEPS = [
@@ -34,188 +42,258 @@ const STEPS = [
   },
   {
     n: '2',
-    title: 'We craft the story and the art',
-    body: 'An original tale written around them, brought to life with hand-painted watercolour illustrations.',
+    title: 'We write it and paint it',
+    body: 'An original tale written around them, brought to life with hand-painted illustrations in the style you choose.',
   },
   {
     n: '3',
-    title: 'A keepsake book',
-    body: 'A picture book where your child is the hero. The kind they ask you to read again and again.',
+    title: 'You approve, we print',
+    body: "See the whole book before you commit. When it's perfect, we print it and ship a keepsake to your door.",
   },
+];
+
+const INCLUDED = [
+  'An original story starring your child',
+  'Hand-painted illustrations on every page',
+  'Your choice of five art styles',
+  'A full preview before anything prints',
 ];
 
 export default function Home() {
   return (
     <main className="bg-cream flex min-h-screen flex-col">
-      <SiteHeader />
+      <SiteHeader
+        right={
+          <Link href={START} className={buttonClasses('primary', 'sm')}>
+            Create your book
+          </Link>
+        }
+      />
 
-      {/* HERO */}
-      <section className="py-2xl tablet:py-3xl">
-        <Container>
-          <div className="gap-2xl desktop:grid-cols-2 grid grid-cols-1 items-center">
+      {/* ───────────────────────── HERO ───────────────────────── */}
+      <section className="relative overflow-hidden">
+        {/* soft decorative wash so the hero fills the frame, no floating-in-void */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              'radial-gradient(60% 55% at 78% 30%, rgba(245,229,220,0.9) 0%, rgba(251,243,238,0) 60%), radial-gradient(50% 50% at 10% 90%, rgba(107,125,94,0.10) 0%, rgba(251,243,238,0) 55%)',
+          }}
+        />
+        <Container className="py-3xl tablet:py-4xl relative">
+          <div className="gap-2xl desktop:grid-cols-[1.05fr_1fr] grid grid-cols-1 items-center">
+            {/* copy */}
             <div className="space-y-lg">
-              <Body
-                size="caption"
-                className="text-warm-grey tracking-wider uppercase"
-              >
+              <span className="bg-cream-deep text-iron-oxide px-md py-xs text-caption inline-flex items-center rounded-full font-medium tracking-wide uppercase">
                 Personalised children&apos;s books
-              </Body>
-              <Heading level="1" italic className="text-near-black text-[40px] leading-[1.15]">
-                A storybook starring your child.
-              </Heading>
-              <Body className="text-warm-grey max-w-[34rem]">
-                Tuatale turns your child into the hero of their own picture book. An original story,
-                painted by hand in soft watercolour, made for one child and no one else.
-              </Body>
+              </span>
+              <h1 className="font-heading text-near-black text-display leading-[1.03]">
+                A storybook <span className="italic">starring</span> your child.
+              </h1>
+              <p className="font-body text-warm-grey text-lead max-w-[34rem] leading-relaxed">
+                Tuatale turns your child into the hero of their own picture book — an original story,
+                painted by hand, made for one child and no one else.
+              </p>
 
-              <div className="pt-sm max-w-[30rem]">
-                <WaitlistForm source="landing_hero" />
+              <div className="gap-md pt-xs flex flex-col items-start sm:flex-row sm:items-center">
+                <Link href={START} className={buttonClasses('primary', 'lg')}>
+                  Create your book →
+                </Link>
+                <Body size="caption" className="text-warm-grey">
+                  {PRICE} · You see the whole book before it prints.
+                </Body>
               </div>
-
-              <Body size="caption" className="text-warm-grey italic">
-                We&apos;re putting the finishing touches on the first books. Leave your email and
-                you&apos;ll be first through the door.
-              </Body>
             </div>
 
-            {/* Hero render */}
-            <div className="desktop:justify-self-end w-full">
-              <div
-                className="bg-cream-deep p-md rounded-2xl"
-                style={{ boxShadow: '0 12px 40px rgba(120,90,60,.16)' }}
-              >
+            {/* hero render */}
+            <div className="desktop:justify-self-end relative w-full max-w-[36rem]">
+              <Card variant="paper" className="p-md">
                 {/* eslint-disable-next-line @next/next/no-img-element -- static /public render */}
                 <img
                   src="/landing/hero-cover.webp"
-                  alt="A finished Tuatale book cover: Leo's Saturday Treehouse, watercolour."
+                  alt="A finished Tuatale book cover: Leo's Saturday Treehouse."
                   width={1000}
                   height={773}
                   className="h-auto w-full rounded-xl"
                 />
-              </div>
+              </Card>
             </div>
           </div>
         </Container>
       </section>
 
-      {/* HOW IT WORKS */}
-      <section className="bg-cream-deep py-2xl tablet:py-3xl">
+      {/* ─────────────────────── HOW IT WORKS ─────────────────── */}
+      <section className="bg-cream-deep py-3xl tablet:py-4xl">
         <Container>
           <div className="mb-2xl space-y-sm text-center">
-            <Heading level="2" italic className="text-near-black">
-              How it works
-            </Heading>
-            <Body className="text-warm-grey mx-auto max-w-[36rem]">
+            <h2 className="font-heading text-near-black text-title leading-[1.1]">How it works</h2>
+            <Body className="text-warm-grey text-lead mx-auto max-w-[38rem]">
               Three small steps. We do the writing and the painting.
             </Body>
           </div>
 
           <div className="gap-xl tablet:grid-cols-3 grid grid-cols-1">
             {STEPS.map((step) => (
-              <div key={step.n} className="space-y-sm text-center">
-                <span className="font-heading text-iron-oxide border-iron-oxide/30 mx-auto flex h-12 w-12 items-center justify-center rounded-full border text-[22px] italic">
+              <div key={step.n} className="space-y-md flex flex-col items-center text-center">
+                <span className="font-heading text-cream bg-iron-oxide text-h1 flex h-16 w-16 items-center justify-center rounded-full shadow-[0_6px_18px_rgba(122,51,40,0.28)]">
                   {step.n}
                 </span>
-                <Heading level="3" italic className="text-near-black">
-                  {step.title}
-                </Heading>
-                <Body size="caption" className="text-warm-grey mx-auto max-w-[20rem]">
-                  {step.body}
-                </Body>
+                <h3 className="font-heading text-near-black text-h2 not-italic">{step.title}</h3>
+                <Body className="text-warm-grey mx-auto max-w-[22rem]">{step.body}</Body>
               </div>
             ))}
           </div>
         </Container>
       </section>
 
-      {/* SHOWCASE — real pages */}
-      <section className="py-2xl tablet:py-3xl">
+      {/* ──────────────────── SHOWCASE — the art ──────────────── */}
+      <section className="bg-paper py-3xl tablet:py-4xl">
         <Container>
           <div className="mb-2xl space-y-sm text-center">
-            <Heading level="2" italic className="text-near-black">
+            <h2 className="font-heading text-near-black text-title leading-[1.1]">
               Real pages, painted by hand
-            </Heading>
-            <Body className="text-warm-grey mx-auto max-w-[36rem]">
-              Every spread is original watercolour art, made for the child in the story. Here are a
-              few from books we&apos;ve made.
+            </h2>
+            <Body className="text-warm-grey text-lead mx-auto max-w-[40rem]">
+              Every spread is original art, made for the child in the story. A few from books
+              we&apos;ve made.
             </Body>
           </div>
 
-          <div className="gap-lg tablet:grid-cols-2 grid grid-cols-1">
-            {SAMPLE_PAGES.map((page) => (
-              <div
-                key={page.src}
-                className="bg-cream-deep p-sm rounded-xl"
-                style={{ boxShadow: '0 6px 22px rgba(120,90,60,.12)' }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- static /public render */}
-                <img
-                  src={page.src}
-                  alt={page.alt}
-                  width={880}
-                  height={680}
-                  className="h-auto w-full rounded-lg"
-                />
-              </div>
+          {/* one large featured spread — let the art dominate */}
+          <Card variant="cream" className="mx-auto max-w-[62rem] overflow-hidden p-sm tablet:p-md">
+            {/* eslint-disable-next-line @next/next/no-img-element -- static /public render */}
+            <img
+              src={FEATURED.src}
+              alt={FEATURED.alt}
+              width={1600}
+              height={1040}
+              className="h-auto w-full rounded-xl"
+            />
+          </Card>
+
+          {/* three art-forward supporting panels (illustration only, uniform squares) */}
+          <div className="gap-lg mt-lg tablet:grid-cols-3 mx-auto grid max-w-[62rem] grid-cols-1">
+            {SUPPORTING.map((page) => (
+              <Card key={page.src} variant="cream" className="overflow-hidden p-sm">
+                <div className="aspect-square overflow-hidden rounded-lg">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- static /public render */}
+                  <img src={page.src} alt={page.alt} className="h-full w-full object-cover" />
+                </div>
+              </Card>
             ))}
           </div>
         </Container>
       </section>
 
-      {/* SHOWCASE — art styles */}
-      <section className="bg-cream-deep py-2xl tablet:py-3xl">
+      {/* ─────────────────────── STYLES ROW ───────────────────── */}
+      <section className="bg-cream py-3xl tablet:py-4xl">
         <Container>
           <div className="mb-2xl space-y-sm text-center">
-            <Heading level="2" italic className="text-near-black">
-              More than one way to paint a story
-            </Heading>
-            <Body className="text-warm-grey mx-auto max-w-[36rem]">
-              We start with watercolour. More illustration styles are on the way, so the art can
-              suit the child.
+            <h2 className="font-heading text-near-black text-title leading-[1.1]">
+              One story, your choice of style
+            </h2>
+            <Body className="text-warm-grey text-lead mx-auto max-w-[40rem]">
+              Pick the art that suits your child — from soft watercolour to layered cut paper.
             </Body>
           </div>
 
-          <div className="gap-md grid grid-cols-3 tablet:grid-cols-6">
+          <div className="gap-md tablet:grid-cols-6 grid grid-cols-2">
             {STYLE_OPTIONS.map((style) => (
-              <div key={style.value} className="space-y-xs text-center">
-                <div className="bg-cream overflow-hidden rounded-lg">
+              <div
+                key={style.value}
+                className="border-warm-grey-light/70 bg-paper overflow-hidden rounded-2xl border"
+              >
+                {/* uniform frame: same bg + square crop behind every thumb, so the
+                    row reads as one set regardless of each render's own margins */}
+                <div className="bg-cream aspect-square">
                   {/* eslint-disable-next-line @next/next/no-img-element -- static /public thumb */}
                   <img
                     src={styleThumb(style.value)}
                     alt={`${style.label} sample`}
-                    className="aspect-square h-auto w-full object-cover"
+                    className="h-full w-full object-cover"
                   />
                 </div>
-                <Body size="caption" className="text-near-black font-heading italic">
-                  {style.label}
-                </Body>
+                <div className="px-sm py-sm text-center">
+                  <span className="font-heading text-near-black text-h3 not-italic">
+                    {style.label}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
         </Container>
       </section>
 
-      {/* CLOSING waitlist */}
-      <section className="py-2xl tablet:py-3xl">
+      {/* ──────────────────────── PRICING ─────────────────────── */}
+      <section className="bg-cream-deep py-3xl tablet:py-4xl">
         <Container>
-          <div className="mx-auto max-w-[34rem] space-y-lg text-center">
-            <Heading level="2" italic className="text-near-black">
-              Be the first to make one.
-            </Heading>
-            <Body className="text-warm-grey">
-              We&apos;ll send a single email the moment the first books are ready to order.
+          <Card variant="paper" className="p-xl tablet:p-2xl mx-auto max-w-[40rem] text-center">
+            <h2 className="font-heading text-near-black text-title leading-[1.1]">
+              One book, one price
+            </h2>
+            <div className="mt-md flex items-baseline justify-center gap-2">
+              <span className="font-heading text-near-black text-display leading-none">{PRICE}</span>
+              <span className="font-body text-warm-grey text-body">one-time</span>
+            </div>
+            <Body className="text-warm-grey mt-sm">
+              No subscription. You only pay once, and only after you&apos;ve seen it.
             </Body>
-            <div className="mx-auto max-w-[30rem]">
-              <WaitlistForm source="landing_footer" />
+
+            <ul className="gap-sm mt-xl mx-auto grid max-w-[26rem] text-left">
+              {INCLUDED.map((item) => (
+                <li key={item} className="gap-sm flex items-start">
+                  <span aria-hidden className="text-iron-oxide mt-1 shrink-0">
+                    ✓
+                  </span>
+                  <Body className="text-near-black">{item}</Body>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-xl">
+              <Link href={START} className={buttonClasses('primary', 'lg')}>
+                Create your book →
+              </Link>
+            </div>
+          </Card>
+        </Container>
+      </section>
+
+      {/* ─────────── CLOSING — demoted launch-list capture ─────── */}
+      <section className="bg-cream py-3xl tablet:py-4xl">
+        <Container>
+          <div className="mx-auto max-w-[34rem] text-center">
+            <h2 className="font-heading text-near-black text-title leading-[1.1]">
+              Make one tonight
+            </h2>
+            <Body className="text-warm-grey text-lead mt-sm">
+              Start with a few words about your child. You&apos;ll see the whole book before you pay.
+            </Body>
+            <div className="mt-xl">
+              <Link href={START} className={buttonClasses('primary', 'lg')}>
+                Create your book →
+              </Link>
+            </div>
+
+            {/* secondary / optional: the launch list, quietly */}
+            <div className="border-warm-grey-light/70 mt-2xl border-t pt-xl">
+              <Body size="caption" className="text-warm-grey mb-md">
+                Not ready yet? Leave your email and we&apos;ll tell you when we add new styles and
+                books.
+              </Body>
+              <div className="mx-auto max-w-[28rem]">
+                <WaitlistForm source="landing_footer" />
+              </div>
             </div>
           </div>
         </Container>
       </section>
 
-      {/* FOOTER */}
-      <footer className="border-warm-grey-light border-t">
+      {/* ──────────────────────── FOOTER ──────────────────────── */}
+      <footer className="border-warm-grey-light bg-cream border-t">
         <Container className="py-xl">
-          <div className="gap-md flex flex-col items-center justify-between text-center tablet:flex-row tablet:text-left">
+          <div className="gap-md tablet:flex-row flex flex-col items-center justify-between text-center tablet:text-left">
             <div className="space-y-xs">
               <Wordmark size="sm" />
               <Body size="caption" className="text-warm-grey">
@@ -234,7 +312,7 @@ export default function Home() {
               </a>
             </nav>
           </div>
-          <Body size="caption" className="text-warm-grey mt-lg text-center tablet:text-left">
+          <Body size="caption" className="text-warm-grey mt-lg tablet:text-left text-center">
             © 2026 Tuatale.
           </Body>
         </Container>

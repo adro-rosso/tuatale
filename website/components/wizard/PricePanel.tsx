@@ -25,9 +25,9 @@ export function PricePanel({ secondaries }: PricePanelProps) {
   return (
     <aside
       aria-label="Your book, price summary"
-      className="bg-cream-deep border-warm-grey-light p-lg rounded-lg border"
+      className="bg-paper border-warm-grey-light/70 p-lg rounded-2xl border shadow-[0_8px_30px_rgba(120,90,60,0.08)]"
     >
-      <Heading level="3" className="mb-md not-italic">
+      <Heading level="3" className="text-warm-grey mb-md text-caption font-semibold tracking-[0.14em] uppercase not-italic">
         Your book
       </Heading>
 
@@ -40,9 +40,9 @@ export function PricePanel({ secondaries }: PricePanelProps) {
         ))}
       </ul>
 
-      <div className="border-warm-grey-light pt-md flex items-center justify-between border-t">
-        <span className="font-body text-near-black text-body font-medium">Total</span>
-        <span className="font-heading text-iron-oxide text-h3 tabular-nums">
+      <div className="border-warm-grey-light pt-md flex items-baseline justify-between border-t">
+        <span className="font-body text-near-black text-body font-semibold">Total</span>
+        <span className="font-heading text-iron-oxide text-h1 tabular-nums">
           {formatPrice(price.total)}
         </span>
       </div>

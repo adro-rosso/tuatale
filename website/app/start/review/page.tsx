@@ -3,6 +3,7 @@ import { getDraft } from '@/lib/draft-fetch';
 import { Body } from '@/components/ui/Body';
 import { Button } from '@/components/ui/Button';
 import { Heading } from '@/components/ui/Heading';
+import { fieldControl } from '@/components/ui/form-styles';
 import { submitReviewStep } from '@/app/start/_actions/submit-review';
 
 /**
@@ -35,7 +36,7 @@ export default async function ReviewStepPage() {
   const petPhotoCount = Array.isArray(petPhotos) ? petPhotos.length : 0;
 
   return (
-    <div className="space-y-xl">
+    <div className="space-y-xl mx-auto max-w-[44rem]">
       <Body className="text-warm-grey text-center">
         One last look. Anything you&apos;d like to change?
       </Body>
@@ -115,7 +116,7 @@ export default async function ReviewStepPage() {
             maxLength={120}
             defaultValue={dedication}
             placeholder={isPet ? 'For Biscuit, our best friend' : 'For Maya, on your 6th birthday'}
-            className="font-body text-body border-warm-grey-light bg-cream p-sm focus:border-iron-oxide w-full rounded-lg border-2 focus:outline-none"
+            className={`${fieldControl} resize-y`}
           />
         </section>
 

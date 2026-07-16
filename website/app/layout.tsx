@@ -1,28 +1,31 @@
 import type { Metadata } from 'next';
-import { EB_Garamond, Inter } from 'next/font/google';
+import { Fraunces, Hanken_Grotesk } from 'next/font/google';
 import './globals.css';
 
 /*
- * Tuatale typography — EB Garamond italic 400 for headings + wordmark,
- * Inter 400 for body. Both loaded via next/font/google so they ship
- * self-hosted (no external request to Google).
+ * Tuatale typography — "warm storybook, made confident."
  *
- * The CSS variable names (--font-eb-garamond, --font-inter) are consumed
- * by globals.css's @theme block, which exposes them as Tailwind utilities
+ * Headings = Fraunces, loaded UPRIGHT + italic (italic is a sparing accent,
+ * not the default — see the Heading primitive). Body/UI = Hanken Grotesk, a
+ * warm humanist sans. Both ship self-hosted via next/font/google (no external
+ * request to Google).
+ *
+ * The CSS variable names (--font-fraunces, --font-hanken) are consumed by
+ * globals.css's @theme block, which exposes them as Tailwind utilities
  * (font-heading, font-body).
  */
-const ebGaramond = EB_Garamond({
+const fraunces = Fraunces({
   subsets: ['latin'],
-  weight: '400',
-  style: 'italic',
-  variable: '--font-eb-garamond',
+  weight: ['400', '500', '600', '700'],
+  style: ['normal', 'italic'],
+  variable: '--font-fraunces',
   display: 'swap',
 });
 
-const inter = Inter({
+const hanken = Hanken_Grotesk({
   subsets: ['latin'],
-  weight: '400',
-  variable: '--font-inter',
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-hanken',
   display: 'swap',
 });
 
@@ -37,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${ebGaramond.variable} ${inter.variable}`}>
+    <html lang="en" className={`${fraunces.variable} ${hanken.variable}`}>
       <body>{children}</body>
     </html>
   );

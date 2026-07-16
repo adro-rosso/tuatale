@@ -41,7 +41,7 @@ export function PreviewProgress({ done, photo }: { done: boolean; photo?: boolea
           style={{ width: `${pct}%` }}
         />
       </div>
-      <p className="font-body text-warm-grey text-caption text-center italic">
+      <p className="font-body text-warm-grey text-caption text-center">
         {photo ? 'Painting their likeness. ' : ''}{copy}
       </p>
     </div>

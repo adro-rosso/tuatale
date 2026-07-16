@@ -10,6 +10,7 @@
  * The flag below must stay until that review lands.
  */
 import { useRef } from 'react';
+import { buttonClasses } from '@/components/ui/Button';
 
 interface Props {
   photo: { path: string; hash: string; name: string } | null;
@@ -23,12 +24,9 @@ export function PhotoHero({ photo, uploading, error, onChoose, onRemove }: Props
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div
-      className="border-iron-oxide p-md rounded-2xl border-2"
-      style={{ backgroundColor: '#fdfbef', boxShadow: '0 2px 14px rgba(120,90,60,.10)' }}
-    >
+    <div className="border-iron-oxide bg-paper p-md rounded-2xl border-2 shadow-[0_8px_30px_rgba(120,90,60,0.08)]">
       <div className="space-y-sm flex flex-col items-center text-center">
-        <span className="font-heading text-near-black text-h2 italic">Start with a photo</span>
+        <span className="font-heading text-near-black text-h2 not-italic">Start with a photo</span>
         {/* Arbitrary max-w — Tailwind v4 named scales (max-w-sm) aren't configured
             here and collapse to ~8px (the named-scale bite). Keep a readable line. */}
         <p className="font-body text-warm-grey text-caption max-w-[22rem]">
@@ -39,7 +37,7 @@ export function PhotoHero({ photo, uploading, error, onChoose, onRemove }: Props
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
-          className="font-heading bg-iron-oxide px-lg py-md text-h3 rounded-full text-white italic transition-opacity disabled:opacity-60"
+          className={buttonClasses('primary', 'md')}
         >
           {uploading
             ? 'Uploading…'
@@ -64,7 +62,7 @@ export function PhotoHero({ photo, uploading, error, onChoose, onRemove }: Props
 
         {photo ? (
           <p className="font-body text-near-black text-caption">
-            Using <span className="italic">{photo.name}</span> ·{' '}
+            Using <span className="font-semibold">{photo.name}</span> ·{' '}
             <button type="button" onClick={onRemove} className="text-iron-oxide underline">
               remove
             </button>
@@ -77,7 +75,7 @@ export function PhotoHero({ photo, uploading, error, onChoose, onRemove }: Props
           </p>
         ) : null}
 
-        <p className="font-body text-warm-grey text-caption italic">
+        <p className="font-body text-warm-grey text-caption">
           ⚠️ Test only. Real photo upload needs the privacy &amp; safety review first.
         </p>
       </div>

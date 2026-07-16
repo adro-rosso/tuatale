@@ -69,15 +69,41 @@ describe('GeneratedPreview', () => {
     );
   });
 
-  it('failure surfaces a retry message (no charge)', async () => {
-    req.mockResolvedValue({ previewId: 'p', status: 'queued', cached: false });
-    stat.mockResolvedValue({ previewId: 'p', status: 'failed' });
+  it('first busy → ONE silent retry → recovered/cached image appears (no manual re-click)', async () => {
     vi.useFakeTimers();
+    req
+      .mockResolvedValueOnce({ previewId: 'p1', status: 'queued', cached: false }) // attempt 1: miss
+      .mockResolvedValueOnce({ previewId: 'p2', status: 'done', imageUrl: 'https://x/recovered.png', cached: true }); // silent retry: cache hit (Inngest recovered)
+    stat.mockResolvedValue({ previewId: 'p1', status: 'failed' }); // attempt 1 busies
     render(<GeneratedPreview inputs={inputs} />);
     clickGenerate();
-    await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(1500);
-    expect(screen.getByRole('alert')).toHaveTextContent(/try again/i);
+    await vi.advanceTimersByTimeAsync(0); // requestPreview #1
+    await vi.advanceTimersByTimeAsync(1500); // poll → failed → schedule silent retry
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument(); // SILENT: no busy flash
+    await vi.advanceTimersByTimeAsync(3000); // RETRY_DELAY → silent retry fires
+    await vi.advanceTimersByTimeAsync(0); // requestPreview #2 → cache hit
+    expect(screen.getByRole('img', { name: 'Your character' })).toHaveAttribute(
+      'src',
+      'https://x/recovered.png',
+    );
+    expect(req).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('sustained outage → "busy — try again" after EXACTLY one retry (never loops)', async () => {
+    vi.useFakeTimers();
+    req.mockResolvedValue({ previewId: 'p', status: 'queued', cached: false });
+    stat.mockResolvedValue({ previewId: 'p', status: 'failed' });
+    render(<GeneratedPreview inputs={inputs} />);
+    clickGenerate();
+    await vi.advanceTimersByTimeAsync(0); // req #1
+    await vi.advanceTimersByTimeAsync(1500); // poll fail → silent retry scheduled (no alert yet)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(3000); // retry fires
+    await vi.advanceTimersByTimeAsync(0); // req #2
+    await vi.advanceTimersByTimeAsync(1500); // poll fail → already retried → busy
+    expect(screen.getByRole('alert')).toHaveTextContent(/busy|try again/i);
+    expect(req).toHaveBeenCalledTimes(2); // exactly ONE retry — no loop
   });
 
   it('S-F: no cut-out part-hotspots remain', () => {

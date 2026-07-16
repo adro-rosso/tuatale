@@ -38,7 +38,7 @@ export default async function SecondariesStepPage() {
     <div className="space-y-lg">
       <Body className="text-center">
         Add up to three companions: a friend, a pet, a favourite toy. You can skip this if
-        you&apos;d rather just tell {draft?.child_name ?? 'their'} own story.
+        you&apos;d rather just tell {draft?.child_name ? `${draft.child_name}'s` : 'their'} own story.
       </Body>
       <SecondariesForm initialSecondaries={initial} />
     </div>

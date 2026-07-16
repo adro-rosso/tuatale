@@ -67,7 +67,7 @@ interface AxisDef {
 // safety / consent / moderation workstream (and the upload bucket is prod-gated).
 // Hidden for the min-safe ship → builder-only. Flip to true to restore it for
 // internal testing. (uploadPhoto + the photo state stay in the tree, just unrendered.)
-const PHOTO_ENABLED = false;
+const PHOTO_ENABLED = false; // photo path stays OFF for prod (gated behind the privacy/safety workstream). Flip locally to test.
 
 interface BuilderProps {
   gender: string;
@@ -157,13 +157,18 @@ export function CharacterBuilder({
 
       {/* Photo path (hidden for launch — see PHOTO_ENABLED). */}
       {PHOTO_ENABLED && (
-        <PhotoHero
-          photo={photo}
-          uploading={uploading}
-          error={photoError}
-          onChoose={(f) => void onPhotoChosen(f)}
-          onRemove={() => setPhoto(null)}
-        />
+        <div className="space-y-sm">
+          <p className="px-sm py-xs rounded-md border border-[#e8c98a] bg-[#fdf3e0] font-body text-caption text-[#8a5a1a]">
+            ⚠️ Test only. Real photo upload needs the privacy &amp; safety review first.
+          </p>
+          <PhotoHero
+            photo={photo}
+            uploading={uploading}
+            error={photoError}
+            onChoose={(f) => void onPhotoChosen(f)}
+            onRemove={() => setPhoto(null)}
+          />
+        </div>
       )}
 
       {/* Pick their features. */}
@@ -191,11 +196,11 @@ export function CharacterBuilder({
                   active
                     ? 'border-iron-oxide bg-cream-deep text-near-black'
                     : v
-                      ? 'border-iron-oxide/40 bg-cream text-near-black hover:border-iron-oxide'
-                      : 'border-warm-grey-light bg-cream text-near-black hover:border-iron-oxide'
+                      ? 'border-iron-oxide/40 bg-paper text-near-black hover:border-iron-oxide'
+                      : 'border-warm-grey-light bg-paper text-near-black hover:border-iron-oxide'
                 }`}
               >
-                <span className="font-heading italic">{a.label}</span>
+                <span className="font-semibold">{a.label}</span>
                 {v ? (
                   <span className="text-warm-grey"> · {labelize(v)}</span>
                 ) : (
@@ -264,7 +269,7 @@ function PickerPanel({
   return (
     <div>
       <div className="mb-sm flex items-center justify-between">
-        <span className="font-heading text-near-black text-h3 italic">{axis.label}</span>
+        <span className="font-heading text-near-black text-h3 not-italic">{axis.label}</span>
         <button
           type="button"
           onClick={onClose}

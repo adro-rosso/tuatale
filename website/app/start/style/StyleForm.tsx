@@ -106,7 +106,7 @@ export function StyleForm({ initial, bookType }: StyleFormProps) {
                   </span>
                 )}
               </span>
-              <span className="px-xs pt-sm font-heading text-near-black text-h3 italic">
+              <span className="px-xs pt-sm font-heading text-near-black text-h3 not-italic">
                 {opt.label}
               </span>
               <span className="px-xs pb-xs font-body text-warm-grey text-caption">
@@ -121,7 +121,7 @@ export function StyleForm({ initial, bookType }: StyleFormProps) {
           page-vocab-tuned styles (watercolour + coloured pencil). Same Mila scene
           per style, so a parent sees the medium difference, not the scene. */}
       {hasStyleSample(selected) && bookType !== 'pet' && (
-        <figure className="border-warm-grey-light bg-cream mx-auto max-w-[26rem] overflow-hidden rounded-xl border">
+        <figure className="border-warm-grey-light bg-paper mx-auto max-w-[26rem] overflow-hidden rounded-xl border shadow-[0_8px_30px_rgba(120,90,60,0.08)]">
           {/* eslint-disable-next-line @next/next/no-img-element -- static /public sample */}
           <img
             src={styleSample(selected)}

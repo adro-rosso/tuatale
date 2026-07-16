@@ -61,6 +61,9 @@ export default async function StartLayout({ children }: { children: ReactNode })
       childName={draft?.child_name ?? null}
       bookType={bookType}
       secondariesForPricing={secondariesForPricing}
+      // The payment step renders its own full order summary, so suppress the
+      // sidebar there to avoid showing the price twice.
+      showPrice={pathname !== '/start/payment'}
     >
       {children}
     </WizardLayout>

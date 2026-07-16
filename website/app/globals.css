@@ -11,23 +11,31 @@
  * --color-iron-oxide drives `bg-iron-oxide`, `text-iron-oxide`, etc.
  */
 @theme {
-  /* Colors — Soft Heirloom palette */
+  /* Colors — Soft Heirloom palette. `paper` is a cleaner near-white for
+     content zones (cards, feature panels) so the art pops off the warm cream. */
   --color-cream: #fbf3ee;
   --color-cream-deep: #f5e5dc;
+  --color-paper: #fffdf8;
   --color-iron-oxide: #7a3328;
   --color-sage: #6b7d5e;
   --color-near-black: #2e2620;
   --color-warm-grey: #7a6f62;
   --color-warm-grey-light: #d9cfc2;
 
-  /* Fonts — exposed as CSS vars by next/font/google in app/layout.tsx */
-  --font-heading: var(--font-eb-garamond);
-  --font-body: var(--font-inter);
+  /* Fonts — exposed as CSS vars by next/font/google in app/layout.tsx.
+     Headings = Fraunces (upright by default, italic a sparing accent).
+     Body/UI = Hanken Grotesk (warm humanist sans). */
+  --font-heading: var(--font-fraunces);
+  --font-body: var(--font-hanken);
 
-  /* Font sizes — named per the type scale (h1, h2, h3, body, caption) */
+  /* Font sizes — a deliberate scale: display (hero) → title (section head) →
+     h1/h2/h3 → lead (intros) → body → caption. display + title are fluid. */
+  --text-display: clamp(2.75rem, 6vw, 4.25rem);
+  --text-title: clamp(1.9rem, 3vw, 2.375rem);
   --text-h1: 32px;
   --text-h2: 24px;
   --text-h3: 18px;
+  --text-lead: 20px;
   --text-body: 16px;
   --text-caption: 14px;
 
@@ -46,6 +54,8 @@
   --spacing-xl: 32px;
   --spacing-2xl: 48px;
   --spacing-3xl: 64px;
+  --spacing-4xl: 96px;
+  --spacing-5xl: 128px;
 
   /* Breakpoints — mobile-first; 0px is implicit, no token needed */
   --breakpoint-tablet: 768px;

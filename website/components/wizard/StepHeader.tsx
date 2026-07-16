@@ -2,8 +2,6 @@
 
 import { useSelectedLayoutSegment } from 'next/navigation';
 import { WIZARD_STEPS, isWizardStep, stepIndex, type WizardStep } from '@/lib/wizard-steps';
-import { Heading } from '@/components/ui/Heading';
-import { Body } from '@/components/ui/Body';
 
 /**
  * Step header — renders the "Step N of 6" caption and the personalised
@@ -49,13 +47,13 @@ export function StepHeader({ childName, bookType }: StepHeaderProps) {
   const i = stepIndex(segment);
 
   return (
-    <header className="px-lg pt-md pb-lg text-center">
-      <Body size="caption" className="mb-xs tracking-wider uppercase">
+    <header className="px-lg pt-sm pb-md text-center">
+      <p className="font-body text-warm-grey text-caption mb-xs tracking-[0.18em] uppercase">
         Step {i + 1} of {WIZARD_STEPS.length}
-      </Body>
-      <Heading level="2" italic>
+      </p>
+      <h1 className="font-heading text-near-black text-title leading-[1.1]">
         {heading(segment, childName, bookType === 'pet')}
-      </Heading>
+      </h1>
     </header>
   );
 }

@@ -4,6 +4,7 @@ import { useId, useState, useTransition } from 'react';
 import { submitSecondariesStep } from '@/app/start/_actions/submit-secondaries';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
+import { fieldControl, sectionCard, segTrack, segItem } from '@/components/ui/form-styles';
 import { GENDERS, SUBJECT_TYPES } from '@/lib/validation/schemas';
 import type { FieldErrors } from '@/lib/validation/validate';
 
@@ -123,9 +124,9 @@ function SecondaryCard({ data, errors, onChange, onRemove }: SecondaryCardProps)
   const uid = useId();
 
   return (
-    <fieldset className="border-warm-grey-light bg-cream p-lg space-y-md rounded-lg border">
+    <fieldset className={`${sectionCard} space-y-md`}>
       <div className="flex items-center justify-between">
-        <legend className="font-heading text-near-black text-h3 italic">
+        <legend className="font-heading text-near-black text-h3 not-italic">
           {data.name || 'New character'}
         </legend>
         <Button variant="ghost" type="button" size="sm" onClick={onRemove}>
@@ -139,17 +140,14 @@ function SecondaryCard({ data, errors, onChange, onRemove }: SecondaryCardProps)
           value={data.name}
           maxLength={50}
           onChange={(e) => onChange({ name: e.target.value })}
-          className="font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none"
+          className={fieldControl}
         />
       </CardField>
 
       <CardField label="What sort of character?" error={errors['subject_type']}>
-        <fieldset className="gap-sm flex">
+        <fieldset className={segTrack}>
           {SUBJECT_TYPES.map((t) => (
-            <label
-              key={t}
-              className="font-body text-near-black bg-cream border-warm-grey-light px-md py-sm has-[:checked]:border-iron-oxide has-[:checked]:bg-cream-deep flex-1 cursor-pointer rounded border-2 text-center transition-colors"
-            >
+            <label key={t} className={segItem}>
               <input
                 type="radio"
                 name={`subject_type_${uid}`}
@@ -166,12 +164,9 @@ function SecondaryCard({ data, errors, onChange, onRemove }: SecondaryCardProps)
 
       {isHuman ? (
         <CardField label="Their gender" error={errors['gender']}>
-          <fieldset className="gap-sm flex">
+          <fieldset className={segTrack}>
             {GENDERS.map((g) => (
-              <label
-                key={g}
-                className="font-body text-near-black bg-cream border-warm-grey-light px-md py-sm has-[:checked]:border-iron-oxide has-[:checked]:bg-cream-deep flex-1 cursor-pointer rounded border-2 text-center capitalize transition-colors"
-              >
+              <label key={g} className={`${segItem} capitalize`}>
                 <input
                   type="radio"
                   name={`gender_${uid}`}
@@ -194,7 +189,7 @@ function SecondaryCard({ data, errors, onChange, onRemove }: SecondaryCardProps)
           maxLength={80}
           placeholder="friend, sister, dog, favourite teddy…"
           onChange={(e) => onChange({ relationship: e.target.value })}
-          className="font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none"
+          className={fieldControl}
         />
       </CardField>
 
@@ -205,7 +200,7 @@ function SecondaryCard({ data, errors, onChange, onRemove }: SecondaryCardProps)
           rows={3}
           placeholder="The more specific, the better."
           onChange={(e) => onChange({ appearance: e.target.value })}
-          className="font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full resize-y rounded border-2 transition-colors outline-none"
+          className={`${fieldControl} resize-y`}
         />
       </CardField>
 

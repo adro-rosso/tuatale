@@ -1,9 +1,11 @@
 /**
- * Heading primitive — wraps h1/h2/h3 in EB Garamond styling.
+ * Heading primitive — wraps h1/h2/h3 in Fraunces styling.
  *
  * Level prop controls the semantic tag AND the font-size token (h1/h2/h3).
- * Italic is OPT-IN via the italic prop — many headings should be roman
- * with the italic reserved for the wordmark + the literary tagline shapes.
+ * Headings are UPRIGHT by default; italic is OPT-IN via the italic prop and
+ * should stay a sparing accent (the wordmark + the odd literary word), never
+ * every heading. For the fluid display/title sizes, apply `text-display` /
+ * `text-title` via className.
  */
 import type { HTMLAttributes } from 'react';
 

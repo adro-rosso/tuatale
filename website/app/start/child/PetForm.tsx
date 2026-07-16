@@ -6,6 +6,7 @@ import { uploadPetPhoto } from '@/app/start/_actions/preview';
 import { AGE_RANGES } from '@/lib/validation/schemas';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
+import { fieldControl, sectionCard } from '@/components/ui/form-styles';
 
 interface PetFormProps {
   initial: {
@@ -17,9 +18,8 @@ interface PetFormProps {
   };
 }
 
-const SELECT_CLASS =
-  'font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none';
-const CARD = 'border-warm-grey-light rounded-2xl border p-lg';
+const SELECT_CLASS = fieldControl;
+const CARD = sectionCard;
 const MAX_PHOTOS = 5;
 
 const initialState: SubmitPetState = { errors: {} };
@@ -54,7 +54,7 @@ async function toPngFile(file: File, max = 1024): Promise<File> {
 function SectionHead({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="border-warm-grey-light pb-sm mb-md flex items-baseline justify-between border-b">
-      <h2 className="font-heading text-near-black text-[20px] italic">{title}</h2>
+      <h2 className="font-heading text-near-black text-h2 not-italic">{title}</h2>
       {hint ? <span className="font-body text-warm-grey text-caption tracking-wider uppercase">{hint}</span> : null}
     </div>
   );
@@ -63,7 +63,7 @@ function SectionHead({ title, hint }: { title: string; hint?: string }) {
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <div className="space-y-xs">
-      <label className="font-heading text-near-black text-h3 block italic">{label}</label>
+      <label className="font-body text-near-black text-body block font-semibold">{label}</label>
       {children}
       {error && (
         <p className="font-body text-iron-oxide text-caption" role="alert">

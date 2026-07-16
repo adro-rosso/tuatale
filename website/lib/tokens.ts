@@ -18,6 +18,7 @@ export const tokens = {
   colors: {
     cream: '#FBF3EE',
     creamDeep: '#F5E5DC',
+    paper: '#FFFDF8',
     ironOxide: '#7A3328',
     sage: '#6B7D5E',
     nearBlack: '#2E2620',
@@ -25,13 +26,16 @@ export const tokens = {
     warmGreyLight: '#D9CFC2',
   },
   fonts: {
-    heading: 'var(--font-eb-garamond)',
-    body: 'var(--font-inter)',
+    heading: 'var(--font-fraunces)',
+    body: 'var(--font-hanken)',
   },
   fontSize: {
+    display: 'clamp(2.75rem, 6vw, 4.25rem)',
+    title: 'clamp(1.9rem, 3vw, 2.375rem)',
     h1: '32px',
     h2: '24px',
     h3: '18px',
+    lead: '20px',
     body: '16px',
     caption: '14px',
   },
@@ -50,6 +54,8 @@ export const tokens = {
     xl: '32px',
     '2xl': '48px',
     '3xl': '64px',
+    '4xl': '96px',
+    '5xl': '128px',
   },
   breakpoints: {
     mobile: '0px',

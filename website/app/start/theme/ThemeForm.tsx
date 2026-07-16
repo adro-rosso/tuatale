@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import { submitThemeStep, type SubmitThemeState } from '@/app/start/_actions/submit-theme';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
+import { fieldControl } from '@/components/ui/form-styles';
 import { THEMES, CUSTOM_TEMPLATE_ID, resolveStarter, type ThemeTemplate } from '@/lib/themes';
 
 interface ThemeFormProps {
@@ -62,10 +63,10 @@ export function ThemeForm({ initial, childName, childGender }: ThemeFormProps) {
               starter: '',
             })
           }
-          className={`font-heading text-h3 px-md py-md block w-full rounded-lg border-2 text-center italic transition-colors ${
+          className={`font-heading text-h3 px-md py-md block w-full rounded-xl border-2 text-center not-italic transition-colors ${
             selectedId === CUSTOM_TEMPLATE_ID
               ? 'border-iron-oxide bg-cream-deep text-iron-oxide'
-              : 'border-warm-grey-light bg-cream text-near-black hover:border-iron-oxide'
+              : 'border-warm-grey-light bg-paper text-near-black hover:border-iron-oxide'
           }`}
         >
           Write your own
@@ -73,7 +74,7 @@ export function ThemeForm({ initial, childName, childGender }: ThemeFormProps) {
       </div>
 
       <div className="space-y-xs">
-        <label className="font-heading text-near-black text-h3 block italic">Your story</label>
+        <label className="font-body text-near-black text-body block font-semibold">Your story</label>
         <textarea
           name="theme"
           rows={6}
@@ -81,7 +82,7 @@ export function ThemeForm({ initial, childName, childGender }: ThemeFormProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="What's the story about? A page or two of detail is plenty."
-          className="font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full resize-y rounded border-2 transition-colors outline-none"
+          className={`${fieldControl} resize-y`}
         />
         {state.errors['theme'] && (
           <p className="font-body text-iron-oxide text-caption" role="alert">
@@ -119,10 +120,10 @@ function ThemeCategory({ label, templates, selectedId, onSelect }: ThemeCategory
             type="button"
             key={t.id}
             onClick={() => onSelect(t)}
-            className={`font-heading text-h3 px-md py-md block rounded-lg border-2 text-left italic transition-colors ${
+            className={`font-heading text-h3 px-md py-md block rounded-xl border-2 text-left not-italic transition-colors ${
               selectedId === t.id
                 ? 'border-iron-oxide bg-cream-deep text-iron-oxide'
-                : 'border-warm-grey-light bg-cream text-near-black hover:border-iron-oxide'
+                : 'border-warm-grey-light bg-paper text-near-black hover:border-iron-oxide'
             }`}
           >
             {t.title}

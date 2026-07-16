@@ -1,5 +1,6 @@
 import { Body } from '@/components/ui/Body';
 import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import { advanceStep } from '@/app/start/_actions/navigation';
 
 /**
@@ -14,13 +15,13 @@ export default function PreviewStepPage() {
   const advance = advanceStep.bind(null, 'preview');
 
   return (
-    <div className="space-y-lg">
-      <div className="border-warm-grey-light bg-cream p-lg rounded-lg border text-center">
+    <div className="space-y-lg mx-auto max-w-[40rem]">
+      <Card variant="paper" className="p-xl text-center">
         <Body className="text-warm-grey">
           A glimpse of the finished book lands here in the next phase: one rendered page, free to
           view, so you can see the style before paying. For now, continue straight through.
         </Body>
-      </div>
+      </Card>
 
       <form action={advance} className="flex justify-end">
         <Button type="submit" variant="primary">

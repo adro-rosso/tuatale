@@ -31,7 +31,7 @@ export function ImagePicker({ name, label, axis, value, options, gender, error, 
   const thumbGender = gender === 'boy' ? 'boy' : 'girl';
   return (
     <div className="space-y-xs">
-      <label className="font-heading text-near-black text-h3 block italic">{label}</label>
+      <label className="font-body text-near-black text-body block font-semibold">{label}</label>
       <fieldset className="gap-sm grid grid-cols-3 sm:grid-cols-4">
         {options.map((o) => (
           // key includes thumbGender so a gender flip remounts the card → its

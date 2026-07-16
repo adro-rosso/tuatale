@@ -7,6 +7,7 @@ import { ImagePicker } from './ImagePicker';
 import { CharacterCanvas } from './CharacterCanvas';
 import { CharacterBuilder } from './CharacterBuilder';
 import { Button } from '@/components/ui/Button';
+import { fieldControl, sectionCard, segTrack, segItem, segButton } from '@/components/ui/form-styles';
 import {
   AGE_RANGES,
   GENDERS,
@@ -34,11 +35,10 @@ const initialState: SubmitChildState = { errors: {} };
 // S0 reversibility: 'window' = the new animated click-in-place builder; 'classic' =
 // the old stacked ImagePicker form. Flip here (or `git revert`) to restore classic.
 const BUILDER_MODE: 'window' | 'classic' = 'window';
-const SELECT_CLASS =
-  'font-body text-near-black bg-cream border-warm-grey-light focus:border-iron-oxide px-md py-sm w-full rounded border-2 transition-colors outline-none';
-// Shared section card — a solid, subtle bordered card (no dashed "unfinished" look),
-// used for both step sections so the rhythm is consistent.
-const CARD = 'border-warm-grey-light rounded-2xl border p-lg';
+// Premium form-control + section-card looks come from the shared design-system
+// module so every wizard step matches (Phase 2).
+const SELECT_CLASS = fieldControl;
+const CARD = sectionCard;
 const labelize = (v: string) => v.replace(/-/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
 // "5-7" → 6 (the gen prompt wants a single age). Midpoint of any digits, default 7.
 function ageFromRange(range: string): number {
@@ -121,12 +121,9 @@ export function ChildForm({ initial, artStyle, draftId }: ChildFormProps) {
           </Field>
 
           <Field label="And their gender?" error={errors['gender']}>
-            <fieldset className="gap-md flex">
+            <fieldset className={segTrack}>
               {GENDERS.map((g) => (
-                <label
-                  key={g}
-                  className="font-body text-near-black bg-cream border-warm-grey-light hover:border-iron-oxide px-md py-sm has-[:checked]:border-iron-oxide has-[:checked]:bg-cream-deep flex-1 cursor-pointer rounded border-2 text-center capitalize transition-colors"
-                >
+                <label key={g} className={`${segItem} capitalize`}>
                   <input
                     type="radio"
                     name="gender"
@@ -163,7 +160,7 @@ export function ChildForm({ initial, artStyle, draftId }: ChildFormProps) {
         <div className="space-y-lg pt-md">
           {/* Build their look */}
           <div className="space-y-sm">
-            <h3 className="font-heading text-near-black text-h3 italic">Build their look</h3>
+            <h3 className="font-heading text-near-black text-h3 not-italic">Build their look</h3>
             {/* window builder (default); classic stacked pickers stay behind BUILDER_MODE
                 for reversibility (flip to 'classic'; git keeps the deeper history). */}
             {BUILDER_MODE === 'window' ? (
@@ -268,7 +265,7 @@ function ReadingLevelPicker({
       {/* Carries ONLY the override; '' when untouched → NULL server-side. */}
       <input type="hidden" name="reading_level" value={value} />
 
-      <div className="gap-md flex" role="group" aria-label="Reading level">
+      <div className={segTrack} role="group" aria-label="Reading level">
         {READING_LEVEL_VALUES.map((lvl) => {
           const selected = effective === lvl;
           return (
@@ -277,9 +274,7 @@ function ReadingLevelPicker({
               type="button"
               onClick={() => onChange(lvl)}
               aria-pressed={selected}
-              className={`font-body text-near-black bg-cream px-md py-sm flex-1 cursor-pointer rounded border-2 text-center capitalize transition-colors ${
-                selected ? 'border-iron-oxide bg-cream-deep' : 'border-warm-grey-light hover:border-iron-oxide'
-              }`}
+              className={segButton(selected)}
             >
               {lvl}
             </button>
@@ -291,7 +286,7 @@ function ReadingLevelPicker({
         Matched to your child&apos;s age — adjust if they read above or below it.
       </p>
 
-      <figure className="border-warm-grey-light bg-cream mx-auto max-w-[22rem] overflow-hidden rounded-xl border">
+      <figure className="border-warm-grey-light bg-paper mx-auto max-w-[22rem] overflow-hidden rounded-xl border">
         <img
           src={`/samples/reading-level/${sample}.webp`}
           alt={`A sample ${sample} reading-level page`}
@@ -308,7 +303,7 @@ function ReadingLevelPicker({
 function SectionHead({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="border-warm-grey-light pb-sm mb-md flex items-baseline justify-between border-b">
-      <h2 className="font-heading text-near-black text-[20px] italic">{title}</h2>
+      <h2 className="font-heading text-near-black text-h2 not-italic">{title}</h2>
       {hint ? (
         <span className="font-body text-warm-grey text-caption tracking-wider uppercase">{hint}</span>
       ) : null}
@@ -355,7 +350,7 @@ interface FieldProps {
 function Field({ label, error, children }: FieldProps) {
   return (
     <div className="space-y-xs">
-      <label className="font-heading text-near-black text-h3 block italic">{label}</label>
+      <label className="font-body text-near-black text-body block font-semibold">{label}</label>
       {children}
       {error && (
         <p className="font-body text-iron-oxide text-caption" role="alert">

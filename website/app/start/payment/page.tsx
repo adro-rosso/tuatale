@@ -38,7 +38,7 @@ export default async function PaymentStepPage() {
     // they can see and fix what's missing.
     return (
       <div className="space-y-lg text-center">
-        <Heading level="2" italic className="not-italic">
+        <Heading level="2" className="not-italic">
           Let&apos;s finish the details first
         </Heading>
         <Body className="text-warm-grey">
@@ -72,17 +72,17 @@ export default async function PaymentStepPage() {
   const theme = draft.theme as string;
 
   return (
-    <div className="space-y-xl">
+    <div className="space-y-xl mx-auto max-w-[40rem]">
       <div className="space-y-sm text-center">
         <Body size="caption" className="text-warm-grey tracking-wider uppercase">
           Almost there
         </Body>
-        <Heading level="1" italic className="text-near-black">
+        <Heading level="1" className="text-near-black">
           A book for {childName}
         </Heading>
       </div>
 
-      <div className="border-warm-grey-light bg-cream-deep p-lg space-y-md rounded-lg border">
+      <div className="border-warm-grey-light/70 bg-paper p-lg space-y-md rounded-2xl border shadow-[0_8px_30px_rgba(120,90,60,0.08)]">
         <Body className="text-near-black whitespace-pre-wrap">
           {theme.length > 200 ? `${theme.slice(0, 200)}…` : theme}
         </Body>

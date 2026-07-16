@@ -77,7 +77,7 @@ function ConfirmationState({
   return (
     <div className="space-y-xl text-center">
       <div className="space-y-md">
-        <Heading level="1" italic className="text-near-black">
+        <Heading level="1" className="text-near-black">
           {order.child_name}&apos;s book is being made.
         </Heading>
         <Body className="text-warm-grey">
