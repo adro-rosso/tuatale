@@ -870,6 +870,44 @@ export function buildReadingLevelRulesBlock(level) {
   return (READING_LEVELS[level] ?? READING_LEVELS.standard).rules;
 }
 
+// Story "vibe" — the emotional register (pet books; wizard PET_VIBES enum). Mirrors
+// website lib/pet-vibes.ts. The {{VIBE_RULES}} block steers tone; 'memorial' is for a
+// pet who has passed and is handled with dignity (leans on the CONTENT SAFETY section,
+// which permits gentle emotional weight). Default 'happy'.
+export const VIBES = {
+  happy: {
+    rules: `STORY MOOD — HAPPY MOMENTS (joyful and celebratory)
+Write a bright, warm, present-day story of everyday delight: play, cuddles, a small celebration, a perfect ordinary day. Earn the joy through specific small moments (the thump of a tail, ears flying, a happy sigh), not generic cheerfulness. Light comedy is welcome. End on warmth and belonging.`,
+  },
+  adventure: {
+    rules: `STORY MOOD — A FUN ADVENTURE (playful and imaginative)
+Write an imaginative, high-energy romp where the pet is the brave hero: an ordinary place (a backyard, a park) becomes an exciting world through play. Real stakes are pretend; nothing genuinely dangerous or frightening happens, and every "peril" resolves safely and cheerfully. Keep it exciting, funny, and warm.`,
+  },
+  tribute: {
+    rules: `STORY MOOD — A TRIBUTE (a warm love letter)
+Write a grateful love letter to this specific pet, a celebration of exactly what makes them THEM. Catalogue their real, specific details (the way they greet you, a favourite spot, a habit) as the vehicle for tenderness. The pet is alive and well; there is NO grief or loss undertone. Warm, a little misty, but happy throughout.`,
+  },
+  memorial: {
+    rules: `STORY MOOD — IN MEMORY (a gentle keepsake for a pet who has passed)
+This book is for a family, possibly a child, whose pet has died. Handle it with real care and dignity.
+- Be honest and gentle: it is okay to say, simply and softly, that the pet has died and is not coming back. Do not hide it, and do not dwell on the manner of death.
+- Comfort through CONCRETE, sensory memory: specific places, games, sounds, and habits the pet left behind, so love reads as ONGOING and carried forward, not erased.
+- Validate big feelings (missing them is big because the love was big) without instructing the reader how they must feel.
+- Warm and comforting, never saccharine, never falsely cheerful, and never bleak. Aim for the register of the very best children's books about loss.
+- Do NOT use afterlife, heaven, religious, or "rainbow bridge" imagery. Keep it grounded in memory and in love that stays.
+- Refer to the pet in the PAST where the story is set after they are gone; present tense is fine inside remembered moments.
+Resolve on comfort: the love, and the small traces the pet left behind, remain.`,
+  },
+};
+
+/**
+ * The {{VIBE_RULES}} substitution — the tone directive for the chosen vibe. Pure +
+ * single source of truth (mirrors buildReadingLevelRulesBlock). Unknown/absent → happy.
+ */
+export function buildVibeRulesBlock(vibe) {
+  return (VIBES[vibe] ?? VIBES.happy).rules;
+}
+
 // ---- Public API ------------------------------------------------------------
 
 /**
@@ -960,7 +998,13 @@ export async function generateStory(input, options = {}) {
   const systemPrompt = SYSTEM_PROMPT_TEMPLATE
     .replace(/\{\{TEMPLATE_REGISTRY_DESCRIPTION\}\}/g, templateRegistryDescription)
     .replace(/\{\{MULTICHAR_RULES\}\}/g, multicharRules)
-    .replace(/\{\{READING_LEVEL_RULES\}\}/g, buildReadingLevelRulesBlock(readingLevel))
+    // Vibe tone directive (pet books) is APPENDED to the reading-level block only when
+    // a vibe is set — so for child books (vibe empty) the prompt is BYTE-IDENTICAL to
+    // before this change (no stray placeholder / blank line).
+    .replace(
+      /\{\{READING_LEVEL_RULES\}\}/g,
+      buildReadingLevelRulesBlock(readingLevel) + (input.vibe ? `\n\n${buildVibeRulesBlock(input.vibe)}` : ''),
+    )
     .replace(/\{\{PROTAGONIST_KIND_OVERRIDE\}\}/g, petHero ? PET_PROTAGONIST_OVERRIDE : "")
     .replace(/\{\{AUDIENCE\}\}/g, levelDef.audience)
     .replace(/\{\{PROSE_LENGTH\}\}/g, levelDef.proseLength);

@@ -145,5 +145,8 @@ export function adaptOrderToPipelineInput(order) {
     // column; until then it is undefined and generateStory defaults from ageRange.
     // A present value overrides the band default.
     reading_level: order.reading_level ?? undefined,
+    // Story vibe / emotional register (pet books). Optional — undefined → no vibe
+    // directive injected (child books). generateStory reads input.vibe.
+    vibe: order.vibe ?? undefined,
   };
 }

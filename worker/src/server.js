@@ -211,6 +211,11 @@ export function createHealthServer(getState) {
         version: process.env.SENTRY_RELEASE ?? null,
         // B.1: surface the front-matter flag so its live state is verifiable in prod.
         frontMatter: process.env.FEATURES_FRONTMATTER === "on",
+        // Same rationale: these two gate real behaviour (pet-hero protagonist path,
+        // structured-appearance compose), so a deploy's flag state must be checkable
+        // from /health rather than needing `fly ssh`/`secrets list`.
+        petHero: process.env.FEATURES_PET_HERO === "on",
+        compose: process.env.FEATURES_COMPOSE === "on",
       }));
     } else {
       res.writeHead(404);
