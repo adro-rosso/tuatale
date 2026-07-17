@@ -628,7 +628,7 @@ Keep every specific marker the customer provided; only inflect the gender coding
 
 When gender is \`non_binary\`, write neutral styling — no "boy's" / "girl's" / "boyish" / "girlish" framing; describe the customer's markers without gendered styling vocabulary.
 
-{{PROTAGONIST_KIND_OVERRIDE}}COMPANIONS
+{{PROTAGONIST_KIND_OVERRIDE}}{{SUBJECT_OVERRIDES}}COMPANIONS
 
 When the input lists Companions (one or more under "Companions:"), they appear in the story alongside the protagonist. The PROTAGONIST remains the EMOTIONAL CENTER of every story — their name is on the cover, they are who the customer bought the book for, their arc is the story's spine. Companions PARTICIPATE — they have presence, voice, and meaningful interaction — but they are NEVER co-protagonists. The protagonist drives, decides, and grows; companions support, react, and accompany.
 
@@ -705,6 +705,62 @@ The protagonist of THIS story is a real ANIMAL — a pet — not a child. This s
 - Everything else is unchanged: the pet is the EMOTIONAL CENTER and appears in EVERY scene; the owner and any other characters are COMPANIONS handled exactly per the rules below (a human owner is [REF-ANCHORED]).
 
 `;
+
+/** Whether a subject is anchored to a real photograph (protagonist or secondary). */
+export function subjectHasPhoto(s) {
+  return Boolean(s && (s.photoPath || (Array.isArray(s.photo_paths) && s.photo_paths.length)));
+}
+
+/**
+ * {{SUBJECT_OVERRIDES}} slot (right after the pet override, before COMPANIONS).
+ * "" when the book has no photo-anchored and no adult subject → byte-identical.
+ *
+ * WHY (2026-07-17, root-caused on a photo-anchored adult secondary): story-gen does
+ * not know a subject has a photo, so for a companion whose input text was vague ("the
+ * pet's owner, a grown-up who loves Biscuit") it INVENTED a face — "a thirty-year-old
+ * man with a boy's short haircut, deep brown eyes, stubble" — and both the sheet mint
+ * and the page render then followed the WORDS over a photo of a bald 60-year-old.
+ *
+ * The defect is INVENTION, not description. A pet protagonist is also photo-anchored,
+ * but its coat text comes from the customer and MATCHES the photo (it is the proven
+ * likeness spine) — so the rule is "never invent identity you weren't given; keep what
+ * you were given exactly", NOT "write nothing physical". Clothing may still be invented
+ * (the photo doesn't fix the book's wardrobe, and the proven operator book did exactly
+ * this: "a grown man with a warm, easy, patient manner… green flannel shirt").
+ *
+ * The adult half fixes the second leak: the wizard's gender enum is child-oriented
+ * (boy/girl), which produced "a boy's haircut / boyish build" on a 30-year-old man.
+ */
+export function buildSubjectOverridesBlock(input) {
+  const secondaries = Array.isArray(input?.secondaries) ? input.secondaries : [];
+  const photoNames = [
+    ...(subjectHasPhoto(input?.child) && input?.child?.name ? [input.child.name] : []),
+    ...secondaries.filter(subjectHasPhoto).map((s) => s.name),
+  ].filter(Boolean);
+  const adultNames = secondaries.filter((s) => s.is_adult === true).map((s) => s.name).filter(Boolean);
+  if (!photoNames.length && !adultNames.length) return "";
+
+  const parts = [];
+  if (photoNames.length) {
+    parts.push(`PHOTO-ANCHORED SUBJECTS (this book)
+
+These subjects are anchored to a REAL PHOTOGRAPH, tagged [PHOTO-ANCHORED] in the input: ${photoNames.join(", ")}. The illustrator is given their actual photo and renders their face from it. For THESE subjects this OVERRIDES the CHARACTER DESCRIPTION and Gender-coded styling rules above:
+- NEVER INVENT an identity feature you were not given. If the input does not state their hair, eyes, face shape, skin tone, build, or age, you must NOT make one up. You have not seen this person; anything you invent will CONTRADICT the photograph, and the illustrator follows your words over the real face. This is the single most important rule for these subjects.
+- KEEP WHAT YOU WERE GIVEN, exactly. Where the input DOES state concrete physical detail for a photo-anchored subject (for example a pet's coat colour, markings, ear and tail shape), that detail came from the customer and matches the photo — describe it faithfully, as usual.
+- Given nothing physical, write a FACE-NEUTRAL description instead: one or two sentences of manner or bearing, plus their CLOTHING (specific named garments and colours). Clothing is not fixed by the photograph and the book still needs it. The right shape is: "a grown man with a warm, easy, patient manner. He wears a green flannel shirt with the sleeves rolled to his elbows and dark jeans." Note what that does NOT say: no hair, no eyes, no face, no build, no age.
+- Lead with their name; do not lead with an age. Use no gender-coded styling vocabulary for them.
+- The persistent-appearance rule still applies: no asymmetric or single-sided items.`);
+  }
+  if (adultNames.length) {
+    parts.push(`ADULT SUBJECTS (this book)
+
+These human subjects are ADULTS, not children: ${adultNames.join(", ")}. Their \`gender\` tag uses the same boy/girl/non_binary vocabulary as the child protagonist, but on them it denotes an adult man/woman. For these subjects:
+- Describe them as a grown adult (a man, a woman, a grown-up). NEVER as a child, and never with an age like "a thirty-year-old".
+- Use ADULT styling vocabulary only. "a man's haircut", "a woman's coat" — NEVER "a boy's haircut", "boyish build", "a girl's hairstyle", "girlish frame". Child-coded styling on an adult makes the illustrator draw a young person.
+- Pronouns still follow the gender tag: he/him for boy, she/her for girl, they/them for non_binary.`);
+  }
+  return `${parts.join("\n\n")}\n\n`;
+}
 
 // ---- Multi-character discipline rules (2026-05-31, generalized 2026-06-01) -
 // Two separate rules with different activation gates, both injected via the
@@ -1006,6 +1062,10 @@ export async function generateStory(input, options = {}) {
       buildReadingLevelRulesBlock(readingLevel) + (input.vibe ? `\n\n${buildVibeRulesBlock(input.vibe)}` : ''),
     )
     .replace(/\{\{PROTAGONIST_KIND_OVERRIDE\}\}/g, petHero ? PET_PROTAGONIST_OVERRIDE : "")
+    // Photo-anchored / adult subject overrides. "" when the book has neither, so a
+    // plain child book's prompt is byte-identical (the placeholder is adjacent to
+    // PROTAGONIST_KIND_OVERRIDE + COMPANIONS, leaving no stray whitespace).
+    .replace(/\{\{SUBJECT_OVERRIDES\}\}/g, buildSubjectOverridesBlock(input))
     .replace(/\{\{AUDIENCE\}\}/g, levelDef.audience)
     .replace(/\{\{PROSE_LENGTH\}\}/g, levelDef.proseLength);
   const schema = buildStorySchema(registry, readingLevel);
@@ -1561,7 +1621,13 @@ export function formatUserMessage(input) {
       const type = s.subject_type ?? "human";
       const anchorTag = s.anchor === "tier1" ? "[TEXT-ANCHORED]" : "[REF-ANCHORED]";
       const genderTag = s.gender ? `, gender ${s.gender}` : "";
-      lines.push(`  - ${anchorTag} ${s.name}, age ${s.age}, ${rel} (${type})${genderTag}: ${s.appearance_markers}`);
+      // [PHOTO-ANCHORED]: this companion's face comes from a real photo — story-gen
+      // must not invent one (see buildSubjectOverridesBlock). Absent → unchanged.
+      const photoTag = subjectHasPhoto(s) ? " [PHOTO-ANCHORED]" : "";
+      // An adult's age is the hardcoded 30 default (the wizard captures no secondary
+      // age), and emitting it produced "a thirty-year-old man". Say "adult" instead.
+      const agePart = s.is_adult === true ? "adult" : `age ${s.age}`;
+      lines.push(`  - ${anchorTag}${photoTag} ${s.name}, ${agePart}, ${rel} (${type})${genderTag}: ${s.appearance_markers}`);
     }
     lines.push(``);
   }

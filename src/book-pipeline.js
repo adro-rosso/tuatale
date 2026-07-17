@@ -163,7 +163,15 @@ function extractBikeColour(story) {
 // rides inside the masked appearance block (F-approach), not as a separate
 // marker. Exported so the whole-character PREVIEW wrapper builds the IDENTICAL
 // prompt the book uses (what-you-see ≈ what-you-get).
-export function buildSubjectSheetBasePrompt(subject, story) {
+//
+// `hasPhoto` (2026-07-17): when this subject's view-0 is PHOTO-anchored, the photo
+// is the identity source, so the emphatic "DEFINING IDENTITY MARKERS" line is
+// SUPPRESSED — it competes with the photo at mint (the mint follows words, and
+// unlike the render stage there was no reference-authority rule). This reproduces
+// the proven operator path, which passed appearance_markers: null for its
+// photo-anchored secondary. Defaults false → every non-photo caller (incl. the
+// preview wrapper) builds the byte-identical prompt it always did.
+export function buildSubjectSheetBasePrompt(subject, story, hasPhoto = false) {
   let subjectLabel;
   if (subject.isProtagonist) {
     // Pet-hero (FEATURES_PET_HERO): the protagonist is a non-human pet, not a child.
@@ -184,7 +192,8 @@ export function buildSubjectSheetBasePrompt(subject, story) {
     `Subject: ${subjectLabel}. Reference sheet.`,
     `Appearance: ${maskedDesc}.`,
   ];
-  const markersLine = formatMarkers(subject.name, subject.markers);
+  // Photo-anchored → the photo owns identity; a markers directive would fight it.
+  const markersLine = hasPhoto ? null : formatMarkers(subject.name, subject.markers);
   if (markersLine) lines.push(markersLine);
   lines.push(
     `Style: ${story.style}.`,
@@ -690,15 +699,14 @@ export async function generateBook({
         log.warn(`  ⚠ Failed to snapshot previous meta: ${snapErr.message}`);
       }
     }
-    const basePrompt = buildSubjectSheetBasePrompt(subject, story);
-    const subjectSucceededFiles = [];
-    const subjectBufs = [];
     // Photo-anchor (opt-in): when the subject carries a photoPath, view-0 is minted
     // WITH the photo as its reference (the proven preview path — photo → view-0,
     // which then chains to views 2-3). Absent → unchanged reference-less anchor.
     // Read all provided photo(s) for the view-0 anchor. Multiple same-subject photos
     // covering all identifying features = the validated pet-likeness path (probe
     // 2026-07-09); a single legacy photoPath still works via photoPaths = [photoPath].
+    // Computed BEFORE the base prompt so a photo-anchored subject can suppress the
+    // competing markers line (see buildSubjectSheetBasePrompt's hasPhoto).
     const photoBufs = [];
     const photoSrcs = subject.photoPaths?.length
       ? subject.photoPaths
@@ -710,9 +718,23 @@ export async function generateBook({
         log.warn(`    ⚠ ${subject.name}: photo unreadable (${src}) — skipping this reference: ${e.message}`);
       }
     }
+    // FAIL LOUD (2026-07-17): a subject that was SUPPOSED to be photo-anchored but has
+    // NO readable photo must never silently mint a generic likeness. This previously
+    // degraded on a warn alone, so a resumed job pointing at a stale scratch path
+    // shipped a likeness-free book with no failure signal at all. A personalised book
+    // is personalised or it fails; the resume/retry controller owns the transient case.
+    if (photoSrcs.length && !photoBufs.length) {
+      throw new Error(
+        `${subject.name}: photo-anchored subject has NO readable photo ` +
+        `(tried: ${photoSrcs.join(", ")}). Refusing to mint a likeness-free sheet.`,
+      );
+    }
     if (photoBufs.length) {
       log.log(`    ↳ ${subject.name}: photo-anchored view-0 (${photoBufs.length} photo${photoBufs.length === 1 ? "" : "s"})`);
     }
+    const basePrompt = buildSubjectSheetBasePrompt(subject, story, photoBufs.length > 0);
+    const subjectSucceededFiles = [];
+    const subjectBufs = [];
     let anchorBuf = null; // Spec D-M Stage-3: view-1 buffer (minted OR reused), ref for views 2-3
     for (let i = 0; i < subject.viewCount; i++) {
       const sheetNum = String(i + 1).padStart(2, "0");
@@ -745,10 +767,25 @@ export async function generateBook({
               `colour, and markings as the photos, recognisably the SAME individual animal ` +
               `(not a generic example of the breed); do NOT reproduce photographic detail, ` +
               `lighting, or background.`
-            : `\n\nThe reference image is a PHOTOGRAPH of the person to depict. Translate them ` +
+            : `\n\nThe reference image(s) are PHOTOGRAPH(S) of the person to depict. Translate them ` +
               `into the illustration style above — same face shape, features, and hair as the ` +
               `photo, recognisably the same person; do NOT reproduce photographic detail, ` +
               `lighting, or background.`)
+        : "";
+      // REFERENCE AUTHORITY at MINT (2026-07-17). The render stage has long carried
+      // this rule (page-pipeline buildReferenceAuthorityDirective) but the MINT never
+      // did — so when story-gen's Appearance prose invented a face that contradicted
+      // the photo, the model followed the WORDS and minted a stranger (root-caused on
+      // a photo-anchored adult secondary: prose said "thirty-year-old, short brown
+      // hair", photo showed a bald 60-year-old; the prose won). Only emitted when a
+      // photo is actually attached, so every non-photo mint stays byte-identical.
+      // Env-gated REF_AUTHORITY=off, matching the render stage's convention.
+      const refAuthority = usePhoto && process.env.REF_AUTHORITY !== "off"
+        ? `\n\nREFERENCE IS AUTHORITATIVE: the reference image(s) are the exact, definitive ` +
+          `source for this ${isPet ? "animal's coat colour, markings, and shape" : "person's face, hair, skin tone, and build"}. ` +
+          `If any word of the Appearance text above seems to conflict with a reference image, ` +
+          `FOLLOW THE IMAGE. Do not substitute a generic or stereotyped ${isPet ? "example of the breed" : "person"}; ` +
+          `this must be individually recognisable as the specific ${isPet ? "animal" : "person"} in the reference.`
         : "";
       const matchRef = !usePhoto && refs.length
         ? (isPet
@@ -759,7 +796,7 @@ export async function generateBook({
               `(same shirt, shorts, and shoes, same colours), the same face and hair, and any facial ` +
               `mark on the SAME side of the face; only the camera angle changes from the reference.`)
         : "";
-      const fullPrompt = `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${matchRef}`;
+      const fullPrompt = `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${refAuthority}${matchRef}`;
       const t0 = Date.now();
       emit({
         event: { kind: "sheet_mint_start", subject: subject.name, view: i + 1, chained: refs.length > 0 },

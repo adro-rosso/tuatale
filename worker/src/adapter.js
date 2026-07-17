@@ -50,6 +50,34 @@ export function deriveAnchor(s) {
   return s.extra_care ? "tier2" : "tier1";
 }
 
+// Relationships that unambiguously denote a grown-up. Used ONLY when no explicit
+// age is available (the wizard captures none — see defaultAgeForSecondary).
+const ADULT_RELATIONSHIP_RE =
+  /\b(mum|mom|mother|dad|daddy|father|parent|step-?(mum|mom|dad|father|mother)|gran|granny|grandma|grandmother|grandad|grandpa|grandfather|nan|nana|pop|poppy|aunt|auntie|uncle|owner|carer|guardian|teacher|coach|nurse|doctor)\b/i;
+
+/**
+ * Whether a human secondary should be LABELLED an adult at sheet-mint.
+ *
+ * Why this matters: buildSubjectSheetBasePrompt labels a human secondary either
+ * "an adult named X" (is_adult) or "a {age}-year-old child named X". Since the
+ * wizard captures no secondary age, every human secondary otherwise resolves to
+ * the age-30 default and mints as "a 30-year-old child named Dad" — nonsense on
+ * its own, and actively likeness-destroying when a PHOTO of an adult face is
+ * attached (the mint follows the words). The proven operator path set is_adult.
+ *
+ * Precedence: an explicit age wins; otherwise fall back to the relationship word.
+ * An ambiguous relationship ("friend", "sister") stays NOT-adult, preserving
+ * today's behaviour rather than inventing an adult.
+ *
+ * NOTE: this is a heuristic because the wizard captures no secondary age. Capturing
+ * it is the real fix (see the report) — then this collapses to `age >= 18`.
+ */
+export function deriveIsAdult(s) {
+  if (s.subject_type !== HUMAN) return false;
+  if (typeof s.age === "number" && Number.isFinite(s.age) && s.age > 0) return s.age >= 18;
+  return ADULT_RELATIONSHIP_RE.test(s.relationship || "");
+}
+
 /**
  * Adapt one order-secondary. `index` is the 0-based position in the array; the
  * synthesized id is `companion-${index + 1}`. Gender is forwarded ONLY for
@@ -73,6 +101,9 @@ export function adaptSecondary(s, index) {
     // upstream data corruption — surfacing it (undefined → pipeline validator
     // throws) beats silently inventing a gender on a personalized book.
     adapted.gender = s.gender;
+    // Label a grown-up as an adult at sheet-mint rather than "a 30-year-old child".
+    // Only set when true, so a non-adult secondary's meta stays byte-identical.
+    if (deriveIsAdult(s)) adapted.is_adult = true;
   }
   // Forward a photos array if present (forward-compat with the deferred
   // child-photo workstream; the pipeline ignores it today).

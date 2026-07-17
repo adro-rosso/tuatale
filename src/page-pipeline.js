@@ -390,12 +390,21 @@ function buildShirtColourLock(subjects) {
 function buildReferenceAuthorityDirective(subjects) {
   if (process.env.REF_AUTHORITY === "off") return "";
   if (subjects.length < 1) return "";
+  // Broadened beyond "child" (2026-07-17), STRICTLY ADDITIVELY. The original sentence
+  // said "a generic or stereotyped CHILD … the specific CHILD in their reference", so it
+  // under-applied to an ADULT secondary: a photo-anchored adult's correct sheet lost to
+  // story-gen's invented prose at render. The child sentence below is preserved VERBATIM
+  // — its proven strength for children is untouched, no regression — and the same rule is
+  // APPENDED for every other character.
   return (
     `REFERENCE IS AUTHORITATIVE: the provided reference images are the exact, definitive source ` +
     `for each character's face, hairstyle, hair colour, skin tone, and body build. Reproduce the ` +
     `faces and hair EXACTLY as in the references. If any word in the Appearance text seems to ` +
     `conflict with a reference image, FOLLOW THE IMAGE. Do not substitute a generic or stereotyped ` +
-    `child; each face must be individually recognisable as the specific child in their reference.\n\n`
+    `child; each face must be individually recognisable as the specific child in their reference. ` +
+    `This applies equally to EVERY character in the references: an adult or a pet is likewise never ` +
+    `a generic or stereotyped stand-in — each must be individually recognisable as the specific ` +
+    `individual in their reference.\n\n`
   );
 }
 

@@ -92,6 +92,26 @@ export function assertBookComplete({ bookPdfBytes, counts, subjectSheetStatus, s
  * is carried for provenance. Mirrors what the CLI shim builds from story.json +
  * argv.
  */
+/**
+ * R3a + photo-anchor (2026-07-17). On RESUME, `meta` is restored from the checkpoint,
+ * so its inputs carry the photo paths from the PREVIOUS attempt's scratch dir — which
+ * that attempt's cleanup deleted. downloadSubjectPhotos has just re-downloaded this
+ * run's photos into THIS scratch dir and rewritten `input`, so re-point the restored
+ * meta at those fresh objects. book-pipeline reads meta (not input), so without this
+ * it dereferences files this run never wrote.
+ *
+ * Before the fail-loud guard this was invisible: the mint warned "photo unreadable"
+ * and shipped a likeness-free book. Now it would throw — this keeps it correct instead.
+ * Surgical on purpose: only inputs.child/secondaries are re-pointed, so anything else
+ * the checkpointed meta accumulated (e.g. bookGeneration) survives. Mutates in place.
+ */
+export function syncPhotoPathsIntoMeta(input, meta) {
+  if (!meta?.inputs) return meta;
+  meta.inputs.child = input.child;
+  meta.inputs.secondaries = input.secondaries;
+  return meta;
+}
+
 export function buildMetaObject(input, story, usage) {
   return {
     inputs: {
@@ -111,8 +131,13 @@ export function buildMetaObject(input, story, usage) {
  * Photo-anchor plumbing (probe, 2026-07-07). For each subject (primary + each
  * secondary) whose adapter set a Storage `photoPath`, download the bytes from the
  * previews bucket into <scratch>/photos/<key>.png and rewrite photoPath to that
- * local file — so book-pipeline's per-subject photo anchor (book-pipeline.js:261+309)
- * reads a real file. A failed download degrades gracefully to composed appearance.
+ * local file — so book-pipeline's per-subject photo anchor reads a real file.
+ *
+ * FAIL LOUD (2026-07-17): a failed download used to degrade silently to composed
+ * appearance — which ships a personalised book with a STRANGER'S face and no
+ * failure signal. A subject specified WITH a photo must render with that photo or
+ * the job must fail; the resume/retry controller classifies a transient blip as
+ * resumable. Partial multi-photo loss still degrades (the remaining photos anchor).
  */
 async function downloadSubjectPhotos(input, scratchDir, deps = {}) {
   const dl = deps.downloadPhoto ?? downloadPhoto;
@@ -121,6 +146,7 @@ async function downloadSubjectPhotos(input, scratchDir, deps = {}) {
     // Multi-photo anchor (pet-hero): download every photo_paths entry → local files
     // and rewrite the array to local paths (book-pipeline reads child.photo_paths).
     if (Array.isArray(subject?.photo_paths) && subject.photo_paths.length) {
+      const requested = subject.photo_paths.filter(Boolean).length;
       const locals = [];
       for (let j = 0; j < subject.photo_paths.length; j++) {
         const sp = subject.photo_paths[j];
@@ -136,7 +162,14 @@ async function downloadSubjectPhotos(input, scratchDir, deps = {}) {
           console.warn(`  ⚠ photo download failed for ${subject.name} (${sp}); skipping this ref: ${e.message}`);
         }
       }
-      subject.photo_paths = locals.length ? locals : null;
+      // Partial loss is survivable (the remaining photos still anchor view-0); losing
+      // ALL of them is not — that would silently mint a generic likeness.
+      if (!locals.length) {
+        throw new Error(
+          `all ${requested} photo download(s) failed for ${subject.name} — refusing to render a likeness-free book`,
+        );
+      }
+      subject.photo_paths = locals;
       return;
     }
     // Single legacy photoPath (child-photo probe / human secondaries).
@@ -150,8 +183,9 @@ async function downloadSubjectPhotos(input, scratchDir, deps = {}) {
       subject.photoPath = local;
       console.log(`  📷 photo-anchor: ${subject.name} ← ${storagePath} → ${path.basename(local)} (${buf.length} bytes)`);
     } catch (e) {
-      console.warn(`  ⚠ photo download failed for ${subject.name} (${storagePath}); composing without photo: ${e.message}`);
-      subject.photoPath = null;
+      throw new Error(
+        `photo download failed for ${subject.name} (${storagePath}): ${e.message} — refusing to render a likeness-free book`,
+      );
     }
   };
   await one(input.child, "child");
@@ -216,6 +250,10 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
       story = gen.story;
       usage = gen.usage;
       meta = buildMetaObject(input, gen.story, gen.usage);
+    } else {
+      // Re-point the restored meta at THIS run's freshly downloaded photos; the
+      // checkpointed paths belong to the previous (deleted) scratch dir.
+      syncPhotoPathsIntoMeta(input, meta);
     }
 
     // KEEP_SCRATCH (local dev): persist story.json + meta.json to the scratch dir
