@@ -25,7 +25,7 @@ export default async function ChildStepPage() {
       <PetForm
         initial={{
           name: draft?.child_name ?? '',
-          age_range: draft?.age_range ?? '',
+          reading_level: (draft as { reading_level?: string | null } | null)?.reading_level ?? 'standard',
           animal_kind: draft?.animal_kind ?? '',
           appearance: draft?.child_appearance ?? '',
           photos: Array.isArray(petPhotos) ? petPhotos : [],

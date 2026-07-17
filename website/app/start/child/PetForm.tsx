@@ -3,15 +3,15 @@
 import { useActionState, useRef, useState } from 'react';
 import { submitPetStep, type SubmitPetState, type PetFormValues } from '@/app/start/_actions/submit-pet';
 import { uploadPetPhoto } from '@/app/start/_actions/preview';
-import { AGE_RANGES } from '@/lib/validation/schemas';
+import { READING_LEVEL_VALUES } from '@/lib/validation/schemas';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
-import { fieldControl, sectionCard } from '@/components/ui/form-styles';
+import { fieldControl, sectionCard, segTrack, segButton } from '@/components/ui/form-styles';
 
 interface PetFormProps {
   initial: {
     name: string;
-    age_range: string;
+    reading_level: string;
     animal_kind: string;
     appearance: string;
     photos: string[];
@@ -91,8 +91,14 @@ export function PetForm({ initial }: PetFormProps) {
   );
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Reading level is a DIRECT pick for pets (a pet book's reader can be a child or
+  // an adult owner), default standard — no age question. See submit-pet (age_range
+  // is derived from this to keep the downstream columns populated).
+  const [readingLevel, setReadingLevel] = useState<string>(
+    (echoed?.reading_level as string | undefined) || initial.reading_level || 'standard',
+  );
 
-  const fieldValue = (k: 'name' | 'age_range' | 'animal_kind' | 'appearance') =>
+  const fieldValue = (k: 'name' | 'animal_kind' | 'appearance') =>
     (echoed?.[k] as string | undefined) ?? initial[k];
 
   async function onFiles(files: FileList | null) {
@@ -143,18 +149,6 @@ export function PetForm({ initial }: PetFormProps) {
             />
           </Field>
 
-          <Field label="Who's the book for?" error={errors['age_range']}>
-            <select name="age_range" defaultValue={fieldValue('age_range')} className={SELECT_CLASS}>
-              <option value="">Pick a reading age…</option>
-              {AGE_RANGES.map((r) => (
-                <option key={r} value={r}>
-                  {r} years
-                </option>
-              ))}
-            </select>
-            <p className="font-body text-warm-grey text-caption mt-xs">This sets the reading level, not your pet&apos;s age.</p>
-          </Field>
-
           <Field label="Describe their coat and markings" error={errors['appearance']}>
             <textarea
               name="appearance"
@@ -168,6 +162,42 @@ export function PetForm({ initial }: PetFormProps) {
               Colour and any distinctive markings help us keep their true look. 30+ characters.
             </p>
           </Field>
+        </div>
+      </section>
+
+      {/* ---- Reading level (direct pick; a pet book's reader can be any age) ---- */}
+      <section className={CARD}>
+        <SectionHead title="Reading level" />
+        <input type="hidden" name="reading_level" value={readingLevel} />
+        <div className="space-y-md">
+          <div className={segTrack} role="group" aria-label="Reading level">
+            {READING_LEVEL_VALUES.map((lvl) => (
+              <button
+                key={lvl}
+                type="button"
+                onClick={() => setReadingLevel(lvl)}
+                aria-pressed={readingLevel === lvl}
+                className={segButton(readingLevel === lvl)}
+              >
+                {lvl}
+              </button>
+            ))}
+          </div>
+          <p className="font-body text-warm-grey text-caption">
+            How simple or rich the words are. Pick for whoever will read it — a little one, or the
+            grown-up who loves them.
+          </p>
+          <figure className="border-warm-grey-light bg-paper mx-auto max-w-[22rem] overflow-hidden rounded-xl border shadow-[0_8px_30px_rgba(120,90,60,0.08)]">
+            {/* eslint-disable-next-line @next/next/no-img-element -- static /public sample */}
+            <img
+              src={`/samples/reading-level/${readingLevel}.webp`}
+              alt={`A sample ${readingLevel} reading-level page`}
+              className="block w-full"
+            />
+            <figcaption className="font-body text-warm-grey text-caption px-sm py-xs text-center">
+              A sample page at this reading level.
+            </figcaption>
+          </figure>
         </div>
       </section>
 

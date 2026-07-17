@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { submitStyleStep, type SubmitStyleState } from '@/app/start/_actions/submit-style';
-import { STYLE_OPTIONS, styleThumb, hasStyleSample, styleSample } from '@/lib/art-style-options';
+import { STYLE_OPTIONS, styleThumb, hasStyleSample, styleSample, isPurchasableStyle } from '@/lib/art-style-options';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 
@@ -26,9 +26,11 @@ export function StyleForm({ initial, bookType }: StyleFormProps) {
   const [selected, setSelected] = useState<string>(initial);
   void state; // the picker always submits a valid value; no field errors to show
 
-  // Derive the "available to order now" copy from the purchasable set, so it never
-  // goes stale as styles are flipped purchasable (W-E rollout).
-  const purchasableLabels = STYLE_OPTIONS.filter((o) => o.purchasable).map((o) => o.label);
+  // Derive the "available to order now" copy from the purchasable set (book-type
+  // aware — flat_modern is purchasable for pets), so it never goes stale.
+  const purchasableLabels = STYLE_OPTIONS.filter((o) => isPurchasableStyle(o.value, bookType)).map(
+    (o) => o.label,
+  );
   const purchasableCount = purchasableLabels.length;
   const purchasableList =
     purchasableCount <= 1
@@ -97,10 +99,10 @@ export function StyleForm({ initial, bookType }: StyleFormProps) {
                   onLoad={(e) => sampleCorner(opt.value, e.currentTarget)}
                   className="h-full w-full object-cover"
                 />
-                {/* Preview-only styles are previewable but not purchasable. As of
-                    2026-07-06 only flat_modern remains preview-only (the flat idiom
-                    can't hold the child's specific likeness — see art-style-options). */}
-                {!opt.purchasable && (
+                {/* Preview-only styles are previewable but not purchasable. flat_modern
+                    is preview-only for CHILD books but purchasable for PET books, so the
+                    badge is book-type aware (see isPurchasableStyle). */}
+                {!isPurchasableStyle(opt.value, bookType) && (
                   <span className="bg-near-black/70 px-xs py-3xs absolute right-1 top-1 rounded font-body text-[10px] uppercase tracking-wide text-cream">
                     Preview only
                   </span>

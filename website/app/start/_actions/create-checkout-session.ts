@@ -55,7 +55,9 @@ export async function createCheckoutSession(): Promise<never> {
   // would mean charged-then-rejected). The payment page pre-empts this with a
   // friendly "switch to a purchasable style" prompt; this is the hard backstop.
   const artStyle = (draft as { art_style?: string | null }).art_style ?? 'watercolour';
-  if (!isPurchasableStyle(artStyle)) {
+  // Book-type aware: flat_modern is purchasable for pet books, preview-only for children.
+  const bookTypeForStyle = (draft as { book_type?: string | null }).book_type ?? 'child';
+  if (!isPurchasableStyle(artStyle, bookTypeForStyle)) {
     throw new CheckoutError(
       'style_not_purchasable',
       `Art style "${artStyle}" is preview-only and can't be ordered yet.`,

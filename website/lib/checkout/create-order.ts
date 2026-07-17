@@ -103,7 +103,8 @@ export async function createOrderFromDraft(
   // somehow reached here (pre-gate bypassed / race), coerce to watercolour + log loud,
   // so a paid order always yields a deliverable book (pricing is style-independent).
   const requestedStyle = draft.art_style ?? 'watercolour';
-  const safeArtStyle = isPurchasableStyle(requestedStyle) ? requestedStyle : 'watercolour';
+  // Book-type aware: flat_modern is purchasable for pets, preview-only for children.
+  const safeArtStyle = isPurchasableStyle(requestedStyle, bookType) ? requestedStyle : 'watercolour';
   if (safeArtStyle !== requestedStyle) {
     console.error(
       `[create-order] PRE-GATE BYPASS: draft ${draft.id} reached order creation with ` +
@@ -144,6 +145,8 @@ export async function createOrderFromDraft(
     // pipeline_status defaults to 'queued' at the DB level. Phase 4
     // pipeline integration will flip it forward.
   };
+  // vibe (pet story mood) — new column lagging the generated DB types; cast read+write.
+  (payload as { vibe?: string | null }).vibe = (draft as { vibe?: string | null }).vibe ?? null;
 
   return client ? createOrder(payload, client) : createOrder(payload);
 }

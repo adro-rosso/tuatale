@@ -26,6 +26,7 @@ export default async function ReviewStepPage() {
         relationship?: string;
         appearance?: string;
         extra_care?: boolean;
+        photos?: string[];
       }>)
     : [];
 
@@ -45,7 +46,7 @@ export default async function ReviewStepPage() {
         <ReviewSection title="About your pet" editHref="/start/child">
           <Field label="Name" value={draft?.child_name} />
           <Field label="Kind" value={animalKind} />
-          <Field label="Reading age" value={formatAgeRange(draft?.age_range)} />
+          <Field label="Reading level" value={formatReadingLevel((draft as { reading_level?: string | null } | null)?.reading_level)} />
           <Field label="Coat & markings" value={draft?.child_appearance} multiline />
           <Field label="Photos" value={petPhotoCount ? `${petPhotoCount} added` : null} />
         </ReviewSection>
@@ -84,6 +85,9 @@ export default async function ReviewStepPage() {
                 )}
                 <Field label="Relationship" value={s.relationship} />
                 <Field label="Appearance" value={s.appearance} multiline />
+                {Array.isArray(s.photos) && s.photos.length > 0 && (
+                  <Field label="Photos" value={`${s.photos.length} added`} />
+                )}
                 {s.extra_care && (
                   <Body size="caption" className="text-iron-oxide">
                     Rendered with extra care (+$10)
@@ -184,4 +188,9 @@ function formatAgeRange(value: string | null | undefined): string | null {
 function formatGender(value: string | null | undefined): string | null {
   if (!value) return null;
   return value.replace('_', ' ');
+}
+
+function formatReadingLevel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { validateSecondaries } from '@/lib/validation/validate';
-import { updateDraftByCookieId } from '@/db/drafts';
+import { updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import type { FieldErrors } from '@/lib/validation/validate';
 import type { Json } from '@/types/database';
@@ -14,6 +14,9 @@ export interface SubmitSecondariesState {
 
 interface SubmitSecondariesPayload {
   secondaries: unknown;
+  /** Set when the parent consented to companion photos (pet books). Stamps the
+   *  draft's photo_consent_at for the legal record. */
+  photoConsent?: boolean;
 }
 
 /**
@@ -34,10 +37,15 @@ export async function submitSecondariesStep(
   const cookieId = await getDraftCookieFromRequest();
   if (!cookieId) redirect('/start/reset');
 
-  await updateDraftByCookieId(cookieId, {
+  const update: DraftUpdate = {
     secondaries: result.data as unknown as Json,
     current_step: 'theme',
-  });
+  };
+  // Stamp consent when the parent uploaded + confirmed companion photos.
+  if (payload.photoConsent) {
+    (update as unknown as { photo_consent_at: string }).photo_consent_at = new Date().toISOString();
+  }
+  await updateDraftByCookieId(cookieId, update);
 
   // Bust the /start layout cache so PricePanel re-renders with the
   // updated secondaries count + extra-care total.

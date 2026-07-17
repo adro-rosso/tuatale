@@ -23,6 +23,7 @@ export default async function SecondariesStepPage() {
           relationship?: string;
           appearance?: string;
           extra_care?: boolean;
+          photos?: string[];
         }>
       ).map((s) => ({
         name: s.name ?? '',
@@ -31,16 +32,34 @@ export default async function SecondariesStepPage() {
         relationship: s.relationship ?? '',
         appearance: s.appearance ?? '',
         extra_care: s.extra_care ?? false,
+        photos: Array.isArray(s.photos) ? s.photos : [],
       }))
     : [];
+
+  const isPet = draft?.book_type === 'pet';
+  const name = draft?.child_name || null;
+  const possessive = name ? `${name}'s` : isPet ? 'your pet’s' : 'their';
 
   return (
     <div className="space-y-lg">
       <Body className="text-center">
-        Add up to three companions: a friend, a pet, a favourite toy. You can skip this if
-        you&apos;d rather just tell {draft?.child_name ? `${draft.child_name}'s` : 'their'} own story.
+        {isPet ? (
+          <>
+            Add the people and pets who share {possessive} world: their owner, a friend, another
+            pet. Or skip it and keep the book all about {name ?? 'them'}.
+          </>
+        ) : (
+          <>
+            Add up to three companions: a friend, a pet, a favourite toy. You can skip this if
+            you&apos;d rather just tell {possessive} own story.
+          </>
+        )}
       </Body>
-      <SecondariesForm initialSecondaries={initial} />
+      <SecondariesForm
+        initialSecondaries={initial}
+        bookType={isPet ? 'pet' : 'child'}
+        protagonistName={name}
+      />
     </div>
   );
 }

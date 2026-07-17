@@ -5,23 +5,30 @@ import { submitThemeStep, type SubmitThemeState } from '@/app/start/_actions/sub
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl } from '@/components/ui/form-styles';
-import { THEMES, CUSTOM_TEMPLATE_ID, resolveStarter, type ThemeTemplate } from '@/lib/themes';
+import { THEMES, PET_THEMES, CUSTOM_TEMPLATE_ID, resolveStarter, type ThemeTemplate } from '@/lib/themes';
+import { VIBE_OPTIONS, vibeLabel } from '@/lib/pet-vibes';
 
 interface ThemeFormProps {
   initial: {
     theme: string;
     theme_template_id: string | null;
+    vibe: string;
   };
   childName: string | null;
   childGender: 'boy' | 'girl' | 'non_binary' | null;
+  /** 'pet' shows the story-mood (vibe) picker; the pet's name for the memorial label. */
+  bookType: string;
 }
 
 const initialState: SubmitThemeState = { errors: {} };
 
-export function ThemeForm({ initial, childName, childGender }: ThemeFormProps) {
+export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFormProps) {
   const [state, formAction, isPending] = useActionState(submitThemeStep, initialState);
   const [selectedId, setSelectedId] = useState(initial.theme_template_id ?? '');
   const [text, setText] = useState(initial.theme);
+  // Pet-book story mood. Default 'happy' (a warm default the parent can change).
+  const isPet = bookType === 'pet';
+  const [vibe, setVibe] = useState(initial.vibe || 'happy');
 
   function selectTemplate(t: ThemeTemplate) {
     if (t.id === CUSTOM_TEMPLATE_ID) {
@@ -33,26 +40,70 @@ export function ThemeForm({ initial, childName, childGender }: ThemeFormProps) {
     setText(resolveStarter(t.starter, { childName, childGender }));
   }
 
-  const milestoneTemplates = THEMES.filter((t) => t.category === 'Milestones');
-  const adventureTemplates = THEMES.filter((t) => t.category === 'Adventures');
+  // Pet books get pet-appropriate presets (child milestones are absurd for a pet),
+  // grouped Everyday + Adventures; child books keep Milestones + Adventures.
+  const themeSet = isPet ? PET_THEMES : THEMES;
+  const groups: ReadonlyArray<{ label: string; category: ThemeTemplate['category'] }> = isPet
+    ? [
+        { label: 'Everyday', category: 'Everyday' },
+        { label: 'Adventures', category: 'Adventures' },
+      ]
+    : [
+        { label: 'Milestones', category: 'Milestones' },
+        { label: 'Adventures', category: 'Adventures' },
+      ];
 
   return (
     <form action={formAction} className="space-y-lg">
       <input type="hidden" name="theme_template_id" value={selectedId} />
 
+      {/* Story mood (pet books only). Sets the emotional register; the memorial
+          option is framed gently for a pet who has passed. */}
+      {isPet && (
+        <section className="space-y-md">
+          <input type="hidden" name="vibe" value={vibe} />
+          <div className="border-warm-grey-light pb-sm mb-md border-b">
+            <h2 className="font-heading text-near-black text-h2 not-italic">The mood of the book</h2>
+          </div>
+          <div className="gap-sm tablet:grid-cols-2 grid grid-cols-1">
+            {VIBE_OPTIONS.map((opt) => {
+              const selected = vibe === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setVibe(opt.value)}
+                  aria-pressed={selected}
+                  className={`p-md gap-xs flex flex-col rounded-xl border-2 text-left transition-colors ${
+                    selected
+                      ? 'border-iron-oxide bg-cream-deep'
+                      : 'border-warm-grey-light bg-paper hover:border-iron-oxide'
+                  }`}
+                >
+                  <span className="font-heading text-near-black text-h3 not-italic">
+                    {vibeLabel(opt, childName)}
+                  </span>
+                  <span className="font-body text-warm-grey text-caption">{opt.blurb}</span>
+                </button>
+              );
+            })}
+          </div>
+          <Body size="caption">
+            This sets the story&apos;s feeling. You can change it any time before you order.
+          </Body>
+        </section>
+      )}
+
       <div className="space-y-md">
-        <ThemeCategory
-          label="Milestones"
-          templates={milestoneTemplates}
-          selectedId={selectedId}
-          onSelect={selectTemplate}
-        />
-        <ThemeCategory
-          label="Adventures"
-          templates={adventureTemplates}
-          selectedId={selectedId}
-          onSelect={selectTemplate}
-        />
+        {groups.map((g) => (
+          <ThemeCategory
+            key={g.label}
+            label={g.label}
+            templates={themeSet.filter((t) => t.category === g.category)}
+            selectedId={selectedId}
+            onSelect={selectTemplate}
+          />
+        ))}
         <button
           type="button"
           onClick={() =>

@@ -46,9 +46,24 @@ export const STYLE_OPTIONS: ReadonlyArray<ArtStyleOption> = [
   { value: 'cutpaper', label: 'Cut-Paper Collage', blurb: 'Layered paper, playful texture.', purchasable: true },
 ];
 
-/** Whether a style value may be PURCHASED (not just previewed). Unknown → false. */
-export function isPurchasableStyle(value: string | null | undefined): boolean {
-  return STYLE_OPTIONS.some((o) => o.value === value && o.purchasable);
+/**
+ * Whether a style value may be PURCHASED (not just previewed). Unknown → false.
+ *
+ * Per-book-type override: flat_modern is preview-only for CHILD books (the flat
+ * idiom genericises a child's FACE at the sheet stage — likeness can't survive)
+ * but PURCHASABLE for PET books — a pet's identity rides on coat colour + breed
+ * silhouette, not fine facial features, so the flat idiom holds it (proven probe,
+ * 2026-07-16; same reason cut-paper survives for pets).
+ */
+export function isPurchasableStyle(
+  value: string | null | undefined,
+  bookType: string = 'child',
+): boolean {
+  const opt = STYLE_OPTIONS.find((o) => o.value === value);
+  if (!opt) return false;
+  if (opt.purchasable) return true;
+  if (bookType === 'pet' && value === 'flat_modern') return true;
+  return false;
 }
 
 /** Static /public path of the style's swatch tile. Pet-as-hero (book_type='pet')

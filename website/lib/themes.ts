@@ -18,7 +18,7 @@
 
 export interface ThemeTemplate {
   id: string;
-  category: 'Milestones' | 'Adventures' | null;
+  category: 'Milestones' | 'Adventures' | 'Everyday' | null;
   title: string;
   starter: string;
 }
@@ -81,6 +81,74 @@ export const THEMES: ReadonlyArray<ThemeTemplate> = [
     title: 'The day everything changed',
     starter:
       'Later, when {child_name} tried to explain what happened, the words never quite landed right. It started on a Tuesday — a normal Tuesday, even — but by lunchtime nothing was normal anymore.',
+  },
+] as const;
+
+/**
+ * Pet-book theme presets (book_type='pet'). The child milestones ("first day of
+ * school") are absurd for a pet, so pets get their own set, grouped Everyday +
+ * Adventures. {child_name} resolves to the pet's name; pets have no gender, so
+ * pronouns resolve to they/their. Written gently so they read as fond memories
+ * too — they don't clash with the 'memorial' vibe (the free text covers specifics).
+ */
+export const PET_THEMES: ReadonlyArray<ThemeTemplate> = [
+  // Everyday — the small, real, tail-thumping moments.
+  {
+    id: 'pet_brought_home',
+    category: 'Everyday',
+    title: 'The day we brought you home',
+    starter:
+      'The day {child_name} first came home is one nobody in the family will ever forget. The house was small and quiet in the morning, and by evening it was a warmer, happier, altogether better place to be.',
+  },
+  {
+    id: 'pet_lazy_sunday',
+    category: 'Everyday',
+    title: 'A perfect lazy Sunday',
+    starter:
+      'Some days are just for slowing down. This is the story of a perfect lazy Sunday with {child_name}: warm sunbeams on the floor, a soft blanket, and absolutely nowhere in particular to be.',
+  },
+  {
+    id: 'pet_favourite_walk',
+    category: 'Everyday',
+    title: 'Your favourite walk',
+    starter:
+      '{child_name} knows the way by heart. This is the story of their favourite walk, the one where every smell is an old friend and every corner holds a small, wonderful adventure.',
+  },
+  {
+    id: 'pet_snack_heist',
+    category: 'Everyday',
+    title: 'The great snack heist',
+    starter:
+      'It was, everyone agreed later, the perfect crime. This is the story of the day {child_name} masterminded the great snack heist, and very nearly got away with it.',
+  },
+  // Adventures — ordinary places, turned wonderful.
+  {
+    id: 'pet_squirrel',
+    category: 'Adventures',
+    title: "The squirrel you'll never catch",
+    starter:
+      'There is one squirrel in the whole wide world that {child_name} is absolutely, completely determined to catch. This is the story of the greatest chase that never quite ends.',
+  },
+  {
+    id: 'pet_beach',
+    category: 'Adventures',
+    title: 'A day at the beach',
+    starter:
+      'Salt in the air, sand between the toes, and the biggest water bowl {child_name} had ever seen. This is the story of one wonderful, wave-chasing day at the beach.',
+  },
+  {
+    id: 'pet_backyard_jungle',
+    category: 'Adventures',
+    title: 'Exploring the backyard jungle',
+    starter:
+      'To everyone else it was just the backyard. To {child_name} it was a wild green jungle, full of mysteries to sniff out, territories to patrol, and the occasional very suspicious leaf.',
+  },
+  {
+    id: 'pet_midnight_noise',
+    category: 'Adventures',
+    title: 'The mysterious midnight noise',
+    starter:
+      'It happened in the very middle of the night: a small, mysterious noise, somewhere in the sleeping house. And only {child_name} was brave enough to go and find out what it was.',
   },
 ] as const;
 

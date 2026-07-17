@@ -18,6 +18,8 @@ export async function submitThemeStep(
   const input = {
     theme: formData.get('theme'),
     theme_template_id: formData.get('theme_template_id') || undefined,
+    // Only present for pet books; '' → undefined → NULL (no vibe).
+    vibe: formData.get('vibe') || undefined,
   };
 
   const result = validateTheme(input);
@@ -28,11 +30,14 @@ export async function submitThemeStep(
   const cookieId = await getDraftCookieFromRequest();
   if (!cookieId) redirect('/start/reset');
 
-  await updateDraftByCookieId(cookieId, {
+  const update = {
     theme: result.data.theme,
     theme_template_id: result.data.theme_template_id ?? null,
-    current_step: 'preview',
-  });
+    current_step: 'preview' as const,
+  };
+  // vibe is a new column that lags the generated DB types — cast its write.
+  (update as { vibe?: string | null }).vibe = result.data.vibe ?? null;
+  await updateDraftByCookieId(cookieId, update);
 
   revalidatePath('/start', 'layout');
 

@@ -3,13 +3,13 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { validatePet } from '@/lib/validation/validate';
+import { READING_LEVEL_TO_BAND } from '@/lib/validation/schemas';
 import { updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import type { FieldErrors } from '@/lib/validation/validate';
 
 export interface PetFormValues {
   name: string;
-  age_range: string;
   animal_kind: string;
   appearance: string;
   reading_level: string;
@@ -33,10 +33,9 @@ function readFormValues(formData: FormData): PetFormValues {
   }
   return {
     name: get('name'),
-    age_range: get('age_range'),
     animal_kind: get('animal_kind'),
     appearance: get('appearance'),
-    reading_level: get('reading_level'),
+    reading_level: get('reading_level') || 'standard',
     photos,
     consent: formData.get('consent') === 'on',
   };
@@ -56,7 +55,7 @@ export async function submitPetStep(
 
   const result = validatePet({
     name: input.name,
-    age_range: input.age_range,
+    reading_level: input.reading_level,
     animal_kind: input.animal_kind,
     appearance: input.appearance,
   });
@@ -78,7 +77,11 @@ export async function submitPetStep(
 
   await updateDraftByCookieId(cookieId, {
     child_name: result.data.name,
-    age_range: result.data.age_range,
+    // Reading level is chosen directly; age_range is derived to keep the column +
+    // orders.child_age (NOT NULL) populated. For a pet the "age" is cosmetic —
+    // likeness comes from photos + coat, and resolveReadingLevel uses reading_level.
+    reading_level: result.data.reading_level,
+    age_range: READING_LEVEL_TO_BAND[result.data.reading_level],
     child_appearance: result.data.appearance,
     // Pet identity (book_type already 'pet' from the hero step).
     animal_kind: result.data.animal_kind,

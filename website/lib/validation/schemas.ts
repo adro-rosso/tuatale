@@ -73,6 +73,15 @@ export const READING_LEVEL_BY_BAND: Record<string, ReadingLevel> = {
   '5-7': 'standard',
   '7-9': 'advanced',
 };
+// Reverse map: a directly-picked reading level → a representative age band. Used
+// for PET books, where the reader may be any age (child or adult owner), so we
+// don't ask for an age — the parent picks the reading level directly and we keep
+// age_range populated (from this map) for the downstream columns/pipeline.
+export const READING_LEVEL_TO_BAND: Record<ReadingLevel, (typeof AGE_RANGES)[number]> = {
+  simplest: '3-5',
+  standard: '5-7',
+  advanced: '7-9',
+};
 
 // Optional custom dedication (front-matter). Blank → the auto-default
 // "For {name}, with love" renders. Trimmed; ~120-char cap (one short line on
@@ -173,6 +182,9 @@ export const secondarySchema = z
     relationship: z.string().min(1, COPY.RELATIONSHIP_REQUIRED).max(80, COPY.TOO_LONG),
     appearance: z.string().min(30, COPY.TOO_SHORT).max(300, COPY.AT_UPPER),
     extra_care: z.boolean().default(false),
+    // Storage paths — a companion's photos drive their likeness (first photo is
+    // the adapter's photoPath anchor). Pet books only; adults/pets, never a child.
+    photos: z.array(z.string()).max(5).optional(),
   })
   // Gender is REQUIRED for human secondaries (matches the schema's
   // CHECK + matches the pipeline's gender-marker requirement). Non-human
@@ -203,7 +215,10 @@ export const bookTypeSchema = z.enum(BOOK_TYPES).default('child');
 export const ANIMAL_KIND_MAX = 40;
 export const petSchema = z.object({
   name: z.string().min(1, COPY.REQUIRED).max(50, COPY.TOO_LONG),
-  age_range: z.enum(AGE_RANGES, { message: COPY.CHOOSE_ONE }),
+  // A pet book's reader can be a child OR an adult owner, so there's no age
+  // question — the parent picks the reading level DIRECTLY (default standard).
+  // submit-pet derives a representative age_range from this (READING_LEVEL_TO_BAND).
+  reading_level: z.enum(READING_LEVEL_VALUES).default('standard'),
   // Species/breed, free text (e.g. "golden retriever", "tabby cat", "rabbit").
   animal_kind: z.string().min(1, COPY.REQUIRED).max(ANIMAL_KIND_MAX, COPY.TOO_LONG),
   // Coat/markings description — the likeness spine alongside the photos. 30+ chars.
@@ -211,9 +226,18 @@ export const petSchema = z.object({
 });
 export type PetInput = z.infer<typeof petSchema>;
 
+// Pet-book "vibe" — the story's emotional register (pet books only). These keys
+// MIRROR the VIBES table in src/anthropic.js (buildVibeRulesBlock); keep the two in
+// sync. 'memorial' is for a pet who has passed — handled with dignity.
+export const PET_VIBES = ['happy', 'adventure', 'tribute', 'memorial'] as const;
+export type PetVibe = (typeof PET_VIBES)[number];
+export const petVibeSchema = z.enum(PET_VIBES).optional();
+
 export const themeSchema = z.object({
   theme: z.string().min(20, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
   theme_template_id: z.string().optional(),
+  // Optional; set only for pet books. Steers story tone (see anthropic.js VIBE_RULES).
+  vibe: petVibeSchema,
 });
 
 export type ThemeInput = z.infer<typeof themeSchema>;

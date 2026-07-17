@@ -29,9 +29,11 @@ export default async function ThemeStepPage() {
       initial={{
         theme: draft?.theme ?? '',
         theme_template_id: draft?.theme_template_id ?? null,
+        vibe: (draft as { vibe?: string | null } | null)?.vibe ?? '',
       }}
       childName={draft?.child_name ?? null}
       childGender={asGender(draft?.child_gender)}
+      bookType={draft?.book_type ?? 'child'}
     />
   );
 }
