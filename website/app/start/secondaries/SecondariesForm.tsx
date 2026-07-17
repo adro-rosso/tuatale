@@ -40,13 +40,17 @@ interface SecondariesFormProps {
   protagonistName: string | null;
 }
 
-// HELD (2026-07-16): companion photo-upload ships OFF. The plumbing (PhotoUploader,
-// schema `photos`, submit `photoConsent`, adapter photoPath, worker download/anchor)
-// stays inert in the tree, but the UI does NOT render — pet secondaries are TEXT-ONLY,
-// exactly as they are live today. A prove-by-book run showed the secondary photo-anchor
-// doesn't hold the owner's likeness yet; re-enable once the secondary-likeness pipeline
-// fix lands (mirror the protagonist's multi-photo/REF_AUTHORITY anchoring for secondaries).
-const SECONDARY_PHOTO_ENABLED = false;
+// Companion photo-upload — PET BOOKS ONLY. Enabled 2026-07-17, once the
+// secondary-likeness fix landed and was PROVEN BY BOOK (worker de29f0b): story-gen no
+// longer invents a face for a photo-anchored subject, so the same photo now renders the
+// real person on the pages rather than a generic stand-in.
+//
+// The `isPet &&` guard at the render site is LOAD-BEARING — do not remove it. This is
+// deliberately NOT extended to child books: a child book's companions are frequently
+// children, and a "please don't upload photos of children" note is neither consent nor
+// moderation, so it discharges no obligation. Child companion photos stay behind the
+// parked child-photo privacy/safety/consent workstream (the same gate as PHOTO_ENABLED).
+const SECONDARY_PHOTO_ENABLED = true;
 
 const MAX_CARDS = 3;
 
@@ -263,8 +267,9 @@ function SecondaryCard({ data, errors, isPet, protagonistName, onChange, onRemov
         />
       </CardField>
 
-      {/* Companion photos — HELD OFF (SECONDARY_PHOTO_ENABLED=false); secondaries are
-          text-only until the secondary-likeness pipeline fix lands. */}
+      {/* Companion photos — PET BOOKS ONLY. The `isPet &&` guard keeps child-book
+          companion photos behind the parked child-photo workstream (their companions are
+          often children); it is load-bearing, not incidental. */}
       {isPet && SECONDARY_PHOTO_ENABLED ? (
         <div className="space-y-xs">
           <label className="font-body text-near-black text-body block font-medium">
