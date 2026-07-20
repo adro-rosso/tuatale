@@ -28,6 +28,7 @@ import { regenerateSignedUrl as realRegenerateSignedUrl, bookPdfPath as realBook
 import { runPreview, markPreviewFailed } from "./preview.js";
 import { notifyRecovery } from "./notify-recovery.js";
 import { handlePipelineFailure, resumeSweep } from "./resume-controller.js";
+import { checkGeminiCredits } from "./credit-monitor.js";
 
 // ---- Sentry (optional; shared project, release-tagged) --------------------
 const sentryEnabled = Boolean(process.env.SENTRY_DSN);
@@ -194,6 +195,18 @@ export const resumeCron = inngest.createFunction(
     }),
 );
 
+// ---- Credit monitor cron (2026-07-20) -------------------------------------
+// Every 6h: is Gemini image generation actually available? Independent of job
+// traffic, because every other credit signal we have needs a customer job to fail
+// first — which means learning we can't deliver only AFTER someone has paid. The
+// 2026-07-20 depletion sat undetected precisely because there was no traffic to fail.
+// checkGeminiCredits skips its paid probe when a real render succeeded recently, so
+// this costs ~$0 under traffic.
+export const creditCron = inngest.createFunction(
+  { id: "credit-cron", name: "Gemini Credit Monitor", triggers: [{ cron: "0 */6 * * *" }] },
+  async () => checkGeminiCredits(),
+);
+
 // ---- Health server (liveness for Fly) -------------------------------------
 // Returns 200 unless the connection is terminally CLOSED/CLOSING, so transient
 // RECONNECTING/CONNECTING states (the SDK auto-reconnects) don't cause Fly to
@@ -227,7 +240,7 @@ export function createHealthServer(getState) {
 // ---- Entry point ----------------------------------------------------------
 export async function start() {
   const connection = await connect({
-    apps: [{ client: inngest, functions: [runPipelineJob, runPreviewJob, resumeCron] }],
+    apps: [{ client: inngest, functions: [runPipelineJob, runPreviewJob, resumeCron, creditCron] }],
     instanceId: process.env.FLY_MACHINE_ID || process.env.HOSTNAME || "tuatale-worker",
     handleShutdownSignals: ["SIGTERM", "SIGINT"],
   });

@@ -13,28 +13,75 @@ import {
 import { notifyRecovery as realNotifyRecovery } from "./notify-recovery.js";
 import { classifyJobFailure, decideTransition, MAX_ATTEMPTS } from "./resume-policy.js";
 
+const CREDIT_ERR_RE = /RESOURCE_EXHAUSTED|exceeded your current quota|credits are depleted|\bquota\b/i;
+// gemini.js throws this when the call succeeds but carries no image part.
+const EMPTY_RESPONSE_RE = /No image returned from Gemini|Response parts received/i;
+/** A real page render is ~300KB+; anything this small is not a usable image. */
+const MIN_IMAGE_BYTES = 1024;
+
 /**
- * Default credit-recovery probe: one cheap Gemini call. "Healthy" = the API
- * responded WITHOUT a credit/quota error (even an empty response counts — credits
- * are the gate, not image quality). RESOURCE_EXHAUSTED / timeout → still depleted.
- * Lazy-imports gemini.js so this module loads without GEMINI_API_KEY.
+ * Run one cheap Gemini image call and classify the result.
+ *
+ * MUST be an IMAGE generation. Verified 2026-07-20 during a real depletion: the 429
+ * ("your prepayment credits are depleted") arrived on the image path. Free calls
+ * (models.list, countTokens) and text generation were NOT confirmed to surface it —
+ * the depletion was resolved before that experiment could run with a valid negative
+ * control, so we assume conservatively that only a billed image call is diagnostic.
+ * See scripts/_probe-credit-signal.mjs to settle it during the next depletion; if a
+ * free call turns out to reveal credit state, this probe drops to $0/run.
+ *
+ * "Healthy" REQUIRES IMAGE BYTES BACK — not merely the absence of a credit error.
+ * Observed 2026-07-20 during the adult art probe: Gemini returned HTTP 200 with no
+ * image part, repeatedly. That state is "up, billable, and useless" — a monitor that
+ * reports healthy through it is worse than no monitor, because it actively asserts
+ * the thing is fine while every customer render fails.
+ *
+ * @returns {Promise<{healthy: boolean, reason: 'ok'|'credits_depleted'|'timeout'|'empty_response'|'other', detail: string|null}>}
  */
-async function defaultHealthProbe() {
+export async function probeGeminiHealth() {
   const CAP_MS = 30000;
   let timer;
   try {
     const { generateImage } = await import("../../src/gemini.js");
     const timeout = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error("PROBE_TIMEOUT")), CAP_MS); });
-    await Promise.race([
+    const buf = await Promise.race([
       generateImage("a small red dot on a plain white background", [], {}, { callKind: "credit_probe" }),
       timeout,
     ]);
-    return true; // responded → credits present
+    // Assert BYTES. gemini.js normally throws on an empty part list, but a truncated
+    // or zero-length buffer would otherwise sail through as "healthy".
+    const bytes = buf?.length ?? 0;
+    if (bytes < MIN_IMAGE_BYTES) {
+      return { healthy: false, reason: "empty_response", detail: `image was ${bytes} bytes (min ${MIN_IMAGE_BYTES})` };
+    }
+    return { healthy: true, reason: "ok", detail: null };
   } catch (e) {
-    return !/RESOURCE_EXHAUSTED|exceeded your current quota|\bquota\b|PROBE_TIMEOUT/i.test(e?.message ?? "");
+    const msg = e?.message ?? "";
+    if (CREDIT_ERR_RE.test(msg)) return { healthy: false, reason: "credits_depleted", detail: msg.slice(0, 300) };
+    if (/PROBE_TIMEOUT/.test(msg)) return { healthy: false, reason: "timeout", detail: `no response in ${CAP_MS}ms` };
+    // The 200-with-no-image case: gemini.js raises this rather than returning empty.
+    if (EMPTY_RESPONSE_RE.test(msg)) return { healthy: false, reason: "empty_response", detail: msg.slice(0, 300) };
+    // Anything else (5xx, network) stays non-fatal for the resume sweep's purposes —
+    // see defaultHealthProbe below, which preserves the original semantics exactly.
+    return { healthy: true, reason: "other", detail: msg.slice(0, 300) };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Default credit-recovery probe for resumeSweep. Boolean: may we un-park credit-
+ * blocked jobs and send them back through the pipeline?
+ *
+ * Credit errors and timeouts both mean "no" (unchanged). `empty_response` is NEW and
+ * also means "no": un-parking jobs into an API that returns 200-with-no-image just
+ * burns their remaining attempts on renders that cannot succeed. Waiting costs a
+ * parked job 15 minutes; un-parking wrongly can cost it the attempt budget that is
+ * the difference between recovering and refunding.
+ */
+async function defaultHealthProbe() {
+  const { reason } = await probeGeminiHealth();
+  return reason === "ok" || reason === "other";
 }
 
 /**

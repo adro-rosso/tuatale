@@ -205,3 +205,56 @@ export async function requeueResumable(jobId, attemptCount) {
   if (error) throw new Error(`requeueResumable(${jobId}) failed: ${error.message}`);
   return data;
 }
+
+// ---- Proactive credit monitoring (2026-07-20) ------------------------------
+
+/** Last recorded result for a synthetic health check. null when never run. */
+export async function getOpsHealth(kind) {
+  const { data, error } = await getClient()
+    .from("ops_health")
+    .select("*")
+    .eq("kind", kind)
+    .maybeSingle();
+  if (error) throw new Error(`getOpsHealth(${kind}) failed: ${error.message}`);
+  return data ?? null;
+}
+
+/** Record this tick's result. One row per check kind (kind is the primary key). */
+export async function upsertOpsHealth({ kind, healthy, reason, detail, checkedAt, lastAlertAt, unhealthyStreak, alertState }) {
+  const { data, error } = await getClient()
+    .from("ops_health")
+    .upsert(
+      {
+        kind,
+        healthy,
+        reason,
+        detail: detail ?? null,
+        checked_at: checkedAt,
+        last_alert_at: lastAlertAt ?? null,
+        unhealthy_streak: unhealthyStreak ?? 0,
+        alert_state: alertState ?? "up",
+      },
+      { onConflict: "kind" },
+    )
+    .select()
+    .single();
+  if (error) throw new Error(`upsertOpsHealth(${kind}) failed: ${error.message}`);
+  return data;
+}
+
+/**
+ * Did a real customer render succeed recently? A successful job is free proof that
+ * credits exist, so the credit monitor skips its paid synthetic probe when this is
+ * true. 'shipped' and 'awaiting_review' both mean every Gemini call in that book
+ * completed — the pipeline cannot reach either state otherwise.
+ */
+export async function hadRecentGeminiSuccess(sinceIso) {
+  const { data, error } = await getClient()
+    .from("pipeline_jobs")
+    .select("id")
+    .in("status", ["shipped", "awaiting_review"])
+    .gte("updated_at", sinceIso)
+    .limit(1);
+  if (error) throw new Error(`hadRecentGeminiSuccess failed: ${error.message}`);
+  return (data ?? []).length > 0;
+}
