@@ -38,7 +38,26 @@ interface HealthResponse {
   ok: boolean;
   supabase: LegStatus;
   stripe: LegStatus;
+  /** Which server-only secrets the RUNNING deployment can actually see. */
+  config: Record<string, boolean>;
+  /** Commit SHA of the running build, so "did my redeploy land?" is answerable. */
+  version: string;
   timestamp: string;
+}
+
+/**
+ * Presence-only view of the secrets whose absence silently disables a feature.
+ * BOOLEANS ONLY — never a value, never a prefix, never a length. Mirrors the
+ * worker's /health flag block, and exists because a missing CRON_SECRET is
+ * otherwise indistinguishable from a failed redeploy from outside the box:
+ * the reap route just 500s either way.
+ */
+function configFlags(): Record<string, boolean> {
+  const set = (v: string | undefined) => Boolean(v && v.trim() !== '');
+  return {
+    CRON_SECRET: set(process.env.CRON_SECRET),
+    INTERNAL_RECOVERY_SECRET: set(process.env.INTERNAL_RECOVERY_SECRET),
+  };
 }
 
 /**
@@ -108,6 +127,8 @@ export async function GET(request: Request): Promise<Response> {
     ok: supabase.ok && stripe.ok,
     supabase,
     stripe,
+    config: configFlags(),
+    version: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'local',
     timestamp: new Date().toISOString(),
   };
   return Response.json(body, { status: body.ok ? 200 : 503 });
