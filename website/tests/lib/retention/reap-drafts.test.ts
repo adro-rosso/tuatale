@@ -64,6 +64,19 @@ describe('collectPhotoPaths', () => {
       .toEqual(['uploads/a.png']);
   });
 
+  // `_dangling_photos` records objects that are already gone (2026-07-16 tidy). It is
+  // metadata, not a live reference — counting it would make the reaper "retain"
+  // nonexistent objects and re-flag corrected rows as broken.
+  it('skips _-prefixed metadata keys', () => {
+    expect(
+      collectPhotoPaths({
+        pet: ['uploads/live.png'],
+        _dangling_photos: ['uploads/gone.png'],
+        _dangling_note: 'removed by the residue cleanup',
+      }),
+    ).toEqual(['uploads/live.png']);
+  });
+
   it('tolerates empty/garbage without throwing (photo_urls defaults to [] or {})', () => {
     expect(collectPhotoPaths([])).toEqual([]);
     expect(collectPhotoPaths({})).toEqual([]);

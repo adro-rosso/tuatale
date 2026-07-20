@@ -47,6 +47,11 @@ export type ReapReport = {
  * more keys may land later, so this walks the structure rather than assuming either.
  * Only `uploads/`-prefixed strings are returned: we must never hand a rendered
  * preview or a book PDF path to a delete call from here.
+ *
+ * Keys beginning with `_` are METADATA, not live references, and are skipped —
+ * `_dangling_photos` records paths whose objects are already gone (see the
+ * 2026-07-16 tidy). Treating those as live would have the reaper "retain" objects
+ * that don't exist and re-report corrected rows as still broken.
  */
 export function collectPhotoPaths(photoUrls: unknown): string[] {
   const out: string[] = [];
@@ -56,7 +61,12 @@ export function collectPhotoPaths(photoUrls: unknown): string[] {
       return;
     }
     if (Array.isArray(v)) return void v.forEach(walk);
-    if (v && typeof v === 'object') return void Object.values(v).forEach(walk);
+    if (v && typeof v === 'object') {
+      for (const [key, value] of Object.entries(v)) {
+        if (key.startsWith('_')) continue;
+        walk(value);
+      }
+    }
   };
   walk(photoUrls);
   return [...new Set(out)];

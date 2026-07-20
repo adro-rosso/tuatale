@@ -65,12 +65,38 @@ const BOOKS_BUCKET = "tuatale-books";
 console.log(`TARGET: ${TEST ? "TEST" : "PROD"} (${URL})   mode=${APPLY ? "APPLY (DELETE)" : "DRY-RUN"}`);
 console.log(`SUBJECT: ${EMAIL ? `email=${EMAIL}` : `draft=${DRAFT_ID}`}\n`);
 
-/** Pull every uploads/ path out of a photo_urls jsonb (array for child, {pet:[…]} for pet). */
+/** Pull every uploads/ path out of a photo_urls jsonb (array for child, {pet:[…]} for pet).
+ *  `_`-prefixed keys are metadata (e.g. `_dangling_photos`, objects already gone), not
+ *  live references — mirrors lib/retention/reap-drafts.ts. */
 function collectPhotoPaths(v, out = new Set()) {
   if (typeof v === "string") { if (v.startsWith("uploads/")) out.add(v); return out; }
   if (Array.isArray(v)) { v.forEach((x) => collectPhotoPaths(x, out)); return out; }
-  if (v && typeof v === "object") { Object.values(v).forEach((x) => collectPhotoPaths(x, out)); return out; }
+  if (v && typeof v === "object") {
+    for (const [k, val] of Object.entries(v)) { if (!k.startsWith("_")) collectPhotoPaths(val, out); }
+    return out;
+  }
   return out;
+}
+
+/**
+ * Verify deletion via list() — NEVER via download().
+ *
+ * Measured on 2026-07-20: an object that had been downloaded BEFORE deletion still
+ * returned bytes afterwards, while one never downloaded returned GONE immediately;
+ * list() reported it absent in both cases. The delete is real either way, but the read
+ * path can serve a stale copy for some unmeasured window. We must never tell a person
+ * "your data is erased" on the strength of a read that can lie in the reassuring
+ * direction — so list() is the authority here, and a download check is not used at all.
+ */
+async function verifyGone(bucket, paths) {
+  const remaining = [];
+  for (const p of paths) {
+    const prefix = p.slice(0, p.lastIndexOf("/"));
+    const name = p.slice(p.lastIndexOf("/") + 1);
+    const { data } = await sb.storage.from(bucket).list(prefix, { search: name });
+    if ((data ?? []).some((o) => o.name === name)) remaining.push(p);
+  }
+  return remaining;
 }
 
 // ── 1. Resolve the subject's rows ─────────────────────────────────────────
@@ -147,6 +173,22 @@ async function rm(bucket, paths) {
 await rm(PREVIEW_BUCKET, [...deletablePhotos, ...previewPaths]);
 await rm(BOOKS_BUCKET, bookPaths);
 
+// Confirm against the bucket listing, not a read. A delete that reported success but
+// left the object listed is a failed erasure, and the operator must know before
+// telling anyone otherwise.
+const stillThere = [
+  ...(await verifyGone(PREVIEW_BUCKET, [...deletablePhotos, ...previewPaths])),
+  ...(await verifyGone(BOOKS_BUCKET, bookPaths)),
+];
+if (stillThere.length) {
+  console.error(`\n!! VERIFICATION FAILED — ${stillThere.length} object(s) still listed:`);
+  stillThere.forEach((p) => console.error(`   ${p}`));
+  console.error("Rows have NOT been deleted (they are the only record of these objects).");
+  console.error("Do not report this erasure as complete. Re-run after investigating.");
+  process.exit(1);
+}
+console.log("✓ verified absent from the bucket listing");
+
 if (previews?.length) {
   const { error } = await sb.from("preview_jobs").delete().in("id", previews.map((p) => p.id));
   if (error) throw error;
@@ -165,4 +207,10 @@ if (draftIds.size) {
   if (error) throw error;
   console.log(`✓ deleted ${draftIds.size} draft(s)`);
 }
-console.log("\nERASURE COMPLETE.");
+console.log("\nERASURE COMPLETE — objects confirmed absent from the bucket listing, rows deleted.");
+console.log(
+  "CAVEAT: a previously-downloaded object can still be served from cache for some\n" +
+  "window after a real delete (measured 2026-07-20; window length not yet established).\n" +
+  "The object IS deleted. If you must state a timing guarantee to a customer, establish\n" +
+  "that window first rather than inferring it from this run.",
+);
