@@ -19,7 +19,19 @@ export const SLOW_WARN_MS = 60_000;
 // waiting." Exceeds the SDK timeout, so it only fires when retries are
 // stacked or a single attempt is over the configured per-attempt timeout
 // (5 min on Anthropic SDK, no SDK ceiling on Gemini).
-export const WALL_CEILING_MS = 300_000;
+//
+// Overridable via WALL_CEILING_MS for experiments; the DEFAULT IS UNCHANGED (300s),
+// so absent the env var every existing caller behaves exactly as before.
+//
+// This global stays at 300s deliberately. The adult-book branch, whose story-gen runs
+// 287.5s and had only a 4.2% margin here, does NOT raise it — callWithRetry accepts a
+// per-call `wallCeilingMs`, and src/anthropic.js passes ADULT_WALL_CEILING_MS for adult
+// calls only. Raising this global instead would also loosen the D2 fatal-stop that
+// bounds Gemini spend during a sheet_mint / page_render stall, which is the opposite of
+// what we want: the ceiling is a spend guard, not just a patience setting.
+export const WALL_CEILING_MS = Number(process.env.WALL_CEILING_MS) > 0
+  ? Number(process.env.WALL_CEILING_MS)
+  : 300_000;
 
 /**
  * Structured error thrown when a paid API call's total wall time (including

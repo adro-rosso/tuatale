@@ -404,6 +404,56 @@ export const EFFORT = "medium";
 // be cheaper; "adaptive" is worth the variance for creative work.
 export const THINKING_TYPE = "adaptive";
 
+// ---- Adult story-gen budget (2026-07-20) -----------------------------------
+// Adult books systematically failed to complete: four attempts at `romantic`, every
+// one dying at exactly 300s. Measured cause — the final story JSON is only ~3k output
+// tokens, but usage reports 15.5-18.5k, so ~12-15k is ADAPTIVE-THINKING spend. Prose
+// is ~15% of the budget, which is why capping prose length (ADULT_PROSE) did not fix
+// completion and was never going to.
+//
+// Two changes, both scoped to adult calls only — child/pet books keep today's
+// settings exactly:
+//
+//   1. EFFORT stays "medium" — MEASURED, do not re-optimise this to "low" without
+//      re-running the comparison. Reducing effort was the obvious latency lever and
+//      it was TESTED and REJECTED on quality:
+//
+//        low     ~60s,  2.5-2.7k output tokens. BUT: softened the roast's emotional
+//                turn from SHOWN to TOLD — the book stopped earning its ending and
+//                drifted to a "Here is to the shortcuts that never save time…" toast,
+//                which is precisely the greeting-card failure ADULT_AUDIENCE_OVERRIDE
+//                warns against. Specificity thinned (concrete "step one, step four,
+//                the valve line" became "eleven steps"). It also broke structural
+//                invariants twice in two runs: one story emitted 13 scenes, another
+//                a scene with the protagonist missing from subjects_present.
+//
+//        medium  287.5s, 18.1k output tokens, 12 clean scenes, no cheap-repair, no
+//                shape retry, 0 pages over the prose cap, ending shown not told.
+//
+//      Story-gen is ASYNC (queued job, not a request the customer waits on), so the
+//      ~227s difference is INVISIBLE to them. Trading register quality and structural
+//      fidelity for imperceptible speed is a bad trade. ADULT_EFFORT stays env-
+//      overridable so the comparison can be re-run, not so it can be quietly lowered.
+//
+//   2. Headroom on BOTH timeouts, together. Raising either alone is a no-op: the
+//      SDK timeout and WALL_CEILING_MS are both 300s today, so whichever is not
+//      raised still cuts at 300s. The measured run settles this: `romantic` at medium
+//      takes 287.5s, a 12.5s / 4.2% margin against the old 300s ceiling. That is a
+//      coin flip, not "usually fine" — and it is why the same failure produced three
+//      successive confident-but-wrong diagnoses (wall ceiling, then SDK timeout, then
+//      prose length). At 420s the margin is 132.5s (~32%).
+//
+// SDK timeout stays BELOW the wall ceiling on purpose: a per-attempt timeout that
+// fires inside the wall budget leaves room for the retry chain to recover, whereas
+// a per-attempt timeout above it can only ever be killed by the wall.
+export const ADULT_EFFORT = process.env.ADULT_EFFORT || "medium";
+export const ADULT_SDK_TIMEOUT_MS = Number(process.env.ADULT_SDK_TIMEOUT_MS) > 0
+  ? Number(process.env.ADULT_SDK_TIMEOUT_MS)
+  : 420_000;  // 7 min — ~40% headroom over the 294s worst case observed
+export const ADULT_WALL_CEILING_MS = Number(process.env.ADULT_WALL_CEILING_MS) > 0
+  ? Number(process.env.ADULT_WALL_CEILING_MS)
+  : 900_000;  // 15 min total, so one full retry fits inside the ceiling
+
 // ---- Output schema (for output_config.format) ------------------------------
 // What Claude generates. Wrapper merges these two fields with the brand
 // constants above to produce the final 5-field `story` object.
@@ -418,11 +468,16 @@ export const THINKING_TYPE = "adaptive";
 // registry — see buildStorySchema(). This means Anthropic's server-side
 // validation rejects unknown template IDs without us needing to post-parse.
 // Exported so tests can verify the enum contents.
-export function buildStorySchema(registry, readingLevel = "standard") {
+export function buildStorySchema(registry, readingLevel = "standard", adultMode = false) {
   const templateIds = registry.map((t) => t.id);
   // The per-page prose length in the narrative_text description is reading-level
   // conditioned (single source of truth: READING_LEVELS). Unknown → standard.
-  const narrativeLengthDesc = (READING_LEVELS[readingLevel] ?? READING_LEVELS.standard).schemaDesc;
+  // An ADULT book has no reading level, so it takes the ADULT_PROSE band instead —
+  // same band the injected rules block uses, so schema and prompt cannot disagree.
+  // adultMode defaults false, so every child/pet caller is unchanged.
+  const narrativeLengthDesc = adultMode
+    ? ADULT_PROSE.schemaDesc
+    : (READING_LEVELS[readingLevel] ?? READING_LEVELS.standard).schemaDesc;
   return {
     type: "object",
     required: ["title", "character", "companion_characters", "scenes", "cover_concept", "cover_subjects"],
@@ -523,7 +578,7 @@ export function buildStorySchema(registry, readingLevel = "standard") {
 //
 // The {{TEMPLATE_REGISTRY_DESCRIPTION}} placeholder is substituted at
 // generateStory() call time from the on-disk template registry.
-export const SYSTEM_PROMPT_TEMPLATE = `You are a children's picture-book author writing personalised bedtime stories for parents to read aloud to their {{AUDIENCE}}.
+export const SYSTEM_PROMPT_TEMPLATE = `{{BOOK_FRAME}}
 
 Your job is to produce ONE complete 12-page story per request. You generate: a title; a character description for the protagonist; companion-character descriptions (one paragraph each) for any companions listed in the input (empty array if none); 12 numbered scenes (each declaring which subjects are present); a cover concept; and the cover subjects list. The book's visual style, composition rules, and image-safety constraints are set elsewhere — focus entirely on title, character(s), story, and cover.
 
@@ -628,7 +683,7 @@ Keep every specific marker the customer provided; only inflect the gender coding
 
 When gender is \`non_binary\`, write neutral styling — no "boy's" / "girl's" / "boyish" / "girlish" framing; describe the customer's markers without gendered styling vocabulary.
 
-{{PROTAGONIST_KIND_OVERRIDE}}{{SUBJECT_OVERRIDES}}COMPANIONS
+{{PROTAGONIST_KIND_OVERRIDE}}{{AUDIENCE_OVERRIDE}}{{SUBJECT_OVERRIDES}}COMPANIONS
 
 When the input lists Companions (one or more under "Companions:"), they appear in the story alongside the protagonist. The PROTAGONIST remains the EMOTIONAL CENTER of every story — their name is on the cover, they are who the customer bought the book for, their arc is the story's spine. Companions PARTICIPATE — they have presence, voice, and meaningful interaction — but they are NEVER co-protagonists. The protagonist drives, decides, and grows; companions support, react, and accompany.
 
@@ -703,6 +758,72 @@ The protagonist of THIS story is a real ANIMAL — a pet — not a child. This s
 - CHARACTER DESCRIPTION for the pet: describe it the way an illustrator would before drawing it — species and breed; body size and build; coat colour and texture; distinctive markings; ear and tail shape; muzzle; and eye colour. Lead with the pet's name. Keep to physically-concrete, drawable, symmetric-and-intrinsic features that travel on every page (the PHYSICALLY CONCRETE and persistent-appearance rules above still apply — no interpretive/personality adjectives, no single-sided items). A pet wears NO clothing unless the input explicitly gives it a persistent accessory such as a collar; do not invent outfits. No heritage clause; no human gender-coded styling.
 - PRONOUNS: the pet has no Gender field. Ignore the protagonist pronoun and gender-styling rules above; refer to the pet with natural pronouns that fit the story ("it" or "they", or "he"/"she" if the input's wording implies one) and keep that choice CONSISTENT across the description and all twelve scenes.
 - Everything else is unchanged: the pet is the EMOTIONAL CENTER and appears in EVERY scene; the owner and any other characters are COMPANIONS handled exactly per the rules below (a human owner is [REF-ANCHORED]).
+
+`;
+
+// ---- Adult-audience branch (V1 register probe, 2026-07-17) -----------------
+// Same 12-page illustrated picture-book format, same styles/templates/pipeline.
+// The ONLY difference is the READER: an adult, not a child. These two conditional
+// substitutions flip the child framing; both collapse to the ORIGINAL text for a
+// child book, so a child prompt stays byte-identical.
+
+/** The opening line. Child = the original wording, verbatim. */
+export const CHILD_BOOK_FRAME = `You are a children's picture-book author writing personalised bedtime stories for parents to read aloud to their {{AUDIENCE}}.`;
+export const ADULT_BOOK_FRAME = `You are an author-illustrator writing a personalised illustrated book for an ADULT reader. It is a gift for a grown-up: the same craft as a fine picture book, but the reader is an adult and the voice must be written for one.`;
+
+/**
+ * {{AUDIENCE_OVERRIDE}} — "" for child books. For an adult book it overrides the
+ * child-audience halves of VOICE AND AUDIENCE and READING LEVEL that sit above it.
+ *
+ * The failure mode this exists to prevent: a children's book ABOUT grown-ups —
+ * twee, sing-song, morally instructive, or quietly condescending. An adult reader
+ * should feel written FOR, not written DOWN TO.
+ */
+// ---- Adult prose band (2026-07-20) -----------------------------------------
+// The adult analogue of a READING_LEVELS band. Adult books have no reading level
+// (that concept is a child one), but they land on the SAME page templates, so they
+// need the same thing a reading level provides: a prose length sized to the page.
+//
+// This is a PRODUCT constraint, not a performance workaround — but state the
+// evidence honestly, because it is weaker than "the prose doesn't fit":
+//
+//   Measured across the three completed samples (milestone / roast / adventure),
+//   pages run 192-329 chars, averaging 240-266. Checked against the template each
+//   scene actually CHOSE, only ONE page in three books overflows (adventure p?,
+//   207 chars on prompt-6's 200 cap). The model mostly stays legal by steering to
+//   the uncapped prompt-2 and the 300-char prompt-3.
+//
+// So the defect is not mass overflow. It is that unbounded prose lets layout be
+// chosen BY length rather than by meaning: the climactic full-bleed template caps
+// at 200, so a book whose every page runs 240+ can never use it for its climax,
+// and the short-text template (150) is unreachable by construction. Bounding prose
+// at 280 keeps every page legal on all but the climax template and leaves the
+// climax reachable when the story wants it.
+//
+// The band targets the samples' own centre of mass (~240-265) and pulls only the
+// tail in. It deliberately does NOT shorten toward the child bands: terse adult
+// prose reads clipped, and length is not what made the approved samples good.
+//
+// Must stay ABOVE ADULT_AUDIENCE_OVERRIDE — that template literal interpolates
+// ADULT_PROSE.rules at module-evaluation time.
+export const ADULT_PROSE = {
+  schemaDesc:
+    "2 to 4 sentences (about 150 to 260 characters) of prose for this page. NEVER exceed 280 characters",
+  rules: `- LENGTH (hard): 2 to 4 sentences per page, about 150 to 260 characters, and NEVER more than 280. The page templates cap narrative text at 300 characters (150 on the short-text template); prose past the cap does not fit the page. Write to the page you are on. Length is not depth: an adult page earns its weight through the precision of the detail, not the number of clauses.`,
+};
+
+export const ADULT_AUDIENCE_OVERRIDE = `WRITTEN FOR AN ADULT (this book)
+
+The reader of THIS book is an ADULT. This section OVERRIDES the child-audience parts of VOICE AND AUDIENCE and READING LEVEL above:
+- VOICE: write for an intelligent adult with a full vocabulary and a whole life behind them. No sing-song cadence, no nursery diction, no moral tacked on the last page, no narrator explaining a feeling the reader can already see. Warmth and wit, not whimsy.
+- THE FAILURE TO AVOID, above all: this must never read like a children's book about grown-ups. If a line would sound at home in a picture book for a five-year-old, cut it. No "Once upon a time", no rhyming, no "and that made [Name]'s heart feel warm and full", no cute anthropomorphised objects unless the vibe explicitly calls for it.
+- READING LEVEL: ignore the READING LEVEL section above ENTIRELY — its vocabulary, refrain, sentence-simplicity AND length guidance are all for children. Vocabulary and sentence complexity are adult, though still economical: this is a page with a picture on it, not a novel. Prose length is governed instead by the rule immediately below, which is sized to the same page templates.
+${ADULT_PROSE.rules}
+- SPECIFICITY IS THE WHOLE GAME. Adult sentiment lands through concrete, particular, slightly imperfect detail: the chipped mug they always reach for, the argument about the thermostat, the 6am alarm neither of them needs anymore. Generic warmth reads as a greeting card, which is the single most common way this voice fails.
+- ADULT LIFE IS THE MATERIAL: work, love, friendship, exhaustion, ageing, money, habits, private jokes, small daily rituals. Real texture, lightly held.
+- GENDER: the \`Gender\` field uses the same boy/girl/non_binary vocabulary as the child product, but on an adult it denotes a man / a woman / a non-binary adult. Describe and refer to them as an adult. NEVER child-coded styling ("a boy's haircut", "boyish build", "a girl's dress") — use adult wording ("a man's haircut", "a woman's coat").
+- STILL A GIFT BOOK: keep it warm and giftable. No explicit sexual content, no gratuitous profanity, nothing that would embarrass the recipient if opened in front of family.
+- Everything else is unchanged: the 12-scene arc, the action / narrative_text split, the emphasis-markup budgets, the no-dashes rule, and template selection all apply exactly as written above.
 
 `;
 
@@ -964,6 +1085,52 @@ export function buildVibeRulesBlock(vibe) {
   return (VIBES[vibe] ?? VIBES.happy).rules;
 }
 
+// Adult-book vibes (V1 register probe). Separate table from the pet VIBES: an adult
+// book's registers are different, and 'roast' + 'romantic' are the two that decide
+// whether this product is giftable or excruciating.
+export const ADULT_VIBES = {
+  romantic: {
+    rules: `STORY MOOD — ROMANTIC (a gift for a partner)
+A love letter in twelve illustrated pages, from one adult to the person they love.
+- Ground it in the SPECIFIC and the ORDINARY. Love between adults lives in the accumulated small stuff: who makes the coffee, the drive neither of them minds, the way one of them falls asleep during films. Build the whole book from that texture.
+- Earn the feeling. State it plainly at most once, near the end, after eleven pages of showing it. A sentiment that arrives unearned reads as a greeting card.
+- BANNED, absolutely: "you complete me", "my other half", "soulmate", "forever and always", "you are my everything", and any line you could buy pre-printed. If a sentence would fit on a supermarket card, delete it.
+- Warm, a little wry, unembarrassed. Real couples tease each other; affection and humour are not opposites. It may ache slightly. It must never gush.
+- Close on something quiet and particular, not a grand declaration.`,
+  },
+  milestone: {
+    rules: `STORY MOOD — MILESTONE (a birthday, retirement, graduation, new chapter)
+A celebration that honours the distance travelled, for an adult reaching a moment that matters.
+- Look BACKWARD with specificity and FORWARD with warmth: the version of them who started, what it cost, who they are now. The arc is the journey, not the party.
+- Respect the ambivalence. Real milestones carry pride and a little grief: the job they're leaving, the years that went fast, the door closing behind them. Naming that honestly is what makes the celebration land.
+- Celebratory, generous, proud of them. Not a toast, not a speech, not a list of achievements.
+- Avoid "you did it!" cheerleading and any hint of a life-lesson moral. Let the accomplishment speak.
+- Close on the next thing, unhurried and open.`,
+  },
+  roast: {
+    rules: `STORY MOOD — AFFECTIONATE ROAST (funny, teasing, and fundamentally loving)
+A comic book-length wind-up of someone the writer clearly adores. The teasing IS the affection.
+- THE RULE THAT GOVERNS EVERYTHING: punch at HABITS, never at the PERSON. Their eleven-step coffee ritual, their unshakable belief they know a shortcut, the drawer of dead batteries, how they narrate every film. Fondly ridiculous, never diminishing.
+- ABSOLUTELY OFF LIMITS: appearance, weight, ageing, intelligence, competence, income, relationship history, parenting, health, or anything they are genuinely insecure about. If a joke would sting when read aloud in front of them, it is the wrong joke. This is a gift, and they will read it in a room full of people who love them.
+- The comedy comes from precise, escalating, affectionate observation, not from insults. Specific beats snarky every time: "he has opinions about the dishwasher" is funnier and kinder than "he's annoying".
+- Let it escalate with a straight face, then LAND ON LOVE. The final page turns without irony: the same quirks, seen as the reason they are beloved. That turn is what separates a roast from a bullying.
+- Never sarcastic ABOUT them to the reader; the narrator is in on the joke WITH them.`,
+  },
+  adventure: {
+    rules: `STORY MOOD — ADVENTURE (an imaginative romp with an adult at its centre)
+An escapade that takes an adult life and tilts it into something larger.
+- The stakes may be fantastical, but the protagonist stays a recognisable ADULT: they have a job, a bad back, opinions about parking. That contrast is the engine of the humour and the charm.
+- Wonder, not whimsy. Keep the imagery vivid and grown-up; avoid fairy-tale furniture (talking teapots, magic sparkles, quest-givers) unless the premise genuinely earns it.
+- Real momentum and real jeopardy, resolved with wit rather than a moral.
+- Close on the return, slightly changed, with the ordinary world looking a little different.`,
+  },
+};
+
+/** Tone directive for an adult book's vibe. Unknown/absent → romantic. */
+export function buildAdultVibeRulesBlock(vibe) {
+  return (ADULT_VIBES[vibe] ?? ADULT_VIBES.romantic).rules;
+}
+
 // ---- Public API ------------------------------------------------------------
 
 /**
@@ -1051,16 +1218,28 @@ export async function generateStory(input, options = {}) {
   // human CHARACTER DESCRIPTION / gender sections for the pet override. Same gating
   // as book-pipeline.js; flag off → override collapses to "" (byte-identical).
   const petHero = process.env.FEATURES_PET_HERO === "on" && input.child?.subject_type === "non_human";
+  // Adult-audience branch (V1). Opt-in via input.audience === "adult"; absent →
+  // every substitution below collapses to the original child text.
+  const adultMode = input.audience === "adult";
   const systemPrompt = SYSTEM_PROMPT_TEMPLATE
+    // Opening frame. Child branch is the ORIGINAL line verbatim (and still carries
+    // {{AUDIENCE}}, resolved further down the chain).
+    .replace(/\{\{BOOK_FRAME\}\}/g, adultMode ? ADULT_BOOK_FRAME : CHILD_BOOK_FRAME)
     .replace(/\{\{TEMPLATE_REGISTRY_DESCRIPTION\}\}/g, templateRegistryDescription)
     .replace(/\{\{MULTICHAR_RULES\}\}/g, multicharRules)
-    // Vibe tone directive (pet books) is APPENDED to the reading-level block only when
-    // a vibe is set — so for child books (vibe empty) the prompt is BYTE-IDENTICAL to
-    // before this change (no stray placeholder / blank line).
+    // Vibe tone directive is APPENDED to the reading-level block only when a vibe is
+    // set — so for child books (vibe empty) the prompt is BYTE-IDENTICAL to before
+    // this change (no stray placeholder / blank line). Adult books use the adult
+    // vibe table (different registers entirely).
     .replace(
       /\{\{READING_LEVEL_RULES\}\}/g,
-      buildReadingLevelRulesBlock(readingLevel) + (input.vibe ? `\n\n${buildVibeRulesBlock(input.vibe)}` : ''),
+      buildReadingLevelRulesBlock(readingLevel) +
+        (input.vibe
+          ? `\n\n${adultMode ? buildAdultVibeRulesBlock(input.vibe) : buildVibeRulesBlock(input.vibe)}`
+          : ''),
     )
+    // Adult-audience override — "" for child books.
+    .replace(/\{\{AUDIENCE_OVERRIDE\}\}/g, adultMode ? ADULT_AUDIENCE_OVERRIDE : "")
     .replace(/\{\{PROTAGONIST_KIND_OVERRIDE\}\}/g, petHero ? PET_PROTAGONIST_OVERRIDE : "")
     // Photo-anchored / adult subject overrides. "" when the book has neither, so a
     // plain child book's prompt is byte-identical (the placeholder is adjacent to
@@ -1068,7 +1247,7 @@ export async function generateStory(input, options = {}) {
     .replace(/\{\{SUBJECT_OVERRIDES\}\}/g, buildSubjectOverridesBlock(input))
     .replace(/\{\{AUDIENCE\}\}/g, levelDef.audience)
     .replace(/\{\{PROSE_LENGTH\}\}/g, levelDef.proseLength);
-  const schema = buildStorySchema(registry, readingLevel);
+  const schema = buildStorySchema(registry, readingLevel, adultMode);
 
   // Compact input summary surfaced in MaxTokensError + ShapeValidationError
   // diagnostics + status.json when the response is truncated/malformed. Theme
@@ -1099,6 +1278,7 @@ export async function generateStory(input, options = {}) {
         attempt,
         validationInput: input,
         inputSummary,
+        adultMode,
         onSlowCall,
       });
       claudeOutput = result.claudeOutput;
@@ -1162,20 +1342,32 @@ export async function generateStory(input, options = {}) {
 // the TIER-2-only expected companion set. Replaces the pre-derived
 // protagonistName + expectedCompanionNames params (single source of truth
 // for tier-1/tier-2 logic now lives inside validateStoryShape).
-async function attemptStoryGeneration({ systemPrompt, userMessage, schema, attempt, validationInput, inputSummary, onSlowCall }) {
+async function attemptStoryGeneration({ systemPrompt, userMessage, schema, attempt, validationInput, inputSummary, onSlowCall, adultMode = false }) {
+  // Adult books get a reduced thinking budget and headroom on BOTH timeouts; every
+  // child/pet call takes the original path unchanged (adultMode defaults false).
   const response = await callWithRetry(
-    () => client.messages.create({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      system: systemPrompt,
-      thinking: { type: THINKING_TYPE },
-      output_config: {
-        effort: EFFORT,
-        format: { type: "json_schema", schema },
+    () => client.messages.create(
+      {
+        model: MODEL,
+        max_tokens: MAX_TOKENS,
+        system: systemPrompt,
+        thinking: { type: THINKING_TYPE },
+        output_config: {
+          effort: adultMode ? ADULT_EFFORT : EFFORT,
+          format: { type: "json_schema", schema },
+        },
+        messages: [{ role: "user", content: userMessage }],
       },
-      messages: [{ role: "user", content: userMessage }],
-    }),
-    { callKind: "story_gen", subjectName: validationInput?.child?.name, onSlowCall },
+      // Per-REQUEST override; the shared client's 300_000 default still governs
+      // every other caller.
+      adultMode ? { timeout: ADULT_SDK_TIMEOUT_MS } : undefined,
+    ),
+    {
+      callKind: "story_gen",
+      subjectName: validationInput?.child?.name,
+      onSlowCall,
+      ...(adultMode ? { wallCeilingMs: ADULT_WALL_CEILING_MS } : {}),
+    },
   );
 
   // Surface stop reasons that mean the response is unusable.
@@ -1634,7 +1826,7 @@ export function formatUserMessage(input) {
   lines.push(`Theme: ${theme}`);
   lines.push(``);
   lines.push(
-    `Write a 12-page bedtime story for this ${petHero ? "pet" : "child"} based on the theme. ` +
+    `Write a 12-page ${input.audience === "adult" ? "illustrated story for this ADULT reader" : `bedtime story for this ${petHero ? "pet" : "child"}`} based on the theme. ` +
     `Generate the character description${secondaries.length > 0 ? "s (protagonist + companions)" : ""}, the twelve scenes (each declaring subjects_present), the cover concept, and the cover_subjects list per the system prompt.`
   );
 
