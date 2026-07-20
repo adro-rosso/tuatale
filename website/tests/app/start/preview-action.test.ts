@@ -3,7 +3,7 @@
  * short-circuit (no spend) and the create-row + dispatch-event path, with the
  * data layer + Inngest mocked.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/preview/preview-jobs', () => ({
   findCachedPreview: vi.fn(),
@@ -14,8 +14,12 @@ vi.mock('@/lib/preview/preview-jobs', () => ({
 }));
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }));
 vi.mock('@/lib/supabase', () => ({ createServerClient: vi.fn() }));
+vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
+vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn() }));
 
-import { requestPreview, getPreviewStatus, uploadPhoto } from '@/app/start/_actions/preview';
+import { requestPreview, getPreviewStatus, uploadPhoto, uploadPetPhoto } from '@/app/start/_actions/preview';
+import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
+import { getDraftByCookieId } from '@/db/drafts';
 import { createServerClient } from '@/lib/supabase';
 import {
   findCachedPreview,
@@ -105,6 +109,32 @@ describe('requestPreview', () => {
     expect(inngest.send).not.toHaveBeenCalled();
   });
 
+  // ---- D: photoPath ownership ----
+  // photoPath was forwarded verbatim into the Inngest event; the worker fetches it by
+  // raw Storage key, so naming another prefix pulled a stranger's image into your gen.
+  it('SECURITY: a photoPath outside the caller\'s own draft prefix is blocked, no spend', async () => {
+    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const r = await requestPreview({ ...input, photoPath: 'uploads/draft-2/deadbeef.png' });
+    expect(r.blocked).toBe('capped');
+    expect(createPreviewJob).not.toHaveBeenCalled();
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('SECURITY: traversal out of the prefix is blocked', async () => {
+    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    const r = await requestPreview({ ...input, photoPath: 'uploads/draft-1/../draft-2/x.png' });
+    expect(r.blocked).toBe('capped');
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('SECURITY: the caller\'s OWN photoPath still flows through to the worker', async () => {
+    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (createPreviewJob as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p-new', status: 'queued', input_hash: 'h' });
+    const photoPath = 'uploads/draft-1/abc.png';
+    await requestPreview({ ...input, photoPath });
+    expect((inngest.send as ReturnType<typeof vi.fn>).mock.calls[0]![0].data).toMatchObject({ photoPath });
+  });
+
   it('COST: a cache HIT is never capped/rate-limited (free, no counts checked)', async () => {
     (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p-old', status: 'done', image_url: 'u' });
     (countPreviewsForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(999);
@@ -125,15 +155,121 @@ describe('getPreviewStatus', () => {
   });
 });
 
-describe('uploadPhoto (test-wiring)', () => {
-  it('uploads the PNG to the bucket and returns a content-hashed path', async () => {
+describe('uploadPhoto — CHILD-photo gate (security)', () => {
+  const ORIGINAL = process.env.CHILD_PHOTO_UPLOAD;
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.CHILD_PHOTO_UPLOAD;
+    else process.env.CHILD_PHOTO_UPLOAD = ORIGINAL;
+  });
+
+  // The load-bearing test. A Server Action is a POST endpoint whose id ships in the
+  // client bundle, so "the UI doesn't render it" is NOT a gate — this must refuse
+  // server-side until the privacy/consent/content-safety review lands.
+  it('BLOCKED by default: refuses without touching Storage (no env flag set)', async () => {
+    delete process.env.CHILD_PHOTO_UPLOAD;
     const upload = vi.fn().mockResolvedValue({ error: null });
     (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ upload }) } });
     const fd = new FormData();
     fd.append('photo', new File([Uint8Array.from([1, 2, 3])], 'me.png', { type: 'image/png' }));
-    const r = await uploadPhoto(fd);
-    expect(r.photoPath).toMatch(/^uploads\/[a-f0-9]{64}\.png$/);
+
+    await expect(uploadPhoto(fd)).rejects.toThrow(/not available|disabled/i);
+    expect(upload).not.toHaveBeenCalled(); // refused BEFORE any Storage write
+  });
+
+  it('BLOCKED for any value other than the explicit opt-in', async () => {
+    process.env.CHILD_PHOTO_UPLOAD = 'true'; // not the magic 'on'
+    const upload = vi.fn().mockResolvedValue({ error: null });
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ upload }) } });
+    const fd = new FormData();
+    fd.append('photo', new File([Uint8Array.from([1, 2, 3])], 'me.png', { type: 'image/png' }));
+
+    await expect(uploadPhoto(fd)).rejects.toThrow(/not available|disabled/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('when explicitly enabled (local testing): uploads under the OWNING draft prefix', async () => {
+    process.env.CHILD_PHOTO_UPLOAD = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    const r = await uploadPhoto(pngForm());
+    expect(r.photoPath).toMatch(/^uploads\/draft-1\/[a-f0-9]{64}\.png$/);
     expect(r.photoHash).toHaveLength(64);
+    expect(upload).toHaveBeenCalledOnce();
+  });
+});
+
+// ---- C: upload hardening -------------------------------------------------
+// These endpoints had NO auth, NO ownership, NO content check, NO size cap and NO
+// rate limit — a Server Action id ships in the client bundle, so anyone could POST
+// arbitrary bytes into Storage in a loop.
+const PNG_HEADER = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function pngForm(extra: number[] = [1, 2, 3], name = 'pet.png'): FormData {
+  const fd = new FormData();
+  fd.append('photo', new File([Uint8Array.from([...PNG_HEADER, ...extra])], name, { type: 'image/png' }));
+  return fd;
+}
+function mockStorage(existing: unknown[] = []) {
+  const upload = vi.fn().mockResolvedValue({ error: null });
+  const list = vi.fn().mockResolvedValue({ data: existing, error: null });
+  (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ upload, list }) } });
+  return { upload, list };
+}
+function mockOwnDraft(id: string | null) {
+  (getDraftCookieFromRequest as ReturnType<typeof vi.fn>).mockResolvedValue(id ? `cookie-${id}` : null);
+  (getDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue(id ? { id } : null);
+}
+
+describe('uploadPetPhoto — hardening (C)', () => {
+  it('OWNERSHIP: no draft cookie → refuses before touching Storage', async () => {
+    const { upload } = mockStorage();
+    mockOwnDraft(null);
+    await expect(uploadPetPhoto(pngForm())).rejects.toThrow(/no active session/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('OWNERSHIP: a cookie with no matching draft → refuses (no forged-id path)', async () => {
+    const { upload } = mockStorage();
+    (getDraftCookieFromRequest as ReturnType<typeof vi.fn>).mockResolvedValue('cookie-bogus');
+    (getDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    await expect(uploadPetPhoto(pngForm())).rejects.toThrow(/no active session/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  // contentType was a LABEL written into Storage metadata, never a check: a ZIP/EXE
+  // would have been stored and later served as image/png.
+  it('CONTENT: non-PNG bytes are rejected even when labelled image/png', async () => {
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    const fd = new FormData();
+    fd.append('photo', new File([Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 9, 9, 9, 9])], 'evil.png', { type: 'image/png' }));
+    await expect(uploadPetPhoto(fd)).rejects.toThrow(/unsupported image format/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('SIZE: an oversized file is rejected before any Storage write', async () => {
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    const fd = new FormData();
+    fd.append('photo', new File([new Uint8Array(5 * 1024 * 1024)], 'huge.png', { type: 'image/png' }));
+    await expect(uploadPetPhoto(fd)).rejects.toThrow(/too large/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('RATE: at the per-draft upload ceiling → refuses (bounds bucket abuse)', async () => {
+    const { upload } = mockStorage(new Array(20).fill({ name: 'x.png' }));
+    mockOwnDraft('draft-1');
+    await expect(uploadPetPhoto(pngForm())).rejects.toThrow(/too many photos/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  // D: per-draft namespacing. Content-hash-only paths let two customers with the
+  // same bytes collide (upsert:true → silent overwrite) and left orphans untraceable.
+  it('NAMESPACE (D): writes under uploads/<draftId>/, not a bare content hash', async () => {
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-7');
+    const r = await uploadPetPhoto(pngForm());
+    expect(r.photoPath).toMatch(/^uploads\/draft-7\/[a-f0-9]{64}\.png$/);
     expect(upload).toHaveBeenCalledOnce();
   });
 });
