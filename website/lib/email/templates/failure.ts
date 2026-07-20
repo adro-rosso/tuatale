@@ -58,8 +58,13 @@ export function buildCustomerFailureEmail(input: CustomerFailureInput): EmailCon
 
 export interface OpsAlertInput {
   adminEmail: string;
-  /** 'order' = paid pipeline failure; 'preview' = pre-purchase preview failure. */
-  source: 'order' | 'preview';
+  /**
+   * 'order'   = paid pipeline failure
+   * 'preview' = pre-purchase preview failure
+   * 'health'  = a SYNTHETIC monitor (no customer, no job) — the proactive credit
+   *             check. Routed here so ops has one alert path, not two.
+   */
+  source: 'order' | 'preview' | 'health';
   /** orderId or previewId — whatever identifies the failed unit. */
   reference: string;
   reason: string;
@@ -69,9 +74,12 @@ export interface OpsAlertInput {
 
 export function buildOpsAlertEmail(input: OpsAlertInput): EmailContent {
   const { adminEmail, source, reference, reason, creditDepleted } = input;
+  const isHealth = source === 'health';
   const subject = creditDepleted
-    ? `⚠ CREDITS DEPLETED — Tuatale ${source} failure`
-    : `Tuatale ${source} failure (${reference.slice(0, 8)})`;
+    ? `⚠ CREDITS DEPLETED — Tuatale ${isHealth ? 'monitor' : `${source} failure`}`
+    : isHealth
+      ? `Tuatale monitor: ${reference}`
+      : `Tuatale ${source} failure (${reference.slice(0, 8)})`;
 
   const creditNote = creditDepleted
     ? `\nThis is a RESOURCE_EXHAUSTED / quota failure — Gemini credits are likely depleted. TOP UP before resuming; polling will not recover it.\n`

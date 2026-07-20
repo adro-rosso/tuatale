@@ -29,7 +29,7 @@ export async function POST(req: Request): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ error: 'invalid json' }, { status: 400 });
   }
-  if (input?.source !== 'order' && input?.source !== 'preview') {
+  if (input?.source !== 'order' && input?.source !== 'preview' && input?.source !== 'health') {
     return NextResponse.json({ error: 'invalid source' }, { status: 400 });
   }
 

@@ -136,3 +136,76 @@ describe('handleFailure — preview (B only, no charge)', () => {
     expect(sendEmail.mock.calls[0]![0].to).toBe('ops@tuatale.com');
   });
 });
+
+// ---- source:'health' — the proactive credit monitor's alert path ------------
+// A synthetic monitor has no order and no preview. It routes through handleFailure
+// so ops gets one alerting mechanism, not two (a second path would rot untested) —
+// but it must NEVER reach the refund/customer branch.
+describe('handleFailure — source: health', () => {
+  const healthInput = (over: Record<string, unknown> = {}) => ({
+    source: 'health' as const,
+    check: 'gemini',
+    transition: 'went_down',
+    healthy: false,
+    error: { message: 'Gemini image generation unavailable (credits_depleted)', kind: 'credits_depleted' },
+    terminal: false,
+    ...over,
+  });
+
+  it('alerts ops and NEVER refunds or emails a customer', async () => {
+    const { deps, refundCreate } = makeDeps(makeOrder());
+    const r = await handleFailure(healthInput(), deps);
+    expect(r.source).toBe('health');
+    expect(r.alerted).toBe(true);
+    expect(r.recovered).toBe(false);
+    expect(r.refundId).toBeNull();
+    expect(refundCreate).not.toHaveBeenCalled();
+    expect(deps.getOrderById).not.toHaveBeenCalled();
+    expect(deps.updateOrderPipelineStatus).not.toHaveBeenCalled();
+    expect(deps.sendEmail).toHaveBeenCalledOnce(); // the ops alert only
+  });
+
+  it('flags credit depletion so the alert carries the CREDITS DEPLETED banner', async () => {
+    const { deps } = makeDeps(makeOrder());
+    const r = await handleFailure(healthInput(), deps);
+    expect(r.creditDepleted).toBe(true);
+    const mail = (deps.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(mail.to).toBe('ops@tuatale.com');
+    expect(mail.subject).toMatch(/CREDITS DEPLETED/);
+  });
+
+  // An empty-response outage is a different fix from a drained balance; saying
+  // "top up" when the balance is fine sends the operator down the wrong path.
+  it('a non-credit failure does NOT claim credits are depleted', async () => {
+    const { deps } = makeDeps(makeOrder());
+    const r = await handleFailure(
+      healthInput({ error: { message: 'Gemini image generation unavailable (empty_response)', kind: 'empty_response' } }),
+      deps,
+    );
+    expect(r.creditDepleted).toBe(false);
+    const mail = (deps.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(mail.subject).not.toMatch(/CREDITS DEPLETED/);
+    expect(mail.subject).toMatch(/monitor/i);
+  });
+
+  // A recovery notice must not arrive wearing the depletion banner.
+  it('a recovery notice suppresses the depletion banner', async () => {
+    const { deps } = makeDeps(makeOrder());
+    await handleFailure(
+      healthInput({
+        transition: 'recovered', healthy: true,
+        error: { message: 'Gemini image generation is responding again — credit alert cleared.', kind: 'ok' },
+      }),
+      deps,
+    );
+    const mail = (deps.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(mail.subject).not.toMatch(/CREDITS DEPLETED/);
+  });
+
+  it('identifies the check and transition in the alert body', async () => {
+    const { deps } = makeDeps(makeOrder());
+    await handleFailure(healthInput(), deps);
+    const mail = (deps.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(mail.text).toMatch(/gemini \(went_down\)/);
+  });
+});

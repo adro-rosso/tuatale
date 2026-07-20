@@ -28,7 +28,13 @@ import { sendEmail as realSendEmail } from '@/lib/email/send';
 import { buildCustomerFailureEmail, buildOpsAlertEmail } from '@/lib/email/templates/failure';
 
 export interface FailureInput {
-  source: 'order' | 'preview';
+  source: 'order' | 'preview' | 'health';
+  /** source='health' only: which synthetic check reported (e.g. 'gemini'). */
+  check?: string;
+  /** source='health' only: 'went_down' | 'still_down' | 'recovered'. */
+  transition?: string;
+  /** source='health' only: the probe's verdict. */
+  healthy?: boolean;
   orderId?: string;
   previewId?: string;
   jobId?: string;
@@ -52,7 +58,7 @@ export interface RecoveryDeps {
 }
 
 export interface RecoveryResult {
-  source: 'order' | 'preview';
+  source: 'order' | 'preview' | 'health';
   alerted: boolean;
   creditDepleted: boolean;
   recovered: boolean;
@@ -62,7 +68,13 @@ export interface RecoveryResult {
   deferred?: 'non-terminal';
 }
 
-const CREDIT_RE = /RESOURCE_EXHAUSTED|exceeded your current quota|insufficient|quota/i;
+// Matches BOTH vocabularies: the raw provider error surfaced by a failed job
+// (RESOURCE_EXHAUSTED / quota / "prepayment credits are depleted"), and the credit
+// monitor's own classified reason (`credits_depleted`). Missing the latter meant a
+// real depletion alert arrived WITHOUT the "CREDITS DEPLETED" banner — i.e. the one
+// alert whose whole value is telling the operator to top up looked like a generic
+// failure. Caught by the health-branch tests, 2026-07-20.
+const CREDIT_RE = /RESOURCE_EXHAUSTED|exceeded your current quota|insufficient|quota|credits?[ _-]?(are[ _-]?)?depleted/i;
 
 function isCreditDepletion(error: { message?: string; kind?: string }): boolean {
   return CREDIT_RE.test(`${error?.message ?? ''} ${error?.kind ?? ''}`);
@@ -80,6 +92,25 @@ export async function handleFailure(input: FailureInput, deps: RecoveryDeps = {}
 
   const creditDepleted = isCreditDepletion(input.error);
   const reason = input.error?.message || input.error?.kind || 'unknown failure';
+
+  // ---- HEALTH: a synthetic monitor, not a customer failure. ----
+  // No order, no preview, nothing to refund — ops-alert ONLY. Exists so the credit
+  // monitor can reach ops through the SAME path (and the same "CREDITS DEPLETED"
+  // flag) as a real job failure, rather than growing a second alerting mechanism
+  // that could rot untested.
+  if (input.source === 'health') {
+    const label = input.check ?? 'health';
+    const alerted = await alertOps({
+      adminEmail,
+      source: 'health',
+      reference: `${label} (${input.transition ?? 'check'})`,
+      reason,
+      // A recovery notice must NOT carry the depletion banner.
+      creditDepleted: creditDepleted && input.healthy !== true,
+      sendEmail,
+    });
+    return { source: 'health', alerted, creditDepleted, recovered: false, refundId: null };
+  }
 
   // ---- PREVIEW: ops-alert only, no customer recovery. ----
   if (input.source === 'preview') {
@@ -137,7 +168,7 @@ export async function handleFailure(input: FailureInput, deps: RecoveryDeps = {}
 
 async function alertOps(args: {
   adminEmail: string | undefined;
-  source: 'order' | 'preview';
+  source: 'order' | 'preview' | 'health';
   reference: string;
   reason: string;
   creditDepleted: boolean;
