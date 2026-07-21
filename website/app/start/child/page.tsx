@@ -20,15 +20,20 @@ export default async function ChildStepPage() {
 
   const bookType = draft?.book_type ?? 'child';
 
-  // Adult-as-hero (text-only, Slice 1): explicit age + free-text appearance, no photo.
+  // Adult-as-hero (Slice 2): explicit age + free-text appearance + optional photo/preview.
   if (bookType === 'adult') {
+    const adultPhotos = (draft?.photo_urls as { adult?: string[] } | null)?.adult ?? [];
     return (
       <AdultForm
+        artStyle={artStyle}
+        draftId={draft?.id ?? null}
         initial={{
           name: draft?.child_name ?? '',
           age: draft?.child_age != null ? String(draft.child_age) : '',
           gender: draft?.child_gender ?? '',
           appearance: draft?.child_appearance ?? '',
+          photos: Array.isArray(adultPhotos) ? adultPhotos : [],
+          consent: draft?.photo_consent_at != null,
         }}
       />
     );

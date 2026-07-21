@@ -39,4 +39,14 @@ describe('computeInputHash', () => {
     const base = { age: 7, features: { eye_colour: 'green' } };
     expect(computeInputHash(base)).toBe(computeInputHash({ ...base, style: 'watercolour' }));
   });
+
+  // Slice 2: adult vs child/pet render differently, so isAdult keys the cache.
+  it('isAdult keys the cache (adult vs child differ)', () => {
+    const base = { age: 40, style: 'watercolour' };
+    expect(computeInputHash(base)).not.toBe(computeInputHash({ ...base, isAdult: true }));
+  });
+  it('absent isAdult === explicit false (child/pet byte-identical cache slot)', () => {
+    const base = { age: 6, style: 'watercolour' };
+    expect(computeInputHash(base)).toBe(computeInputHash({ ...base, isAdult: false }));
+  });
 });

@@ -17,7 +17,7 @@ import { createServerClient } from '@/lib/supabase';
 import { computeInputHash } from '@/lib/preview/hash';
 import { draftUploadPrefix } from '@/lib/preview/paths';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
-import { getDraftByCookieId } from '@/db/drafts';
+import { getDraftByCookieId, updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
 import {
   findCachedPreview,
   createPreviewJob,
@@ -150,6 +150,69 @@ export async function uploadPetPhoto(formData: FormData): Promise<{ photoPath: s
   return storePhotoForDraft(formData, 'uploadPetPhoto');
 }
 
+/**
+ * ADULT-photo upload (adult-as-hero live subject preview, Slice 2). Routes through the
+ * SAME hardened storePhotoForDraft as pets. Gated by ADULT_PHOTO_ENABLED — a flag
+ * DISTINCT from the child-photo gate: an adult photographing themselves (or a gift-
+ * giver an adult they know, with attested consent) carries no child-photo legal gate,
+ * so this can be on while uploadPhoto (child) stays hard-denied. The flag is
+ * server-only and NOT a NEXT_PUBLIC_* var, so it can't be flipped from the browser.
+ * FAIL-CLOSED: default OFF, requires ADULT_PHOTO_UPLOAD=on (Slice 2's deploy sets it on Vercel + local).
+ */
+const ADULT_PHOTO_UPLOAD_ENABLED = () => process.env.ADULT_PHOTO_UPLOAD === 'on';
+
+export async function uploadAdultPhoto(formData: FormData): Promise<{ photoPath: string; photoHash: string }> {
+  if (!ADULT_PHOTO_UPLOAD_ENABLED()) {
+    console.error('[uploadAdultPhoto] BLOCKED: adult-photo upload is disabled');
+    throw new Error('Photo upload is not available right now.');
+  }
+  return storePhotoForDraft(formData, 'uploadAdultPhoto');
+}
+
+/**
+ * Make the "you can remove it any time before you order" promise TRUE at full scope:
+ * (a) the UI has a Remove button that calls this; (b) it UNLINKS the path from the
+ * draft (no dangling reference — the ae04d56c failure mode); (c) it DELETES the stored
+ * object, verified absent via list() (a delete that reports success but leaves the
+ * object listed is a failed erasure — cf. the E4 erasure tool + the stale-read window
+ * note: a signed URL issued before deletion can still serve from cache briefly, but
+ * the object IS unlinked and deleted here — "remove" is honest).
+ * Order: unlink FIRST, then delete, so a delete failure never orphans the row.
+ */
+export async function removeAdultPhoto(photoPath: string): Promise<{ ok: true }> {
+  const cookieId = await getDraftCookieFromRequest();
+  if (!cookieId) throw new Error('removeAdultPhoto: no active session.');
+  const draft = await getDraftByCookieId(cookieId);
+  if (!draft) throw new Error('removeAdultPhoto: no active session.');
+
+  // Ownership: only a path under the caller's OWN upload prefix may be removed.
+  const ownPrefix = `${draftUploadPrefix(draft.id)}/`;
+  if (!photoPath.startsWith(ownPrefix) || photoPath.includes('..')) {
+    throw new Error('removeAdultPhoto: not your photo.');
+  }
+
+  // (b) UNLINK from the draft first. Idempotent — filtering a not-present path is a no-op.
+  const current = (draft.photo_urls as { adult?: string[] } | null)?.adult ?? [];
+  const remaining = current.filter((p) => p !== photoPath);
+  const noneLeft = remaining.length === 0;
+  await updateDraftByCookieId(cookieId, {
+    photo_urls: noneLeft ? {} : { adult: remaining },
+    ...(noneLeft ? { photo_consent_at: null, character_generation_mode: 'text_only' } : {}),
+  } as unknown as DraftUpdate);
+
+  // (c) DELETE the object, then verify it is gone from the listing.
+  const client = createServerClient();
+  await client.storage.from(PREVIEW_BUCKET).remove([photoPath]);
+  const prefix = photoPath.slice(0, photoPath.lastIndexOf('/'));
+  const name = photoPath.slice(photoPath.lastIndexOf('/') + 1);
+  const { data } = await client.storage.from(PREVIEW_BUCKET).list(prefix, { search: name });
+  if ((data ?? []).some((o) => o.name === name)) {
+    console.error(`[removeAdultPhoto] object still listed after delete: ${photoPath}`);
+    throw new Error('removeAdultPhoto: could not remove the photo. Please try again.');
+  }
+  return { ok: true };
+}
+
 export async function requestPreview(input: RequestPreviewInput): Promise<PreviewResult> {
   const inputHash = computeInputHash(input);
 
@@ -219,6 +282,7 @@ export async function requestPreview(input: RequestPreviewInput): Promise<Previe
       background: input.background,
       style: input.style,
       photoPath: input.photoPath,
+      isAdult: input.isAdult ?? false,
     },
   });
 

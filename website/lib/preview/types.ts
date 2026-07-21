@@ -16,6 +16,9 @@ export interface PreviewInputs {
   style?: string;
   /** content-hash of an uploaded photo (the bytes live in the bucket). */
   photoHash?: string;
+  /** Adult-subject preview (book_type='adult'): labels the mint "an adult" and keeps
+   *  the render audience-neutral. Part of the cache key. Absent/false for child+pet. */
+  isAdult?: boolean;
 }
 
 /** Full request — inputs + the non-cache-key extras. */

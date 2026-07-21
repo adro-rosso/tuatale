@@ -160,7 +160,15 @@ export function adaptOrderToPipelineInput(order) {
     // path already carries (deriveIsAdult). audience='adult' (set on the return) flips
     // the story register and the front-matter dedication.
     child.is_adult = true;
-    if (order.photo_urls?.child) child.photoPath = order.photo_urls.child;
+    // Adult photos live under photo_urls.adult — a DELIBERATE key separation from the
+    // legally-gated child key (uploadPhoto is hard-denied). `.adult` is a list (the
+    // wizard may capture more than one); take the first as the view-0 anchor. Fall
+    // back to `.child` only for forward/backward-compat, never as the primary path.
+    const adultPhotos = Array.isArray(order.photo_urls?.adult)
+      ? order.photo_urls.adult
+      : (order.photo_urls?.adult ? [order.photo_urls.adult] : []);
+    const adultPhoto = adultPhotos[0] ?? order.photo_urls?.child;
+    if (adultPhoto) child.photoPath = adultPhoto;
   } else {
     // Hard boundary for structured features: validate against the contract (enum
     // values + gender-gated hair_style). Out-of-contract / unknown values THROW

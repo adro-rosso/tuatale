@@ -15,11 +15,11 @@ vi.mock('@/lib/preview/preview-jobs', () => ({
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }));
 vi.mock('@/lib/supabase', () => ({ createServerClient: vi.fn() }));
 vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
-vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn() }));
+vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn(), updateDraftByCookieId: vi.fn() }));
 
-import { requestPreview, getPreviewStatus, uploadPhoto, uploadPetPhoto } from '@/app/start/_actions/preview';
+import { requestPreview, getPreviewStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto } from '@/app/start/_actions/preview';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
-import { getDraftByCookieId } from '@/db/drafts';
+import { getDraftByCookieId, updateDraftByCookieId } from '@/db/drafts';
 import { createServerClient } from '@/lib/supabase';
 import {
   findCachedPreview,
@@ -271,5 +271,114 @@ describe('uploadPetPhoto — hardening (C)', () => {
     const r = await uploadPetPhoto(pngForm());
     expect(r.photoPath).toMatch(/^uploads\/draft-7\/[a-f0-9]{64}\.png$/);
     expect(upload).toHaveBeenCalledOnce();
+  });
+});
+
+
+// ---- uploadAdultPhoto — gating (Slice 2) -----------------------------------
+// Distinct from the child gate: adult photos carry no child-photo legal gate, so this
+// can be enabled while uploadPhoto (child) stays hard-denied. Fail-closed: default OFF.
+describe('uploadAdultPhoto — gate', () => {
+  const ORIGINAL = process.env.ADULT_PHOTO_UPLOAD;
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.ADULT_PHOTO_UPLOAD;
+    else process.env.ADULT_PHOTO_UPLOAD = ORIGINAL;
+  });
+
+  it('BLOCKED by default (fail-closed): refuses without touching Storage', async () => {
+    delete process.env.ADULT_PHOTO_UPLOAD;
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    await expect(uploadAdultPhoto(pngForm())).rejects.toThrow(/not available/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('BLOCKED for any value other than the explicit opt-in', async () => {
+    process.env.ADULT_PHOTO_UPLOAD = 'true';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    await expect(uploadAdultPhoto(pngForm())).rejects.toThrow(/not available/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("when enabled ('on'): uploads under the owning draft prefix (hardened path)", async () => {
+    process.env.ADULT_PHOTO_UPLOAD = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-7');
+    const r = await uploadAdultPhoto(pngForm());
+    expect(r.photoPath).toMatch(/^uploads\/draft-7\/[a-f0-9]{64}\.png$/);
+    expect(upload).toHaveBeenCalledOnce();
+  });
+
+  it('child uploadPhoto STAYS hard-denied regardless of the adult flag', async () => {
+    process.env.ADULT_PHOTO_UPLOAD = 'on'; // adult on
+    delete process.env.CHILD_PHOTO_UPLOAD; // child still off
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    await expect(uploadPhoto(pngForm())).rejects.toThrow(/not available|disabled/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+});
+
+// ---- requestPreview threads isAdult into the worker event ------------------
+describe('requestPreview — isAdult flows to the worker', () => {
+  it('passes isAdult through to preview/requested', async () => {
+    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (createPreviewJob as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p', status: 'queued', input_hash: 'h' });
+    await requestPreview({ age: 40, style: 'watercolour', draftId: 'draft-1', isAdult: true });
+    const sent = (inngest.send as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(sent.data.isAdult).toBe(true);
+  });
+});
+
+
+// ---- removeAdultPhoto — the "you can remove it any time" promise (Slice 2) ---
+// Must be true at full scope: unlink from the draft AND delete the object.
+describe('removeAdultPhoto', () => {
+  function mockRemoveEnv({ objectStillListed = false } = {}) {
+    (getDraftCookieFromRequest as ReturnType<typeof vi.fn>).mockResolvedValue('cookie-1');
+    (getDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'draft-1', photo_urls: { adult: ['uploads/draft-1/keep.png', 'uploads/draft-1/gone.png'] },
+    });
+    const remove = vi.fn().mockResolvedValue({ error: null });
+    const list = vi.fn().mockResolvedValue({ data: objectStillListed ? [{ name: 'gone.png' }] : [], error: null });
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ remove, list }) } });
+    (updateDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    return { remove, list };
+  }
+
+  it('UNLINKS the path from the draft and DELETES the object', async () => {
+    const { remove } = mockRemoveEnv();
+    const r = await removeAdultPhoto('uploads/draft-1/gone.png');
+    expect(r).toEqual({ ok: true });
+    // unlink: the OTHER photo remains, the removed one is dropped
+    expect((updateDraftByCookieId as ReturnType<typeof vi.fn>).mock.calls[0]![1]).toMatchObject({
+      photo_urls: { adult: ['uploads/draft-1/keep.png'] },
+    });
+    // delete: the object is removed from storage
+    expect(remove).toHaveBeenCalledWith(['uploads/draft-1/gone.png']);
+  });
+
+  it('removing the LAST photo clears photo_urls + consent (back to text-only)', async () => {
+    (getDraftCookieFromRequest as ReturnType<typeof vi.fn>).mockResolvedValue('cookie-1');
+    (getDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'draft-1', photo_urls: { adult: ['uploads/draft-1/only.png'] } });
+    const remove = vi.fn().mockResolvedValue({ error: null });
+    const list = vi.fn().mockResolvedValue({ data: [], error: null });
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ remove, list }) } });
+    (updateDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    await removeAdultPhoto('uploads/draft-1/only.png');
+    expect((updateDraftByCookieId as ReturnType<typeof vi.fn>).mock.calls[0]![1]).toMatchObject({
+      photo_urls: {}, photo_consent_at: null, character_generation_mode: 'text_only',
+    });
+  });
+
+  it('OWNERSHIP: refuses a path outside the callers own draft prefix', async () => {
+    mockRemoveEnv();
+    await expect(removeAdultPhoto('uploads/draft-2/x.png')).rejects.toThrow(/not your photo/i);
+  });
+
+  it('VERIFY: throws if the object is STILL listed after delete (failed erasure)', async () => {
+    mockRemoveEnv({ objectStillListed: true });
+    await expect(removeAdultPhoto('uploads/draft-1/gone.png')).rejects.toThrow(/could not remove/i);
   });
 });

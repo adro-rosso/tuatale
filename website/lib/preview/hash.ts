@@ -11,8 +11,13 @@
 import { createHash } from 'node:crypto';
 import type { PreviewInputs } from './types';
 
-// Mirrors STYLE_VERSION in src/character-preview.js — bump both together.
-export const PREVIEW_STYLE_VERSION = 1;
+// The preview cache-invalidation version. This is the ONLY value that keys the cache
+// — the mirror STYLE_VERSION constant in src/character-preview.js is documentation,
+// not render-read. Bump when the worker's preview RENDER LOGIC changes, so old-logic
+// previews re-mint. v2 (2026-07-21): the photo-path rework (original-illustration-not-
+// photo-filter + audience-neutral wording) + isAdult. DEPLOY ORDER: worker (new logic)
+// BEFORE website (this bump) — website-first would lock old logic under the new key.
+export const PREVIEW_STYLE_VERSION = 2;
 
 export function computeInputHash(inputs: PreviewInputs): string {
   const f = inputs.features ?? {};
@@ -31,6 +36,9 @@ export function computeInputHash(inputs: PreviewInputs): string {
     // style-less request and an explicit watercolour request share one cache slot.
     style: inputs.style ?? 'watercolour',
     photo: inputs.photoHash ?? null,
+    // Adult vs child/pet render differently (label + audience-neutral wording), so it
+    // keys the cache. Normalised to a bool; absent → false → child/pet unchanged.
+    isAdult: inputs.isAdult ?? false,
   };
   return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
 }

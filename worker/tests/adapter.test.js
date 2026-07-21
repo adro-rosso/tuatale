@@ -194,6 +194,29 @@ describe("adaptOrderToPipelineInput", () => {
       const input = adaptOrderToPipelineInput({ ...adultOrder, child_features: { hair_colour: "brown" }, secondaries: [] });
       expect(input.child.features).toBeUndefined();
     });
+
+    // Slice 2: adult photos live under photo_urls.adult (DELIBERATE separation from the
+    // legally-gated .child key). The first is the view-0 anchor.
+    it("reads the adult photo from photo_urls.adult → child.photoPath", () => {
+      const input = adaptOrderToPipelineInput({
+        ...adultOrder,
+        photo_urls: { adult: ["uploads/d1/aaa.png", "uploads/d1/bbb.png"] },
+        secondaries: [],
+      });
+      expect(input.child.photoPath).toBe("uploads/d1/aaa.png");
+    });
+
+    it("falls back to photo_urls.child only when .adult is absent", () => {
+      const input = adaptOrderToPipelineInput({
+        ...adultOrder, photo_urls: { child: "uploads/d1/legacy.png" }, secondaries: [],
+      });
+      expect(input.child.photoPath).toBe("uploads/d1/legacy.png");
+    });
+
+    it("no photo → no photoPath (text-only adult)", () => {
+      const input = adaptOrderToPipelineInput({ ...adultOrder, photo_urls: {}, secondaries: [] });
+      expect(input.child.photoPath).toBeUndefined();
+    });
   });
 
   // ---- BYTE-IDENTICAL: child + pet never get the adult signal ----------------

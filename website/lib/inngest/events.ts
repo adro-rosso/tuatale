@@ -59,6 +59,8 @@ export type PreviewRequestedData = {
   /** Chosen art style (W-F) — the worker mints the preview in it. */
   style?: string;
   photoPath?: string;
+  /** Adult-subject preview: audience-neutral render + "an adult" mint label. */
+  isAdult?: boolean;
 } & Record<string, unknown>;
 
 export const previewRequested = eventType('preview/requested', {

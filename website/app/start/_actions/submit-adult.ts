@@ -12,6 +12,8 @@ export interface AdultFormValues {
   age: string;
   gender: string;
   appearance: string;
+  photos: string[];
+  consent: boolean;
 }
 
 export interface SubmitAdultState {
@@ -21,7 +23,21 @@ export interface SubmitAdultState {
 
 function readFormValues(formData: FormData): AdultFormValues {
   const get = (k: string) => String(formData.get(k) ?? '');
-  return { name: get('name'), age: get('age'), gender: get('gender'), appearance: get('appearance') };
+  let photos: string[] = [];
+  try {
+    const raw = get('adult_photos');
+    if (raw) photos = (JSON.parse(raw) as unknown[]).filter((p): p is string => typeof p === 'string');
+  } catch {
+    photos = [];
+  }
+  return {
+    name: get('name'),
+    age: get('age'),
+    gender: get('gender'),
+    appearance: get('appearance'),
+    photos,
+    consent: formData.get('consent') === 'on',
+  };
 }
 
 /**
@@ -52,13 +68,21 @@ export async function submitAdultStep(
     return { errors: result.errors, values: input };
   }
 
+  // A photo is OPTIONAL for an adult book (text-only still renders). But IF one is
+  // present, self-attested consent is REQUIRED — the photo cannot be stored without it.
+  if (input.photos.length > 0 && !input.consent) {
+    return { errors: { consent: 'Please confirm the checkbox to use a photo.' }, values: input };
+  }
+
   const cookieId = await getDraftCookieFromRequest();
   if (!cookieId) redirect('/start/reset');
+
+  const hasPhoto = input.photos.length > 0 && input.consent;
 
   await updateDraftByCookieId(cookieId, {
     child_name: result.data.name,
     // The explicit adult age — drives the narrated age + milestone number. The photo
-    // (Slice 2) drives appearance; the two can differ (age-reconciliation decision).
+    // drives appearance; the two can differ (age-reconciliation decision).
     child_age: result.data.age,
     // Adult gender stored as the child enum (boy/girl/non_binary); ADULT_AUDIENCE_
     // OVERRIDE maps it to man/woman/non-binary. The form shows the adult labels.
@@ -68,6 +92,20 @@ export async function submitAdultStep(
     // reading level. No child band for an adult.
     reading_level: null,
     age_range: null,
+    // Adult photos under the .adult key — a DELIBERATE separation from the legally-
+    // gated .child key (uploadPhoto is hard-denied). Consent timestamp gates them.
+    ...(hasPhoto
+      ? {
+          photo_urls: { adult: input.photos },
+          photo_consent_at: new Date().toISOString(),
+          character_generation_mode: 'photo_assisted',
+        }
+      : {
+          // No photo → text-only path. Clear any prior photo/consent if they removed it.
+          photo_urls: {},
+          photo_consent_at: null,
+          character_generation_mode: 'text_only',
+        }),
     current_step: 'secondaries',
   } as unknown as DraftUpdate);
 
