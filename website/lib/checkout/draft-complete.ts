@@ -26,6 +26,7 @@ const REQUIRED_FIELDS = ['child_name', 'age_range', 'child_gender', 'theme'] as 
 export type RequiredDraftField =
   | (typeof REQUIRED_FIELDS)[number]
   | 'child_appearance'
+  | 'child_age'
   | 'animal_kind'
   | 'pet_photos';
 
@@ -38,6 +39,19 @@ const isEmpty = (v: unknown) => v === null || v === undefined || v === '';
 
 export function checkDraftCompleteness(draft: Draft): DraftCompletenessResult {
   const bookType = draft.book_type ?? 'child';
+
+  // Adult-as-hero (text-only, Slice 1): name, explicit age, gender, free-text
+  // appearance, theme. No age_range/reading_level (adult register drives prose), no
+  // photo yet (Slice 2), no structured features.
+  if (bookType === 'adult') {
+    const missing: RequiredDraftField[] = [];
+    if (isEmpty(draft.child_name)) missing.push('child_name');
+    if (isEmpty(draft.child_age)) missing.push('child_age');
+    if (isEmpty(draft.child_gender)) missing.push('child_gender');
+    if (isEmpty(draft.child_appearance)) missing.push('child_appearance');
+    if (isEmpty(draft.theme)) missing.push('theme');
+    return { complete: missing.length === 0, missing };
+  }
 
   // Pet-as-hero: name, kind, coat appearance, reading age, theme, and ≥1 photo (the
   // pet's likeness comes from photos). No gender / no structured features.

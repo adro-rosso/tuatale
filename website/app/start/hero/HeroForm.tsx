@@ -14,6 +14,7 @@ interface HeroFormProps {
 const OPTIONS = [
   { value: 'child', label: 'A child', icon: 'child', blurb: 'Your child is the hero of their own storybook.' },
   { value: 'pet', label: 'A pet', icon: 'pet', blurb: 'Your pet stars in the adventure, with you alongside.' },
+  { value: 'adult', label: 'An adult', icon: 'adult', blurb: 'A grown-up you love — a partner, a friend, the birthday one.' },
 ] as const;
 
 const initialState: SubmitHeroState = { errors: {} };
@@ -33,7 +34,7 @@ export function HeroForm({ initial }: HeroFormProps) {
     <form action={formAction} className="space-y-lg mx-auto max-w-[40rem]">
       <input type="hidden" name="book_type" value={selected} />
 
-      <div className="gap-lg grid grid-cols-1 sm:grid-cols-2">
+      <div className="gap-lg grid grid-cols-1 sm:grid-cols-3">
         {OPTIONS.map((opt) => {
           const checked = selected === opt.value;
           return (

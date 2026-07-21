@@ -38,3 +38,35 @@ describe('checkDraftCompleteness — appearance OR structured-complete', () => {
     expect(checkDraftCompleteness({ ...base, child_appearance: 'x'.repeat(50), theme: null as never }).complete).toBe(false);
   });
 });
+
+// ---- book_type='adult' (engine-activation wizard, Slice 1) -----------------
+const adultBase = {
+  book_type: 'adult',
+  child_name: 'Marcus',
+  child_age: 38,
+  child_gender: 'boy',
+  child_appearance: 'a man with a short grey beard and tortoiseshell glasses, solid build',
+  theme: 'a birthday roast of a man who has a system for everything',
+  age_range: null,
+  reading_level: null,
+} as unknown as Tables<'drafts'>;
+
+describe('checkDraftCompleteness — adult books', () => {
+  it('complete adult draft → complete (name/age/gender/appearance/theme, no age_range)', () => {
+    expect(checkDraftCompleteness(adultBase).complete).toBe(true);
+  });
+  it('adult without an explicit age → incomplete, flags child_age', () => {
+    const r = checkDraftCompleteness({ ...adultBase, child_age: null as never });
+    expect(r.complete).toBe(false);
+    expect(r.missing).toContain('child_age');
+  });
+  it('adult requires gender (unlike a pet)', () => {
+    const r = checkDraftCompleteness({ ...adultBase, child_gender: null as never });
+    expect(r.complete).toBe(false);
+    expect(r.missing).toContain('child_gender');
+  });
+  it('adult does NOT require age_range (it has no child band)', () => {
+    // age_range null on the base, yet complete — proves the adult branch does not gate on it.
+    expect(checkDraftCompleteness(adultBase).missing).not.toContain('age_range');
+  });
+});

@@ -209,6 +209,40 @@ describe('createOrderFromDraft', () => {
     expect(createOrderSpy).not.toHaveBeenCalled();
   });
 
+  // ---- book_type='adult' (Slice 1) ----
+  // The load-bearing adult assertions: the EXPLICIT age flows straight to child_age
+  // (NOT derived from a band), age_range is null, gender is preserved, and the child
+  // enum is stored verbatim (adult wording is applied downstream).
+  it('adult: explicit age → child_age verbatim, age_range null, gender kept', async () => {
+    const draft = fakeDraft({
+      book_type: 'adult',
+      child_name: 'Marcus',
+      child_age: 38,
+      age_range: null,
+      child_gender: 'boy',
+      child_appearance: 'a man with a short grey beard and tortoiseshell glasses, solid build',
+      vibe: 'roast',
+      theme: 'A birthday roast of a man who has a system for everything.',
+    });
+    await createOrderFromDraft({ draft: draft as never, stripeSession: fakeStripeSession() });
+    const payload = createOrderSpy.mock.calls[0]![0]!;
+    expect(payload.child_age).toBe(38); // NOT a band midpoint
+    expect(payload.age_range).toBeNull();
+    expect(payload.child_gender).toBe('boy'); // stored enum, mapped to "a man" downstream
+    expect(payload.book_type).toBe('adult');
+  });
+
+  it('adult: missing the explicit age → throws (does not silently derive 0/NaN)', async () => {
+    await expect(
+      createOrderFromDraft({
+        draft: fakeDraft({ book_type: 'adult', child_age: null, age_range: null,
+          child_appearance: 'a man with a beard and a solid build, greying hair' }) as never,
+        stripeSession: fakeStripeSession(),
+      }),
+    ).rejects.toThrow(/missing required fields/i);
+    expect(createOrderSpy).not.toHaveBeenCalled();
+  });
+
   it('handles payment_intent as either a string or an expanded object', async () => {
     await createOrderFromDraft({
       draft: fakeDraft() as never,

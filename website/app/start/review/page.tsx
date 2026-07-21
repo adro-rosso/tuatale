@@ -32,6 +32,7 @@ export default async function ReviewStepPage() {
 
   // Pet-as-hero: the protagonist is a pet — show kind + coat + photo count, no gender.
   const isPet = draft?.book_type === 'pet';
+  const isAdult = draft?.book_type === 'adult';
   const animalKind = draft?.animal_kind ?? null;
   const petPhotos = (draft?.photo_urls as { pet?: string[] } | null)?.pet;
   const petPhotoCount = Array.isArray(petPhotos) ? petPhotos.length : 0;
@@ -49,6 +50,13 @@ export default async function ReviewStepPage() {
           <Field label="Reading level" value={formatReadingLevel((draft as { reading_level?: string | null } | null)?.reading_level)} />
           <Field label="Coat & markings" value={draft?.child_appearance} multiline />
           <Field label="Photos" value={petPhotoCount ? `${petPhotoCount} added` : null} />
+        </ReviewSection>
+      ) : isAdult ? (
+        <ReviewSection title="About them" editHref="/start/child">
+          <Field label="Name" value={draft?.child_name} />
+          <Field label="Age" value={draft?.child_age != null ? String(draft.child_age) : null} />
+          <Field label="Gender" value={formatAdultGender(draft?.child_gender)} />
+          <Field label="Appearance" value={draft?.child_appearance} multiline />
         </ReviewSection>
       ) : (
         <ReviewSection title="About your child" editHref="/start/child">
@@ -119,7 +127,13 @@ export default async function ReviewStepPage() {
             rows={2}
             maxLength={120}
             defaultValue={dedication}
-            placeholder={isPet ? 'For Biscuit, our best friend' : 'For Maya, on your 6th birthday'}
+            placeholder={
+              isPet
+                ? 'For Biscuit, our best friend'
+                : isAdult
+                  ? 'For Marcus. You had this coming.'
+                  : 'For Maya, on your 6th birthday'
+            }
             className={`${fieldControl} resize-y`}
           />
         </section>
@@ -188,6 +202,12 @@ function formatAgeRange(value: string | null | undefined): string | null {
 function formatGender(value: string | null | undefined): string | null {
   if (!value) return null;
   return value.replace('_', ' ');
+}
+
+// Adult books store the child boy/girl/non_binary enum but present adult wording.
+function formatAdultGender(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return { boy: 'Man', girl: 'Woman', non_binary: 'Non-binary' }[value] ?? value;
 }
 
 function formatReadingLevel(value: string | null | undefined): string | null {

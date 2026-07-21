@@ -13,10 +13,12 @@ import type { z, ZodType } from 'zod';
 import {
   childSchema,
   petSchema,
+  adultSchema,
   secondariesArraySchema,
   themeSchema,
   type ChildInput,
   type PetInput,
+  type AdultInput,
   type SecondariesInput,
   type ThemeInput,
 } from './schemas';
@@ -57,6 +59,10 @@ export function validateChild(data: unknown): ValidationResult<ChildInput> {
 
 export function validatePet(data: unknown): ValidationResult<PetInput> {
   return validate(petSchema, data);
+}
+
+export function validateAdult(data: unknown): ValidationResult<AdultInput> {
+  return validate(adultSchema, data);
 }
 
 export function validateSecondaries(data: unknown): ValidationResult<SecondariesInput> {

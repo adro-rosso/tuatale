@@ -3,8 +3,8 @@
  * Zod issues into a field-path → first-error map.
  */
 import { describe, it, expect } from 'vitest';
-import { validateChild, validateSecondaries, validateTheme } from '@/lib/validation/validate';
-import { VALIDATION_COPY } from '@/lib/validation/schemas';
+import { validateChild, validateAdult, validateSecondaries, validateTheme } from '@/lib/validation/validate';
+import { VALIDATION_COPY, bookTypeSchema } from '@/lib/validation/schemas';
 
 describe('validateChild', () => {
   it('returns ok=true with typed data on valid input', () => {
@@ -95,5 +95,60 @@ describe('validateTheme', () => {
     if (!result.ok) {
       expect(result.errors['theme']).toBe(VALIDATION_COPY.TOO_SHORT);
     }
+  });
+});
+
+// ---- Adult wizard (Slice 1) -------------------------------------------------
+describe('validateAdult', () => {
+  const ok = {
+    name: 'Marcus',
+    age: 40,
+    gender: 'boy', // stored enum; the form shows "Man"
+    appearance: 'a man with a short grey beard, tortoiseshell glasses, and a solid build',
+  };
+
+  it('accepts a complete adult subject', () => {
+    expect(validateAdult(ok).ok).toBe(true);
+  });
+  it('coerces a numeric-string age from the form', () => {
+    const r = validateAdult({ ...ok, age: '40' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.data.age).toBe(40);
+  });
+  it('rejects an age below 18 (adult-only product)', () => {
+    expect(validateAdult({ ...ok, age: 12 }).ok).toBe(false);
+  });
+  it('rejects an age above 120', () => {
+    expect(validateAdult({ ...ok, age: 130 }).ok).toBe(false);
+  });
+  it('requires gender (unlike a pet)', () => {
+    expect(validateAdult({ ...ok, gender: '' }).ok).toBe(false);
+  });
+  it('requires a 30+ char appearance', () => {
+    expect(validateAdult({ ...ok, appearance: 'short' }).ok).toBe(false);
+  });
+});
+
+describe('validateTheme — vibe accepts pet AND adult registers', () => {
+  it('accepts an adult vibe (roast)', () => {
+    expect(validateTheme({ theme: 'A birthday roast of a man with a system.', vibe: 'roast' }).ok).toBe(true);
+  });
+  it('still accepts a pet vibe (memorial)', () => {
+    expect(validateTheme({ theme: 'A gentle keepsake for a dog who has passed.', vibe: 'memorial' }).ok).toBe(true);
+  });
+  it('rejects an unknown vibe', () => {
+    expect(validateTheme({ theme: 'A perfectly ordinary story about things.', vibe: 'nonsense' }).ok).toBe(false);
+  });
+});
+
+describe('BOOK_TYPES includes adult (byte-identical: child + pet unchanged)', () => {
+  it('accepts all three, defaults to child', () => {
+    expect(bookTypeSchema.parse(undefined)).toBe('child');
+    expect(bookTypeSchema.parse('child')).toBe('child');
+    expect(bookTypeSchema.parse('pet')).toBe('pet');
+    expect(bookTypeSchema.parse('adult')).toBe('adult');
+  });
+  it('rejects a typo', () => {
+    expect(bookTypeSchema.safeParse('adlut').success).toBe(false);
   });
 });

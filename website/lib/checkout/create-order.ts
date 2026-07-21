@@ -48,8 +48,16 @@ export async function createOrderFromDraft(
   // and appearance is the pet's coat/markings free text (no structured features).
   const bookType = draft.book_type ?? 'child';
   const isPet = bookType === 'pet';
+  const isAdult = bookType === 'adult';
   const animalKind = draft.animal_kind ?? null;
-  if (isPet) {
+  if (isAdult) {
+    // Adult: require name, the EXPLICIT age (goes straight to child_age; the CHECK was
+    // widened to 18-120 for adults), gender, free-text appearance, and theme. No
+    // age_range (adults have no child band — orders.age_range is now nullable).
+    if (!draft.child_name || draft.child_age == null || !draft.child_gender || !draft.child_appearance || !draft.theme) {
+      throw new Error(`Adult draft ${draft.id} is missing required fields (name, age, gender, appearance, theme) when creating order`);
+    }
+  } else if (isPet) {
     // Pet: require name (pet name), animal_kind, coat appearance, age_range (drives
     // reading level + the NOT NULL child_age), and theme. No gender.
     if (!draft.child_name || !draft.age_range || !animalKind || !draft.child_appearance || !draft.theme) {
@@ -111,12 +119,20 @@ export async function createOrderFromDraft(
       `non-purchasable art_style "${requestedStyle}" — coerced to watercolour (order ${stripeSession.id}).`,
     );
   }
+  // Adult: the EXPLICIT captured age (drives narrated age + milestone number), and no
+  // child band. Pet/child: derive child_age from the age band as before. The `!`s are
+  // safe — the required-field guard above already threw on a missing value per type.
+  const orderChildAge = isAdult ? draft.child_age! : ageFromRange(draft.age_range!);
+  // orders.age_range was made nullable for adults; the generated types lag that
+  // migration (project_migration-history-drift), so cast the null write.
+  const orderAgeRange = (isAdult ? null : draft.age_range) as unknown as OrderInsert['age_range'];
   const payload: OrderInsert = {
     customer_email: customerEmail,
     child_name: draft.child_name,
-    child_age: ageFromRange(draft.age_range),
-    age_range: draft.age_range,
-    // Pet: no gender (child_gender is nullable since the pet migration). Child: as-is.
+    child_age: orderChildAge,
+    age_range: orderAgeRange,
+    // Pet: no gender. Adult + child: the stored boy/girl/non_binary enum (adult wording
+    // is applied downstream by ADULT_AUDIENCE_OVERRIDE).
     child_gender: isPet ? null : draft.child_gender,
     child_appearance: draft.child_appearance,
     child_features: draft.child_features,

@@ -5,7 +5,7 @@
  *
  * Add glyphs sparingly; this isn't a general icon library.
  */
-type IconName = 'child' | 'pet';
+type IconName = 'child' | 'pet' | 'adult';
 
 interface IconProps {
   name: IconName;
@@ -33,6 +33,14 @@ export function Icon({ name, size = 40, className = '' }: IconProps) {
           {/* head + shoulders */}
           <circle cx="24" cy="15" r="8" />
           <path d="M9 41c0-8.3 6.7-15 15-15s15 6.7 15 15" />
+        </>
+      ) : name === 'adult' ? (
+        <>
+          {/* two grown figures side by side — an adult gift book is often about a pair */}
+          <circle cx="17" cy="14" r="6" />
+          <path d="M7 40c0-6.6 4.5-12 10-12s10 5.4 10 12" />
+          <circle cx="33" cy="17" r="5.5" />
+          <path d="M27 40c0-6 3.8-11 8.5-11S43 33.4 43 39" />
         </>
       ) : (
         <>

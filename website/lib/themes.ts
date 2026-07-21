@@ -152,6 +152,48 @@ export const PET_THEMES: ReadonlyArray<ThemeTemplate> = [
   },
 ] as const;
 
+// Adult-book starters. Child milestones + pet everyday are wrong for an adult gift, so
+// adults get their own curated set. Vibe-aligned subject matter (an adult book's vibe
+// implies different material): Milestones for birthday/retirement, Everyday for the
+// life shared, Adventures for a romp. {child_name} interpolates the adult's name.
+export const ADULT_THEMES: ReadonlyArray<ThemeTemplate> = [
+  {
+    id: 'adult_milestone_birthday',
+    category: 'Milestones',
+    title: 'A milestone birthday',
+    starter:
+      'This is a book for {child_name}, on the occasion of a milestone birthday. A warm, funny look back across the years that got them here, and a toast to whatever comes next.',
+  },
+  {
+    id: 'adult_new_chapter',
+    category: 'Milestones',
+    title: 'A new chapter',
+    starter:
+      'A retirement, a move, a new beginning — this is the story of {child_name} closing one chapter and opening the next, told with warmth and a knowing smile.',
+  },
+  {
+    id: 'adult_the_life_we_share',
+    category: 'Everyday',
+    title: 'The life we share',
+    starter:
+      'The ordinary, extraordinary rhythm of a life shared with {child_name}: the in-jokes, the small rituals, the arguments about the thermostat, the quiet intimacies that add up to everything.',
+  },
+  {
+    id: 'adult_their_ways',
+    category: 'Everyday',
+    title: 'Their particular ways',
+    starter:
+      'A fond, funny catalogue of everything that makes {child_name} exactly who they are — the habits, the convictions, the little rituals nobody else is allowed to touch.',
+  },
+  {
+    id: 'adult_the_wrong_turn',
+    category: 'Adventures',
+    title: 'The wrong turn',
+    starter:
+      'An ordinary day with {child_name} goes gloriously sideways: a wrong turn, a confident map, the light going, and no signal — and somehow, an adventure worth telling for years.',
+  },
+] as const;
+
 export const CUSTOM_TEMPLATE_ID = 'custom';
 
 interface ResolveOptions {

@@ -18,15 +18,15 @@ interface StepHeaderProps {
   bookType: string;
 }
 
-function heading(step: WizardStep, name: string | null, isPet: boolean): string {
-  // `name` is the protagonist's name (the child's, or the pet's) once typed.
+function heading(step: WizardStep, name: string | null, bookType: string): string {
+  // `name` is the protagonist's name (the child's, the pet's, or the adult's) once typed.
   switch (step) {
     case 'hero':
       return "Who's the book about?";
     case 'style':
       return 'Choose your art style';
     case 'child':
-      return isPet ? 'About your pet' : 'About your child';
+      return bookType === 'pet' ? 'About your pet' : bookType === 'adult' ? 'About them' : 'About your child';
     case 'secondaries':
       return name ? `Friends and family for ${name}` : 'Friends and family';
     case 'theme':
@@ -52,7 +52,7 @@ export function StepHeader({ childName, bookType }: StepHeaderProps) {
         Step {i + 1} of {WIZARD_STEPS.length}
       </p>
       <h1 className="font-heading text-near-black text-title leading-[1.1]">
-        {heading(segment, childName, bookType === 'pet')}
+        {heading(segment, childName, bookType ?? 'child')}
       </h1>
     </header>
   );

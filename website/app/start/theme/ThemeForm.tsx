@@ -5,8 +5,9 @@ import { submitThemeStep, type SubmitThemeState } from '@/app/start/_actions/sub
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl } from '@/components/ui/form-styles';
-import { THEMES, PET_THEMES, CUSTOM_TEMPLATE_ID, resolveStarter, type ThemeTemplate } from '@/lib/themes';
+import { THEMES, PET_THEMES, ADULT_THEMES, CUSTOM_TEMPLATE_ID, resolveStarter, type ThemeTemplate } from '@/lib/themes';
 import { VIBE_OPTIONS, vibeLabel } from '@/lib/pet-vibes';
+import { ADULT_VIBE_OPTIONS } from '@/lib/adult-vibes';
 
 interface ThemeFormProps {
   initial: {
@@ -26,9 +27,12 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
   const [state, formAction, isPending] = useActionState(submitThemeStep, initialState);
   const [selectedId, setSelectedId] = useState(initial.theme_template_id ?? '');
   const [text, setText] = useState(initial.theme);
-  // Pet-book story mood. Default 'happy' (a warm default the parent can change).
+  // Story mood (pet + adult books). Pet default 'happy', adult default 'romantic'.
   const isPet = bookType === 'pet';
-  const [vibe, setVibe] = useState(initial.vibe || 'happy');
+  const isAdult = bookType === 'adult';
+  const showVibe = isPet || isAdult;
+  const vibeOptions = isAdult ? ADULT_VIBE_OPTIONS : VIBE_OPTIONS;
+  const [vibe, setVibe] = useState(initial.vibe || (isAdult ? 'romantic' : 'happy'));
 
   function selectTemplate(t: ThemeTemplate) {
     if (t.id === CUSTOM_TEMPLATE_ID) {
@@ -40,34 +44,43 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
     setText(resolveStarter(t.starter, { childName, childGender }));
   }
 
-  // Pet books get pet-appropriate presets (child milestones are absurd for a pet),
-  // grouped Everyday + Adventures; child books keep Milestones + Adventures.
-  const themeSet = isPet ? PET_THEMES : THEMES;
-  const groups: ReadonlyArray<{ label: string; category: ThemeTemplate['category'] }> = isPet
+  // Each book type gets appropriate presets: pets get Everyday + Adventures (child
+  // milestones are absurd for a pet); adults get Milestones + Everyday + Adventures;
+  // child books keep Milestones + Adventures.
+  const themeSet = isAdult ? ADULT_THEMES : isPet ? PET_THEMES : THEMES;
+  const groups: ReadonlyArray<{ label: string; category: ThemeTemplate['category'] }> = isAdult
     ? [
+        { label: 'Milestones', category: 'Milestones' },
         { label: 'Everyday', category: 'Everyday' },
         { label: 'Adventures', category: 'Adventures' },
       ]
-    : [
-        { label: 'Milestones', category: 'Milestones' },
-        { label: 'Adventures', category: 'Adventures' },
-      ];
+    : isPet
+      ? [
+          { label: 'Everyday', category: 'Everyday' },
+          { label: 'Adventures', category: 'Adventures' },
+        ]
+      : [
+          { label: 'Milestones', category: 'Milestones' },
+          { label: 'Adventures', category: 'Adventures' },
+        ];
 
   return (
     <form action={formAction} className="space-y-lg">
       <input type="hidden" name="theme_template_id" value={selectedId} />
 
-      {/* Story mood (pet books only). Sets the emotional register; the memorial
-          option is framed gently for a pet who has passed. */}
-      {isPet && (
+      {/* Story mood (pet + adult books). Sets the emotional register. For pets the
+          memorial option is framed gently; for adults the vibe implies the subject. */}
+      {showVibe && (
         <section className="space-y-md">
           <input type="hidden" name="vibe" value={vibe} />
           <div className="border-warm-grey-light pb-sm mb-md border-b">
             <h2 className="font-heading text-near-black text-h2 not-italic">The mood of the book</h2>
           </div>
           <div className="gap-sm tablet:grid-cols-2 grid grid-cols-1">
-            {VIBE_OPTIONS.map((opt) => {
+            {vibeOptions.map((opt) => {
               const selected = vibe === opt.value;
+              // Pet 'memorial' reads "In memory of <name>"; adult labels are static.
+              const label = isAdult ? opt.label : vibeLabel(opt as (typeof VIBE_OPTIONS)[number], childName);
               return (
                 <button
                   key={opt.value}
@@ -80,9 +93,7 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
                       : 'border-warm-grey-light bg-paper hover:border-iron-oxide'
                   }`}
                 >
-                  <span className="font-heading text-near-black text-h3 not-italic">
-                    {vibeLabel(opt, childName)}
-                  </span>
+                  <span className="font-heading text-near-black text-h3 not-italic">{label}</span>
                   <span className="font-body text-warm-grey text-caption">{opt.blurb}</span>
                 </button>
               );

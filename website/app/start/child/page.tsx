@@ -1,6 +1,7 @@
 import { getDraft } from '@/lib/draft-fetch';
 import { ChildForm } from './ChildForm';
 import { PetForm } from './PetForm';
+import { AdultForm } from './AdultForm';
 import { featuresToFormValues } from '@/lib/child-form';
 
 /**
@@ -17,8 +18,23 @@ export default async function ChildStepPage() {
   const draft = result.kind === 'found' ? result.draft : null;
   const artStyle = (draft as { art_style?: string | null } | null)?.art_style ?? 'watercolour';
 
-  // Pet-as-hero: when the hero step chose a pet, render the pet form instead.
   const bookType = draft?.book_type ?? 'child';
+
+  // Adult-as-hero (text-only, Slice 1): explicit age + free-text appearance, no photo.
+  if (bookType === 'adult') {
+    return (
+      <AdultForm
+        initial={{
+          name: draft?.child_name ?? '',
+          age: draft?.child_age != null ? String(draft.child_age) : '',
+          gender: draft?.child_gender ?? '',
+          appearance: draft?.child_appearance ?? '',
+        }}
+      />
+    );
+  }
+
+  // Pet-as-hero: when the hero step chose a pet, render the pet form instead.
   if (bookType === 'pet') {
     const petPhotos = (draft?.photo_urls as { pet?: string[] } | null)?.pet ?? [];
     return (

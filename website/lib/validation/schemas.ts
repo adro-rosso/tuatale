@@ -205,7 +205,7 @@ export type SecondariesInput = z.infer<typeof secondariesArraySchema>;
 // ---- Pet-as-hero (book_type='pet') ---------------------------------------------
 // The book's protagonist type. 'child' = the existing product; 'pet' = a pet hero
 // (owner appears as a companion). Mirrors drafts/orders.book_type (default 'child').
-export const BOOK_TYPES = ['child', 'pet'] as const;
+export const BOOK_TYPES = ['child', 'pet', 'adult'] as const;
 export type BookType = (typeof BOOK_TYPES)[number];
 export const bookTypeSchema = z.enum(BOOK_TYPES).default('child');
 
@@ -226,6 +226,29 @@ export const petSchema = z.object({
 });
 export type PetInput = z.infer<typeof petSchema>;
 
+// ---- Adult-as-hero (book_type='adult') -----------------------------------------
+// An ADULT human protagonist. Unlike a child (age BAND) or a pet (no age), the adult
+// captures an EXPLICIT age — it drives the narrated age + any milestone number, while
+// the PHOTO drives appearance (age-reconciliation decision). Free-text appearance (no
+// structured child features). Gender reuses the child boy/girl/non_binary enum and is
+// mapped to adult wording (man/woman/non-binary) downstream by ADULT_AUDIENCE_OVERRIDE
+// — the FORM shows adult labels but the stored value is the same enum.
+export const ADULT_AGE_MIN = 18;
+export const ADULT_AGE_MAX = 120;
+export const adultSchema = z.object({
+  name: z.string().min(1, COPY.REQUIRED).max(50, COPY.TOO_LONG),
+  age: z.coerce
+    .number()
+    .int(COPY.REQUIRED)
+    .min(ADULT_AGE_MIN, `Adult books are for ages ${ADULT_AGE_MIN} and up.`)
+    .max(ADULT_AGE_MAX, COPY.TOO_LONG),
+  gender: z.enum(GENDERS, { message: COPY.CHOOSE_ONE }),
+  // Free-text appearance, like a pet's coat — the likeness spine (30+ chars). The
+  // photo (Slice 2) refines it; text-only still renders a coherent adult.
+  appearance: z.string().min(30, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
+});
+export type AdultInput = z.infer<typeof adultSchema>;
+
 // Pet-book "vibe" — the story's emotional register (pet books only). These keys
 // MIRROR the VIBES table in src/anthropic.js (buildVibeRulesBlock); keep the two in
 // sync. 'memorial' is for a pet who has passed — handled with dignity.
@@ -233,11 +256,25 @@ export const PET_VIBES = ['happy', 'adventure', 'tribute', 'memorial'] as const;
 export type PetVibe = (typeof PET_VIBES)[number];
 export const petVibeSchema = z.enum(PET_VIBES).optional();
 
+// Adult-book "vibe" — the story's register (adult books only). Keys MIRROR the
+// ADULT_VIBES table in src/anthropic.js (buildAdultVibeRulesBlock) AND the
+// ADULT_DEDICATIONS table in src/front-matter.js — keep all three in sync. NOTE the
+// value 'adventure' is shared with PET_VIBES; the two never collide because the adult
+// path is gated on book_type='adult' end to end (audience, dedication).
+export const ADULT_VIBES = ['romantic', 'milestone', 'roast', 'adventure'] as const;
+export type AdultVibe = (typeof ADULT_VIBES)[number];
+export const adultVibeSchema = z.enum(ADULT_VIBES).optional();
+
+// A vibe on the theme step is either a pet vibe or an adult vibe (child books have
+// none). The caller/action validates the value against the book_type-correct enum;
+// this union just lets the shared themeSchema accept both.
+export const anyVibeSchema = z.enum([...PET_VIBES, ...ADULT_VIBES]).optional();
+
 export const themeSchema = z.object({
   theme: z.string().min(20, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
   theme_template_id: z.string().optional(),
-  // Optional; set only for pet books. Steers story tone (see anthropic.js VIBE_RULES).
-  vibe: petVibeSchema,
+  // Optional; set only for pet + adult books. Steers story tone (see anthropic.js).
+  vibe: anyVibeSchema,
 });
 
 export type ThemeInput = z.infer<typeof themeSchema>;
