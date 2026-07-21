@@ -471,6 +471,27 @@ function buildReviewNoteDirective(reviewNote) {
   return `\n\nREVISION NOTE FOR THIS PAGE (operator feedback — apply it to this render): ${reviewNote.trim()}`;
 }
 
+// Screen/legible-text mitigation (2026-07-21). The story-gen steer (anthropic.js
+// `action` rule) PREVENTS most unspecified-text-surface scenes; this is the render-
+// side backstop for a screen that legitimately appears anyway. A negative prompt
+// cannot delete a surface the positive scene requires (the global negative already
+// names "text, letters, words, signage" and a TV menu still gibberished — the axis
+// is saturated), so this supplies a POSITIVE constraint scoped to TEXT/INTERFACE only:
+// non-text imagery on a screen (a face, a photo) is explicitly allowed. Self-cancels
+// when no screen is present, like the bike/helmet locks. Env-gated (SCREEN_TEXT_LOCK=off)
+// for rollback.
+function buildScreenDirective() {
+  if (process.env.SCREEN_TEXT_LOCK === "off") return "";
+  return (
+    `SCREENS AND DISPLAYS: if any screen or display appears in this scene — a television, ` +
+    `phone, tablet, computer, or monitor — it must NOT show a legible interface, menu, UI, or ` +
+    `readable text (these render as gibberish). Non-text imagery IS fine and may appear normally: ` +
+    `a face on a video call, a photo, a landscape, a cartoon. If there is nothing specific to show, ` +
+    `default to a dark screen or a soft ambient glow, and suggest the light it casts on the ` +
+    `character and the room. (If no screen appears in this scene, ignore this.)\n\n`
+  );
+}
+
 export function buildScenePrompt({
   subjects,
   scene,
@@ -508,7 +529,7 @@ export function buildScenePrompt({
       `Template composition: ${templateComposition}`,
       `Avoid: ${negativePrompt}.`,
     ].join("\n")
-      + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`
+      + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}${buildScreenDirective()}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`
       + buildReviewNoteDirective(reviewNote);
   }
 
@@ -547,7 +568,7 @@ export function buildScenePrompt({
     `Template composition: ${templateCompositionV2}`,
     `Avoid: ${negativePrompt}.`,
   ].join("\n")
-    + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildCrowdFramingDirective(subjects)}${buildWardrobeLock(subjects)}${buildShirtColourLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`
+    + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildCrowdFramingDirective(subjects)}${buildWardrobeLock(subjects)}${buildShirtColourLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}${buildScreenDirective()}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`
     + buildReviewNoteDirective(reviewNote);
 }
 
