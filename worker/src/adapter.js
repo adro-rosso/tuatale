@@ -122,8 +122,14 @@ export function adaptSecondary(s, index) {
  * @returns {{ child: object, secondaries: object[], theme: string, ageRange: string }}
  */
 export function adaptOrderToPipelineInput(order) {
-  // Pet-as-hero (book_type='pet'): the protagonist is a non-human pet, not a child.
-  const isPet = (order.book_type ?? "child") === "pet";
+  // book_type routes the protagonist shape: 'pet' → non-human hero; 'adult' → an adult
+  // human protagonist (audience='adult' below flips story register + front-matter
+  // dedication); default 'child'. Nothing sets 'adult' in prod yet (no wizard, no DB
+  // enum value), so isAdult is false for every real order and child/pet output is
+  // byte-identical.
+  const bookType = order.book_type ?? "child";
+  const isPet = bookType === "pet";
+  const isAdult = bookType === "adult";
   const child = {
     name: order.child_name,
     age: order.child_age,
@@ -146,6 +152,15 @@ export function adaptOrderToPipelineInput(order) {
       ? order.photo_urls.pet
       : (order.photo_urls?.pet ? [order.photo_urls.pet] : []);
     if (petPhotos.length) child.photo_paths = petPhotos;
+  } else if (isAdult) {
+    // Adult human protagonist. Free-text appearance (no structured child features);
+    // the PHOTO drives appearance, the explicit `child_age` drives the narrated age +
+    // any milestone number (age-reconciliation decision). is_adult labels the sheet
+    // mint "an adult" instead of "a {age}-year-old child" — the same fix the secondary
+    // path already carries (deriveIsAdult). audience='adult' (set on the return) flips
+    // the story register and the front-matter dedication.
+    child.is_adult = true;
+    if (order.photo_urls?.child) child.photoPath = order.photo_urls.child;
   } else {
     // Hard boundary for structured features: validate against the contract (enum
     // values + gender-gated hair_style). Out-of-contract / unknown values THROW
@@ -176,8 +191,15 @@ export function adaptOrderToPipelineInput(order) {
     // column; until then it is undefined and generateStory defaults from ageRange.
     // A present value overrides the band default.
     reading_level: order.reading_level ?? undefined,
-    // Story vibe / emotional register (pet books). Optional — undefined → no vibe
-    // directive injected (child books). generateStory reads input.vibe.
+    // Story vibe / emotional register (pet + adult books). Optional — undefined → no
+    // vibe directive injected (child books). generateStory reads input.vibe; for adult
+    // books the vibe (romantic/milestone/roast/adventure) also keys the front-matter
+    // dedication default.
     vibe: order.vibe ?? undefined,
+    // Adult-audience opt-in. undefined for child/pet → isAdultAudience(input) is false
+    // → every adult branch (story register, prose cap, front-matter dedication)
+    // collapses to the child/pet path. This is the ONE field that turns the inert
+    // adult engine on.
+    audience: isAdult ? "adult" : undefined,
   };
 }

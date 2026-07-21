@@ -161,4 +161,63 @@ describe("adaptOrderToPipelineInput", () => {
     expect(input.secondaries[0]).toMatchObject({ id: "companion-1", anchor: "tier2", subject_type: "human", gender: "boy" });
     expect(input.secondaries[1]).toMatchObject({ id: "companion-2", anchor: "tier1", subject_type: "non_human" });
   });
+
+  // ---- book_type='adult' (engine-activation slice, 2026-07-21) ---------------
+  describe("book_type='adult'", () => {
+    const adultOrder = {
+      ...baseOrder,
+      book_type: "adult",
+      child_name: "Marcus",
+      child_age: 38,
+      child_gender: "boy",
+      child_appearance: "a man with a short grey beard and tortoiseshell glasses",
+      vibe: "roast",
+    };
+
+    it("sets audience='adult' — the one field that activates the engine", () => {
+      expect(adaptOrderToPipelineInput({ ...adultOrder, secondaries: [] }).audience).toBe("adult");
+    });
+
+    it("marks the protagonist is_adult (so the sheet mint labels 'an adult', not a child)", () => {
+      expect(adaptOrderToPipelineInput({ ...adultOrder, secondaries: [] }).child.is_adult).toBe(true);
+    });
+
+    it("carries the EXPLICIT age (narrated age + milestone number), not a default", () => {
+      expect(adaptOrderToPipelineInput({ ...adultOrder, secondaries: [] }).child.age).toBe(38);
+    });
+
+    it("threads the adult vibe for story register + the dedication default", () => {
+      expect(adaptOrderToPipelineInput({ ...adultOrder, secondaries: [] }).vibe).toBe("roast");
+    });
+
+    it("does NOT run structured child features on an adult (free-text appearance)", () => {
+      const input = adaptOrderToPipelineInput({ ...adultOrder, child_features: { hair_colour: "brown" }, secondaries: [] });
+      expect(input.child.features).toBeUndefined();
+    });
+  });
+
+  // ---- BYTE-IDENTICAL: child + pet never get the adult signal ----------------
+  // The whole slice hinges on audience staying undefined for non-adult books — that
+  // is what keeps isAdultAudience(input) false and every adult branch collapsed.
+  describe("child/pet never receive audience='adult'", () => {
+    it("a child order has audience undefined and no is_adult", () => {
+      const input = adaptOrderToPipelineInput({ ...baseOrder, secondaries: [] });
+      expect(input.audience).toBeUndefined();
+      expect(input.child.is_adult).toBeUndefined();
+    });
+
+    // A PET book can carry vibe='adventure' (its own enum). audience MUST stay
+    // undefined so the shared-'adventure' value can never reach the adult path —
+    // the same collision the front-matter gate guards, checked here at the source.
+    it("a pet order with vibe='adventure' still has audience undefined", () => {
+      const input = adaptOrderToPipelineInput({
+        ...baseOrder, book_type: "pet", child_gender: undefined,
+        animal_kind: "dog", vibe: "adventure",
+        photo_urls: { pet: ["uploads/x.png"] }, secondaries: [],
+      });
+      expect(input.audience).toBeUndefined();
+      expect(input.child.is_adult).toBeUndefined();
+      expect(input.vibe).toBe("adventure"); // vibe flows for the pet story, audience does not
+    });
+  });
 });

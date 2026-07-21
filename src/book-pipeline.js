@@ -177,9 +177,16 @@ export function buildSubjectSheetBasePrompt(subject, story, hasPhoto = false) {
     // Pet-hero (FEATURES_PET_HERO): the protagonist is a non-human pet, not a child.
     // Label it as a pet animal (species carried by animalKind if provided); the
     // Appearance line below holds the breed/coat detail.
+    // Adult protagonist (audience='adult'): label "an adult", NOT "a {age}-year-old
+    // child" — the age number is deliberately dropped from the mint label (the photo +
+    // Appearance drive the look; the narrated age lives in the prose). Mirrors the
+    // secondary adult branch below. isAdult is false for every child/pet book, so the
+    // child label is byte-identical.
     subjectLabel = subject.subject_type === "non_human"
       ? `a pet ${subject.animalKind || "animal"}`
-      : `a ${subject.age}-year-old child`;
+      : subject.isAdult
+        ? "an adult"
+        : `a ${subject.age}-year-old child`;
   } else if (subject.subject_type === "human") {
     subjectLabel = subject.isAdult
       ? `an adult named ${subject.name}`
@@ -285,6 +292,9 @@ export function buildSubjectListForSheetGen(story, meta, protagonistName, protag
     gender: petHero ? null : protagonistGender,
     anchor: "tier2", // protagonist is always ref-anchored
     isProtagonist: true,
+    // Adult protagonist → label "an adult" at sheet mint (see buildCharacterSheetPrompt).
+    // undefined/false for child/pet → byte-identical.
+    isAdult: meta?.inputs?.child?.is_adult === true,
     viewCount: 3,
     sheetPathPrefix: "sheet", // → sheet-NN.png (legacy convention; unchanged)
     // Pet species/breed for the sheet label (optional; e.g. "dog"). Human → null.
