@@ -519,6 +519,11 @@ export async function generateBook({
   outputDir,
   registry,
   dedicationMessage = null,
+  // Adult front-matter (dedication register). adultMode is the BOOLEAN derived once by
+  // the caller via anthropic's isAdultAudience — NOT re-derived here. Both default to
+  // the child/pet path so front matter is byte-identical when adultMode is false.
+  adultMode = false,
+  vibe = null,
   resolveImageOverride = null,
   sheetsOnly = false,
   onlyPages = null, // Set<number> | null. When set, re-render ONLY these page
@@ -1297,7 +1302,7 @@ export async function generateBook({
         .map((f) => path.join(sheetsDir, f)).filter((p) => fs.existsSync(p)).map((p) => fs.readFileSync(p));
       const fm = await assembleFrontMatter({
         story, childName, childAge, sheets: sheetBufs,
-        generatedAtIso: meta?.generatedAt, dedicationMessage,
+        generatedAtIso: meta?.generatedAt, dedicationMessage, adultMode, vibe,
         outputDir: path.join(outputDir, "front-matter"), withCover: true,
       });
       frontPdfs = fm.front; backPdfs = fm.back; frontMatterCost = fm.cost;

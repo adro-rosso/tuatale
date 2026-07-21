@@ -20,7 +20,7 @@
 import os from "node:os";
 import path from "node:path";
 import { promises as fsp } from "node:fs";
-import { generateStory as realGenerateStory } from "../../src/anthropic.js";
+import { generateStory as realGenerateStory, isAdultAudience } from "../../src/anthropic.js";
 import { generateBook as realGenerateBook } from "../../src/book-pipeline.js";
 import { adaptOrderToPipelineInput } from "./adapter.js";
 import { downloadPhoto } from "./preview.js";
@@ -266,6 +266,10 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
 
     // 5. Book (sheets + per-page render + merge). resolveImageOverride is null in
     //    production; restored sheets are skipped by generateBook's fingerprint reuse.
+    // Derive adultMode ONCE, via the same isAdultAudience helper generateStory uses,
+    // so the story register and the front-matter dedication register can never
+    // disagree. Pass the BOOLEAN down; nothing re-evaluates `=== "adult"` downstream.
+    const adultMode = isAdultAudience(input);
     const result = await generateBook({
       story,
       meta,
@@ -273,6 +277,8 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
       childAge: input.child.age,
       outputDir: scratchDir,
       dedicationMessage: input.dedicationMessage ?? null,
+      adultMode,
+      vibe: input.vibe ?? null,
       resolveImageOverride,
     });
     spendThisRun = result.totalCost ?? 0;

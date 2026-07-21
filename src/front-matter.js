@@ -91,12 +91,35 @@ function loadTemplate(dir) {
 export function buildTitleSubs({ title, childName }) {
   return { TITLE: title, SUBTITLE: `A story for ${childName}` };
 }
+// Per-vibe default dedication for ADULT books. Keyed by the ADULT_VIBES enum
+// (romantic/milestone/roast/adventure). The child default "For X, with love." is
+// register-blind: "with love" is wrong on an affectionate roast and flat on an
+// adventure, and adult books carry a register (the vibe) that child books don't.
+// NO em dash anywhere (house style — matches stripNarrativeDashes): milestone uses a
+// period, not a dash.
+const ADULT_DEDICATIONS = {
+  romantic: (name) => `For ${name}, with love.`,
+  milestone: (name) => `For ${name}. Here's to you.`,
+  roast: (name) => `For ${name}. You had this coming.`,
+  adventure: (name) => `For ${name}, and the wrong turns worth taking.`,
+};
+
 // Custom dedication if the parent wrote one, else the auto-default. `message`
 // is the parent's free text (already Zod-capped at 120 on the website; clamped
 // here too as a defensive boundary). renderTemplatePage HTML-escapes it.
-export function buildDedicationSubs({ childName, message = null }) {
+//
+// adultMode + vibe are the ONLY new inputs; both default to the child/pet path so
+// output is BYTE-IDENTICAL when adultMode is false. The gate is `adultMode && vibe`,
+// never `vibe` alone: PET vibes and ADULT vibes share the value 'adventure', so a pet
+// book must NOT pick up the adult adventure line. A custom parent-written dedication
+// still always wins, for every audience.
+export function buildDedicationSubs({ childName, message = null, adultMode = false, vibe = null }) {
   const custom = typeof message === "string" ? message.trim().slice(0, 120) : "";
-  return { DEDICATION: custom || `For ${childName}, with love.` };
+  if (custom) return { DEDICATION: custom };
+  if (adultMode && vibe && ADULT_DEDICATIONS[vibe]) {
+    return { DEDICATION: ADULT_DEDICATIONS[vibe](childName) };
+  }
+  return { DEDICATION: `For ${childName}, with love.` };
 }
 export function buildColophonSubs({ childName, generatedAtIso }) {
   const year = (generatedAtIso || "").slice(0, 4) || "";
@@ -269,7 +292,7 @@ export async function generateCoverHero({ story, childName, childAge, sheets }, 
  * Deps injectable for tests/preview ($0): pass a stub generateImage, or
  * withCover:false + a coverImagePath to reuse an existing hero (the harness path).
  */
-export async function assembleFrontMatter({ story, childName, childAge, sheets, generatedAtIso, dedicationMessage = null, outputDir, withCover = true, coverImagePath = null, coverTitleStyle = "integrated" }, deps = {}) {
+export async function assembleFrontMatter({ story, childName, childAge, sheets, generatedAtIso, dedicationMessage = null, outputDir, withCover = true, coverImagePath = null, coverTitleStyle = "integrated", adultMode = false, vibe = null }, deps = {}) {
   fs.mkdirSync(outputDir, { recursive: true });
   let cost = 0;
   const front = [];
@@ -294,7 +317,7 @@ export async function assembleFrontMatter({ story, childName, childAge, sheets, 
   front.push(ttl.pdfPath);
 
   // Back matter — $0.
-  const ded = await renderFrontMatterPage({ kind: "dedication", subs: buildDedicationSubs({ childName, message: dedicationMessage }), outputDir, outName: "98-dedication" });
+  const ded = await renderFrontMatterPage({ kind: "dedication", subs: buildDedicationSubs({ childName, message: dedicationMessage, adultMode, vibe }), outputDir, outName: "98-dedication" });
   const col = await renderFrontMatterPage({ kind: "colophon", subs: buildColophonSubs({ childName, generatedAtIso }), outputDir, outName: "99-colophon" });
 
   return { front, back: [ded.pdfPath, col.pdfPath], cost };

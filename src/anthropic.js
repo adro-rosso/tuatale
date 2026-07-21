@@ -1168,6 +1168,17 @@ export function stripNarrativeDashes(text) {
 }
 
 /**
+ * The single canonical test for "is this an adult-audience book". Exported so every
+ * consumer (story-gen here, the front-matter dedication path in run-pipeline) derives
+ * the fact from ONE expression rather than re-writing `input.audience === "adult"` at
+ * each site — the seam that lets an adult story pair with a child dedication if the two
+ * derivations ever drift (cf. the CREDIT_RE vocabulary mismatch).
+ */
+export function isAdultAudience(input) {
+  return input?.audience === "adult";
+}
+
+/**
  * Generate a structured 12-page story for a child.
  *
  * @param {object} input
@@ -1220,7 +1231,10 @@ export async function generateStory(input, options = {}) {
   const petHero = process.env.FEATURES_PET_HERO === "on" && input.child?.subject_type === "non_human";
   // Adult-audience branch (V1). Opt-in via input.audience === "adult"; absent →
   // every substitution below collapses to the original child text.
-  const adultMode = input.audience === "adult";
+  // CANONICAL adultMode derivation — the ONE definition (isAdultAudience). Other
+  // sites that need the same fact (e.g. run-pipeline's front-matter dedication path)
+  // MUST call isAdultAudience, never re-write `=== "adult"`, so the two can't drift.
+  const adultMode = isAdultAudience(input);
   const systemPrompt = SYSTEM_PROMPT_TEMPLATE
     // Opening frame. Child branch is the ORIGINAL line verbatim (and still carries
     // {{AUDIENCE}}, resolved further down the chain).
