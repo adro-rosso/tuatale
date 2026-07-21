@@ -11,7 +11,10 @@ import { resolveStyle } from "./art-styles.js";
 // The STYLE STRING now comes from the chosen art_style via resolveStyle(inputs.style)
 // — undefined → watercolour, byte-identical to before. composition_rules (note the
 // preview-specific "cream" background) + negative_prompt stay preview-local.
-export const STYLE_VERSION = 2;
+// Mirror of PREVIEW_STYLE_VERSION in website/lib/preview/hash.ts (the cache key). NOT
+// render-read. Stays 1: the adult rework left the child prompt byte-identical and pets
+// have no previews, so no existing preview's OUTPUT changed — see the hash.ts note.
+export const STYLE_VERSION = 1;
 export const PREVIEW_STORY = {
   style: resolveStyle("watercolour").style,
   composition_rules: "full body, centered subject, clean uncluttered cream background, consistent framing, face clearly visible",
