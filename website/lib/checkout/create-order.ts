@@ -24,6 +24,24 @@ import type { TuataleSupabaseClient } from '@/lib/supabase';
 import { isStructuredComplete } from '@/lib/validation/schemas';
 import { isPurchasableStyle } from '@/lib/art-style-options';
 import { ageFromRange } from './draft-complete';
+import { isAdultBranchEnabled } from '@/lib/flags';
+
+/**
+ * Layer 4 of the adult gate (post-payment backstop). Thrown BEFORE any insert when an
+ * adult order reaches order-creation while the adult branch is OFF — which means a
+ * charge already succeeded (all pre-payment layers were bypassed, e.g. the flag flipped
+ * off between checkout-session creation and this webhook). Carries the payment_intent so
+ * the webhook can refund idempotently + alert. This should essentially never fire.
+ */
+export class AdultBranchDisabledError extends Error {
+  constructor(
+    readonly stripeSessionId: string,
+    readonly paymentIntentId: string | null,
+  ) {
+    super('adult branch is disabled; refusing to create an adult order');
+    this.name = 'AdultBranchDisabledError';
+  }
+}
 
 type Draft = Tables<'drafts'>;
 type OrderRow = Tables<'orders'>;
@@ -49,6 +67,18 @@ export async function createOrderFromDraft(
   const bookType = draft.book_type ?? 'child';
   const isPet = bookType === 'pet';
   const isAdult = bookType === 'adult';
+
+  // ---- LAYER 4: adult-branch backstop (BEFORE any insert). ----
+  // If an adult order reaches here with the branch OFF, a charge already happened.
+  // Refuse loudly with the payment_intent so the webhook refunds + alerts, rather than
+  // letting the DB CHECK throw an opaque error into a silent Stripe retry loop.
+  if (isAdult && !isAdultBranchEnabled()) {
+    const pi =
+      typeof stripeSession.payment_intent === 'string'
+        ? stripeSession.payment_intent
+        : (stripeSession.payment_intent?.id ?? null);
+    throw new AdultBranchDisabledError(stripeSession.id, pi);
+  }
   const animalKind = draft.animal_kind ?? null;
   if (isAdult) {
     // Adult: require name, the EXPLICIT age (goes straight to child_age; the CHECK was

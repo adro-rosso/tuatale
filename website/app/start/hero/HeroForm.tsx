@@ -9,6 +9,8 @@ import { Icon } from '@/components/ui/Icon';
 interface HeroFormProps {
   /** The draft's saved book_type (or 'child' for a fresh draft). */
   initial: string;
+  /** LAYER 1: when false, the "An adult" option is hidden (adult branch gated off). */
+  adultEnabled?: boolean;
 }
 
 const OPTIONS = [
@@ -25,17 +27,22 @@ const initialState: SubmitHeroState = { errors: {} };
  * server action, which persists draft.book_type and advances to the style step. The
  * protagonist step then renders the child or pet form to match.
  */
-export function HeroForm({ initial }: HeroFormProps) {
+export function HeroForm({ initial, adultEnabled = false }: HeroFormProps) {
   const [state, formAction, isPending] = useActionState(submitHeroStep, initialState);
   const [selected, setSelected] = useState<string>(initial);
   void state; // the picker always submits a valid value; no field errors to show
+
+  // LAYER 1: hide the adult option when the branch is gated off. Grid columns follow
+  // the count so the layout stays balanced (2 for child/pet, 3 with adult).
+  const options = OPTIONS.filter((o) => o.value !== 'adult' || adultEnabled);
+  const gridCols = options.length >= 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
 
   return (
     <form action={formAction} className="space-y-lg mx-auto max-w-[40rem]">
       <input type="hidden" name="book_type" value={selected} />
 
-      <div className="gap-lg grid grid-cols-1 sm:grid-cols-3">
-        {OPTIONS.map((opt) => {
+      <div className={`gap-lg grid grid-cols-1 ${gridCols}`}>
+        {options.map((opt) => {
           const checked = selected === opt.value;
           return (
             <button

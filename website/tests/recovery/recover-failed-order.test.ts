@@ -209,3 +209,100 @@ describe('handleFailure — source: health', () => {
     expect(mail.text).toMatch(/gemini \(went_down\)/);
   });
 });
+
+// ---- source: 'checkout' — charged-then-failed backstop (adult gate layer 4) --
+// A payment succeeded but order creation was refused. ALWAYS refunds (terminal +
+// unambiguous) AND alerts, idempotently, keyed on the payment_intent (no order id).
+describe('handleFailure — source: checkout (charged, no order)', () => {
+  const checkoutInput = (over: Record<string, unknown> = {}) => ({
+    source: 'checkout' as const,
+    stripeSessionId: 'cs_test_abc',
+    paymentIntentId: 'pi_test_abc',
+    error: { message: 'adult branch disabled at order creation', kind: 'adult_branch_disabled' },
+    ...over,
+  });
+
+  it('REFUNDS (idempotent, keyed on payment_intent) and ALERTS', async () => {
+    const { deps, refundCreate } = makeDeps(null);
+    const r = await handleFailure(checkoutInput(), deps);
+    expect(r).toMatchObject({ source: 'checkout', recovered: true, refundId: 're_123' });
+    expect(refundCreate).toHaveBeenCalledTimes(1);
+    expect(refundCreate).toHaveBeenCalledWith(
+      { payment_intent: 'pi_test_abc' },
+      { idempotencyKey: 'tuatale-refund-checkout-pi_test_abc' },
+    );
+    expect(deps.sendEmail).toHaveBeenCalledOnce();
+    const mail = (deps.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(mail.subject).toMatch(/CHARGED, NO ORDER/);
+  });
+
+  // A. Idempotency: the webhook retries. Two invocations on the same payment_intent
+  // must pass the SAME idempotency key — the property that makes Stripe return the
+  // same refund rather than a second. (True single-refund is Stripe-enforced; see the
+  // stubbed-vs-real note in the report — a mock can only prove the key is stable.)
+  it('IDEMPOTENT on retry: same payment_intent → identical idempotency key both times', async () => {
+    const { deps, refundCreate } = makeDeps(null);
+    await handleFailure(checkoutInput(), deps);
+    await handleFailure(checkoutInput(), deps);
+    const key1 = refundCreate.mock.calls[0]![1].idempotencyKey;
+    const key2 = refundCreate.mock.calls[1]![1].idempotencyKey;
+    expect(key1).toBe(key2);
+    expect(key1).toBe('tuatale-refund-checkout-pi_test_abc');
+  });
+
+  it('resolves the payment_intent from the session when not passed', async () => {
+    const { deps, refundCreate } = makeDeps(null);
+    (deps.getStripe!() as unknown as { checkout: { sessions: { retrieve: ReturnType<typeof vi.fn> } } })
+      .checkout.sessions.retrieve = vi.fn().mockResolvedValue({ payment_intent: 'pi_from_session' });
+    await handleFailure(checkoutInput({ paymentIntentId: null }), deps);
+    expect(refundCreate).toHaveBeenCalledWith(
+      { payment_intent: 'pi_from_session' },
+      { idempotencyKey: 'tuatale-refund-checkout-pi_from_session' },
+    );
+  });
+
+  // B. Ordering: recovered reflects whether the refund SUCCEEDED. The caller (webhook)
+  // acknowledges (2xx) ONLY when recovered=true; a failed refund → recovered=false →
+  // the caller lets Stripe retry.
+  it('recovered=false when the refund FAILS (caller must let Stripe retry)', async () => {
+    const { deps, refundCreate } = makeDeps(null);
+    refundCreate.mockRejectedValueOnce(new Error('stripe down'));
+    const r = await handleFailure(checkoutInput(), deps);
+    expect(r.recovered).toBe(false);
+    expect(r.refundId).toBeNull();
+    // Still alerts — ops must know a charge is un-refunded.
+    const mail = (deps.sendEmail as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(mail.subject).toMatch(/CHARGED, NO ORDER/);
+    expect(mail.text).toMatch(/REFUND FAILED/);
+  });
+});
+
+// ---- C. REGRESSION GUARD: adding a refunding source must NOT let health refund. ----
+// Re-asserted in the SAME run as the new checkout-refund tests. 'order' refunds,
+// 'checkout' refunds, 'health' NEVER refunds — the one way the monitor could do harm.
+describe('refund behaviour is explicit per source (health never refunds)', () => {
+  it('health: never refunds, never emails a customer', async () => {
+    const { deps, refundCreate } = makeDeps(makeOrder());
+    const r = await handleFailure(
+      { source: 'health', check: 'gemini', transition: 'went_down', healthy: false, error: { message: 'x' } },
+      deps,
+    );
+    expect(r.refundId).toBeNull();
+    expect(r.recovered).toBe(false);
+    expect(refundCreate).not.toHaveBeenCalled();
+    // exactly one email — the ops alert, never a customer refund email
+    expect(deps.sendEmail).toHaveBeenCalledOnce();
+  });
+
+  it('preview: never refunds', async () => {
+    const { deps, refundCreate } = makeDeps(null);
+    await handleFailure({ source: 'preview', previewId: 'p1', error: { message: 'x' } }, deps);
+    expect(refundCreate).not.toHaveBeenCalled();
+  });
+
+  it('checkout: DOES refund (contrast with health/preview)', async () => {
+    const { deps, refundCreate } = makeDeps(null);
+    await handleFailure({ source: 'checkout', paymentIntentId: 'pi_x', error: { message: 'x' } }, deps);
+    expect(refundCreate).toHaveBeenCalledOnce();
+  });
+});

@@ -59,12 +59,13 @@ export function buildCustomerFailureEmail(input: CustomerFailureInput): EmailCon
 export interface OpsAlertInput {
   adminEmail: string;
   /**
-   * 'order'   = paid pipeline failure
-   * 'preview' = pre-purchase preview failure
-   * 'health'  = a SYNTHETIC monitor (no customer, no job) — the proactive credit
-   *             check. Routed here so ops has one alert path, not two.
+   * 'order'    = paid pipeline failure
+   * 'preview'  = pre-purchase preview failure
+   * 'health'   = a SYNTHETIC monitor (no customer, no job) — the proactive credit check
+   * 'checkout' = a charge succeeded but order creation was refused (charged, no order —
+   *              auto-refunded). Routed here so ops has ONE alert path, not two.
    */
-  source: 'order' | 'preview' | 'health';
+  source: 'order' | 'preview' | 'health' | 'checkout';
   /** orderId or previewId — whatever identifies the failed unit. */
   reference: string;
   reason: string;
@@ -75,25 +76,33 @@ export interface OpsAlertInput {
 export function buildOpsAlertEmail(input: OpsAlertInput): EmailContent {
   const { adminEmail, source, reference, reason, creditDepleted } = input;
   const isHealth = source === 'health';
+  const isCheckout = source === 'checkout';
   const subject = creditDepleted
     ? `⚠ CREDITS DEPLETED — Tuatale ${isHealth ? 'monitor' : `${source} failure`}`
-    : isHealth
-      ? `Tuatale monitor: ${reference}`
-      : `Tuatale ${source} failure (${reference.slice(0, 8)})`;
+    : isCheckout
+      ? `⚠ CHARGED, NO ORDER — Tuatale checkout (${reference.slice(0, 12)})`
+      : isHealth
+        ? `Tuatale monitor: ${reference}`
+        : `Tuatale ${source} failure (${reference.slice(0, 8)})`;
 
   const creditNote = creditDepleted
     ? `\nThis is a RESOURCE_EXHAUSTED / quota failure — Gemini credits are likely depleted. TOP UP before resuming; polling will not recover it.\n`
     : '';
 
+  const outcome = isCheckout
+    ? // reason already states "Auto-refunded (…)" or "REFUND FAILED — refund manually."
+      `A payment succeeded but no order was created. The refund status is in Reason above; verify it in Stripe.`
+    : source === 'order'
+      ? `Customer recovery (refund + email + status sync) was attempted automatically.`
+      : `No customer impact (pre-purchase preview); no refund/email sent.`;
+
   const text = [
-    `A ${source} failed.`,
+    isCheckout ? `A checkout was CHARGED with no order.` : `A ${source} failed.`,
     '',
     `Reference: ${reference}`,
     `Reason: ${reason}`,
     creditNote,
-    source === 'order'
-      ? `Customer recovery (refund + email + status sync) was attempted automatically.`
-      : `No customer impact (pre-purchase preview); no refund/email sent.`,
+    outcome,
   ].join('\n');
 
   return { to: adminEmail, subject, html: `<pre>${text}</pre>`, text };

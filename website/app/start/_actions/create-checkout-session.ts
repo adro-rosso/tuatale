@@ -7,6 +7,7 @@ import { getDraftByCookieId } from '@/db/drafts';
 import { calculatePrice, PRICING } from '@/lib/pricing';
 import { checkDraftCompleteness } from '@/lib/checkout/draft-complete';
 import { isPurchasableStyle } from '@/lib/art-style-options';
+import { isAdultBranchEnabled } from '@/lib/flags';
 import { CheckoutError } from './errors';
 
 /**
@@ -39,6 +40,15 @@ export async function createCheckoutSession(): Promise<never> {
 
   const draft = await getDraftByCookieId(cookieId);
   if (!draft) throw new CheckoutError('no_draft');
+
+  // LAYER 3 (the PREVENTION layer): refuse an adult book BEFORE Stripe is invoked when
+  // the adult branch is OFF, so no charge can ever exist. Re-evaluated here (not cached
+  // at draft creation), so a draft made while the flag was on cannot check out after it
+  // flips off. The flag is read fresh, fail-closed.
+  const bookType = (draft as { book_type?: string | null }).book_type ?? 'child';
+  if (bookType === 'adult' && !isAdultBranchEnabled()) {
+    throw new CheckoutError('adult_not_available', 'Adult books are not available yet.');
+  }
 
   const { complete, missing } = checkDraftCompleteness(draft);
   if (!complete) {

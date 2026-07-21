@@ -28,7 +28,7 @@ import { sendEmail as realSendEmail } from '@/lib/email/send';
 import { buildCustomerFailureEmail, buildOpsAlertEmail } from '@/lib/email/templates/failure';
 
 export interface FailureInput {
-  source: 'order' | 'preview' | 'health';
+  source: 'order' | 'preview' | 'health' | 'checkout';
   /** source='health' only: which synthetic check reported (e.g. 'gemini'). */
   check?: string;
   /** source='health' only: 'went_down' | 'still_down' | 'recovered'. */
@@ -38,6 +38,14 @@ export interface FailureInput {
   orderId?: string;
   previewId?: string;
   jobId?: string;
+  /**
+   * source='checkout' only: a payment SUCCEEDED but order creation was refused
+   * (e.g. the adult branch is gated OFF on unmigrated prod). The customer is charged
+   * with no order, so this ALWAYS refunds (terminal + unambiguous) AND alerts. Keyed
+   * on the payment_intent, since no order id exists.
+   */
+  stripeSessionId?: string;
+  paymentIntentId?: string | null;
   error: { message?: string; kind?: string };
   /**
    * R3c: the worker's resume controller sets this. true = the failure is TERMINAL
@@ -58,7 +66,7 @@ export interface RecoveryDeps {
 }
 
 export interface RecoveryResult {
-  source: 'order' | 'preview' | 'health';
+  source: 'order' | 'preview' | 'health' | 'checkout';
   alerted: boolean;
   creditDepleted: boolean;
   recovered: boolean;
@@ -110,6 +118,28 @@ export async function handleFailure(input: FailureInput, deps: RecoveryDeps = {}
       sendEmail,
     });
     return { source: 'health', alerted, creditDepleted, recovered: false, refundId: null };
+  }
+
+  // ---- CHECKOUT: a charge succeeded but order creation was refused. ----
+  // Terminal + unambiguous (no book can be made), so it ALWAYS refunds AND alerts —
+  // no `terminal` gate, unlike 'order'. Refund is IDEMPOTENT (Stripe idempotency key
+  // on the payment_intent): the webhook retries, and a retry after a successful refund
+  // must not double-refund. Ordering is the CALLER's responsibility — it must refund →
+  // alert → only THEN acknowledge; if recovered is false, it must let Stripe retry.
+  if (input.source === 'checkout') {
+    const refundId = await refundByPaymentIntent(
+      { paymentIntentId: input.paymentIntentId ?? null, stripeSessionId: input.stripeSessionId },
+      getStripe,
+    );
+    const alerted = await alertOps({
+      adminEmail,
+      source: 'checkout',
+      reference: input.stripeSessionId ?? input.paymentIntentId ?? 'unknown',
+      reason: `CHARGED, NO ORDER — ${reason}. ${refundId ? `Auto-refunded (${refundId}).` : 'REFUND FAILED — refund manually.'}`,
+      creditDepleted: false,
+      sendEmail,
+    });
+    return { source: 'checkout', alerted, creditDepleted: false, recovered: Boolean(refundId), refundId };
   }
 
   // ---- PREVIEW: ops-alert only, no customer recovery. ----
@@ -168,7 +198,7 @@ export async function handleFailure(input: FailureInput, deps: RecoveryDeps = {}
 
 async function alertOps(args: {
   adminEmail: string | undefined;
-  source: 'order' | 'preview' | 'health';
+  source: 'order' | 'preview' | 'health' | 'checkout';
   reference: string;
   reason: string;
   creditDepleted: boolean;
@@ -191,6 +221,39 @@ async function alertOps(args: {
  * errored (recovery still proceeds — the customer email + status sync run, and the
  * ops alert already fired so a human can finish a stuck refund).
  */
+/**
+ * Refund a charge that has NO order (checkout refused post-payment). Idempotent on the
+ * payment_intent — the webhook retries, and the same key makes Stripe return the SAME
+ * refund rather than creating a second. Resolves the payment_intent from the session
+ * when not passed. Returns the refund id, or null if it could not refund (caller then
+ * lets Stripe retry — never acknowledges a charge left un-refunded).
+ */
+async function refundByPaymentIntent(
+  { paymentIntentId, stripeSessionId }: { paymentIntentId: string | null; stripeSessionId?: string },
+  getStripe: typeof realGetStripe,
+): Promise<string | null> {
+  try {
+    const stripe = getStripe();
+    let pi = paymentIntentId;
+    if (!pi && stripeSessionId) {
+      const session = await stripe.checkout.sessions.retrieve(stripeSessionId);
+      pi = typeof session.payment_intent === 'string' ? session.payment_intent : (session.payment_intent?.id ?? null);
+    }
+    if (!pi) {
+      console.error('[recovery] checkout refund: no payment_intent', { stripeSessionId });
+      return null;
+    }
+    const refund = await stripe.refunds.create(
+      { payment_intent: pi },
+      { idempotencyKey: `tuatale-refund-checkout-${pi}` },
+    );
+    return refund.id;
+  } catch (e) {
+    console.error('[recovery] checkout refund failed', { stripeSessionId, error: (e as Error)?.message });
+    return null;
+  }
+}
+
 async function issueRefund(
   order: { id: string; stripe_payment_intent_id: string | null; stripe_session_id: string },
   getStripe: typeof realGetStripe,

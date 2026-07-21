@@ -241,6 +241,71 @@ describe('createCheckoutSession', () => {
     );
   });
 
+  // ---- LAYER 3: adult-branch pre-payment gate ----
+  // The PREVENTION layer — refused BEFORE Stripe is invoked, so no charge can exist.
+  function completeAdultDraft(overrides = {}) {
+    return {
+      id: 'draft-uuid-1', cookie_id: 'cookie-uuid-1', book_type: 'adult',
+      child_name: 'Marcus', child_age: 40, child_gender: 'boy', age_range: null,
+      child_appearance: 'a man with a short grey beard and tortoiseshell glasses, a solid build',
+      theme: 'A birthday roast of a man who has a system for everything.',
+      customer_email: null, secondaries: [], status: 'active', current_step: 'payment',
+      ...overrides,
+    };
+  }
+
+  it('flag OFF: an adult draft is refused (adult_not_available) BEFORE Stripe is called', async () => {
+    delete process.env.ADULT_BRANCH_ENABLED; // fail-closed
+    cookieValue.current = 'cookie-uuid-1';
+    draftStore.current = completeAdultDraft();
+    await expect(createCheckoutSession()).rejects.toMatchObject({ name: 'CheckoutError', reason: 'adult_not_available' });
+    expect(stripeSessionsCreate).not.toHaveBeenCalled(); // NO CHARGE
+  });
+
+  it('flag = any non-on value: still refused (fail-closed)', async () => {
+    process.env.ADULT_BRANCH_ENABLED = 'true';
+    cookieValue.current = 'cookie-uuid-1';
+    draftStore.current = completeAdultDraft();
+    await expect(createCheckoutSession()).rejects.toMatchObject({ reason: 'adult_not_available' });
+    expect(stripeSessionsCreate).not.toHaveBeenCalled();
+    delete process.env.ADULT_BRANCH_ENABLED;
+  });
+
+  // BYPASS CASE: a draft created while the flag was ON, then the flag flips OFF.
+  // The flag is re-evaluated at checkout (not cached at draft creation), so it is refused.
+  it('BYPASS: adult draft made while ON, flag now OFF → refused at checkout', async () => {
+    process.env.ADULT_BRANCH_ENABLED = 'on';
+    cookieValue.current = 'cookie-uuid-1';
+    draftStore.current = completeAdultDraft(); // as if created while enabled
+    delete process.env.ADULT_BRANCH_ENABLED;   // flipped off mid-flow
+    await expect(createCheckoutSession()).rejects.toMatchObject({ reason: 'adult_not_available' });
+    expect(stripeSessionsCreate).not.toHaveBeenCalled();
+  });
+
+  it('flag ON: an adult draft proceeds to Stripe (gate does not block when enabled)', async () => {
+    process.env.ADULT_BRANCH_ENABLED = 'on';
+    cookieValue.current = 'cookie-uuid-1';
+    draftStore.current = completeAdultDraft();
+    stripeSessionsCreate.mockResolvedValue({ id: 'cs_test_adult', url: 'https://stripe/x' });
+    await expect(createCheckoutSession()).rejects.toBeInstanceOf(RedirectSentinel); // success → redirect
+    expect(stripeSessionsCreate).toHaveBeenCalledOnce();
+    delete process.env.ADULT_BRANCH_ENABLED;
+  });
+
+  // BYTE-IDENTICAL: child/pet checkout is unaffected by the flag in either state.
+  it('child draft: identical outcome with the flag OFF and ON', async () => {
+    for (const val of [undefined, 'on']) {
+      stripeSessionsCreate.mockReset();
+      if (val) process.env.ADULT_BRANCH_ENABLED = val; else delete process.env.ADULT_BRANCH_ENABLED;
+      cookieValue.current = 'cookie-uuid-1';
+      draftStore.current = completeDraft();
+      stripeSessionsCreate.mockResolvedValue({ id: 'cs_child', url: 'https://stripe/c' });
+      await expect(createCheckoutSession()).rejects.toBeInstanceOf(RedirectSentinel);
+      expect(stripeSessionsCreate).toHaveBeenCalledOnce();
+    }
+    delete process.env.ADULT_BRANCH_ENABLED;
+  });
+
   it('throws CheckoutError(stripe_session_no_url) when Stripe returns a session without a url', async () => {
     cookieValue.current = 'cookie-uuid-1';
     draftStore.current = completeDraft();

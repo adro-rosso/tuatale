@@ -33,7 +33,8 @@ import { getStripe } from '@/lib/stripe';
 import { getDraftById, markDraftConverted } from '@/db/drafts';
 import { getOrderByStripeSessionId } from '@/db/orders';
 import * as pipelineJobs from '@/db/pipeline-jobs';
-import { createOrderFromDraft } from '@/lib/checkout/create-order';
+import { createOrderFromDraft, AdultBranchDisabledError } from '@/lib/checkout/create-order';
+import { handleFailure } from '@/lib/recovery/recover-failed-order';
 import { inngest } from '@/lib/inngest/client';
 import type { Tables } from '@/types/database';
 
@@ -191,7 +192,29 @@ export async function POST(req: Request): Promise<NextResponse> {
     });
   }
 
-  const order = await createOrderFromDraft({ draft, stripeSession: session });
+  let order;
+  try {
+    order = await createOrderFromDraft({ draft, stripeSession: session });
+  } catch (err) {
+    // LAYER 4: a charge succeeded but order creation was refused (adult branch OFF).
+    // ORDER OF OPERATIONS is load-bearing: refund (idempotent) → alert → THEN 2xx.
+    // Only acknowledge if the refund succeeded; otherwise return non-2xx so Stripe
+    // RETRIES — the retry is our only recovery, and the idempotency key makes it safe.
+    if (err instanceof AdultBranchDisabledError) {
+      const result = await handleFailure({
+        source: 'checkout',
+        stripeSessionId: err.stripeSessionId,
+        paymentIntentId: err.paymentIntentId,
+        error: { message: 'adult branch disabled at order creation', kind: 'adult_branch_disabled' },
+      });
+      if (result.recovered) {
+        return NextResponse.json({ received: true, chargedNoOrder: true, refunded: true, refundId: result.refundId });
+      }
+      // Refund did NOT succeed → do NOT acknowledge. Let Stripe retry (idempotency-safe).
+      return NextResponse.json({ error: 'checkout recovery pending — refund not yet confirmed' }, { status: 500 });
+    }
+    throw err;
+  }
   await markDraftConverted(draft.id, order.id);
 
   const result = await dispatchPipelineJob(order, session.id);

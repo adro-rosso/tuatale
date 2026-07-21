@@ -6,7 +6,7 @@
  * pair. Each test pins one mapping rule so regressions are easy to
  * read.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type Stripe from 'stripe';
 
 const { createOrderSpy } = vi.hoisted(() => ({ createOrderSpy: vi.fn() }));
@@ -15,7 +15,7 @@ vi.mock('@/db/orders', () => ({
   createOrder: createOrderSpy,
 }));
 
-import { createOrderFromDraft } from '@/lib/checkout/create-order';
+import { createOrderFromDraft, AdultBranchDisabledError } from '@/lib/checkout/create-order';
 
 function fakeDraft(overrides: Record<string, unknown> = {}) {
   return {
@@ -214,6 +214,7 @@ describe('createOrderFromDraft', () => {
   // (NOT derived from a band), age_range is null, gender is preserved, and the child
   // enum is stored verbatim (adult wording is applied downstream).
   it('adult: explicit age → child_age verbatim, age_range null, gender kept', async () => {
+    process.env.ADULT_BRANCH_ENABLED = 'on'; // order-creation logic requires the branch enabled
     const draft = fakeDraft({
       book_type: 'adult',
       child_name: 'Marcus',
@@ -233,6 +234,7 @@ describe('createOrderFromDraft', () => {
   });
 
   it('adult: missing the explicit age → throws (does not silently derive 0/NaN)', async () => {
+    process.env.ADULT_BRANCH_ENABLED = 'on';
     await expect(
       createOrderFromDraft({
         draft: fakeDraft({ book_type: 'adult', child_age: null, age_range: null,
@@ -241,6 +243,38 @@ describe('createOrderFromDraft', () => {
       }),
     ).rejects.toThrow(/missing required fields/i);
     expect(createOrderSpy).not.toHaveBeenCalled();
+  });
+
+  // ---- LAYER 4: adult-branch backstop (post-payment, BEFORE any insert) ----
+  const ORIGINAL_FLAG = process.env.ADULT_BRANCH_ENABLED;
+  afterEach(() => { if (ORIGINAL_FLAG === undefined) delete process.env.ADULT_BRANCH_ENABLED; else process.env.ADULT_BRANCH_ENABLED = ORIGINAL_FLAG; });
+
+  it('adult + flag OFF: throws AdultBranchDisabledError with the payment_intent, NO insert', async () => {
+    delete process.env.ADULT_BRANCH_ENABLED;
+    const draft = fakeDraft({ book_type: 'adult', child_age: 38, age_range: null, child_gender: 'boy',
+      child_appearance: 'a man with a beard and a solid build, greying hair' });
+    let thrown: unknown;
+    await createOrderFromDraft({ draft: draft as never, stripeSession: fakeStripeSession({ payment_intent: 'pi_charged' }) })
+      .catch((e) => { thrown = e; });
+    expect(thrown).toBeInstanceOf(AdultBranchDisabledError);
+    expect((thrown as AdultBranchDisabledError).paymentIntentId).toBe('pi_charged');
+    expect(createOrderSpy).not.toHaveBeenCalled(); // NO order row created
+  });
+
+  it('adult + flag ON: creates the order normally (gate does not block when enabled)', async () => {
+    process.env.ADULT_BRANCH_ENABLED = 'on';
+    const draft = fakeDraft({ book_type: 'adult', child_age: 38, age_range: null, child_gender: 'boy',
+      child_appearance: 'a man with a beard and a solid build, greying hair', vibe: 'roast',
+      theme: 'A birthday roast of a man who has a system for everything.' });
+    await createOrderFromDraft({ draft: draft as never, stripeSession: fakeStripeSession() });
+    expect(createOrderSpy).toHaveBeenCalledOnce();
+    expect(createOrderSpy.mock.calls[0]![0]!.child_age).toBe(38);
+  });
+
+  it('byte-identical: a CHILD order is unaffected by the flag being OFF', async () => {
+    delete process.env.ADULT_BRANCH_ENABLED;
+    await createOrderFromDraft({ draft: fakeDraft() as never, stripeSession: fakeStripeSession() });
+    expect(createOrderSpy).toHaveBeenCalledOnce();
   });
 
   it('handles payment_intent as either a string or an expanded object', async () => {

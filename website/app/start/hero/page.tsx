@@ -1,4 +1,5 @@
 import { getDraft } from '@/lib/draft-fetch';
+import { isAdultBranchEnabled } from '@/lib/flags';
 import { HeroForm } from './HeroForm';
 
 /**
@@ -11,5 +12,12 @@ export default async function HeroStepPage() {
   const draft = result.kind === 'found' ? result.draft : null;
   const initial = draft?.book_type ?? 'child';
 
-  return <HeroForm initial={initial} />;
+  // LAYER 1: the flag is read SERVER-SIDE (it is not a NEXT_PUBLIC_* var, so a client
+  // component can't see it) and passed down; HeroForm hides the "An adult" option when
+  // off. A stale draft whose book_type is 'adult' but the flag is now off falls back to
+  // 'child' for the initial selection.
+  const adultEnabled = isAdultBranchEnabled();
+  const initialSafe = initial === 'adult' && !adultEnabled ? 'child' : initial;
+
+  return <HeroForm initial={initialSafe} adultEnabled={adultEnabled} />;
 }

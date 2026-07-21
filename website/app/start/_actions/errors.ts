@@ -40,7 +40,10 @@ export class CheckoutError extends Error {
     | 'stripe_session_no_url'
     // MIN-SAFE rollout: the draft's art_style is preview-only-not-purchasable
     // (only watercolour is purchasable until W-E). Gated PRE-payment.
-    | 'style_not_purchasable';
+    | 'style_not_purchasable'
+    // Adult branch gated OFF (ADULT_BRANCH_ENABLED). The PREVENTION layer — refused
+    // before Stripe is invoked, so no charge can exist. See project_adult-controlled-launch.
+    | 'adult_not_available';
 
   constructor(reason: CheckoutError['reason'], message?: string) {
     super(message ?? `Checkout failed: ${reason}`);
