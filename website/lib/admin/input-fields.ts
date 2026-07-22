@@ -113,6 +113,37 @@ export function buildAppearanceFields(order: OrderRow): InputField[] {
 }
 
 /**
+ * LEGACY-GAP BOUNDARIES — when each late-added field first became askable.
+ *
+ * An order placed before a field existed could not have supplied it. That is OUR gap
+ * (we never asked), not the customer's omission, so it is reported QUIETLY with an
+ * accurate reason instead of as the `empty` attention state.
+ *
+ * Why not simply hide it: the field IS empty, and hiding it would misrepresent the
+ * record. Why not flag it: `empty` is the state that means LOOK AT THIS. If it fires on
+ * every pre-selector order, it trains the operator to ignore it and the signal dies —
+ * the state is only worth having while it stays rare.
+ *
+ * This is a PATTERN, not a one-off. Every future field opens the same window between
+ * "shipped" and "asked on every order"; add a dated constant here each time rather than
+ * letting the attention state rot.
+ *
+ * vibe → the pet/adult vibe selector, commit 941a0bf (2026-07-17 13:05 +10:00).
+ */
+const VIBE_SELECTOR_LIVE_AT = Date.parse('2026-07-17T03:05:20Z');
+
+/**
+ * True when the order predates `liveAt`. An unparseable/absent timestamp returns FALSE
+ * (treated as current), so an unknown date surfaces the gap rather than silently
+ * suppressing it — better a spurious flag than a hidden one.
+ */
+function predates(createdAt: string | null | undefined, liveAt: number): boolean {
+  if (!createdAt) return false;
+  const t = Date.parse(createdAt);
+  return Number.isFinite(t) && t < liveAt;
+}
+
+/**
  * The four fields added 2026-07-22 (art_style, vibe, reading_level, dedication_message),
  * each resolved against the order's book type.
  */
@@ -138,6 +169,13 @@ export function buildChoiceFields(order: OrderRow): InputField[] {
     fields.push({ label: 'Vibe', state: 'na', note: 'child books do not set a vibe' });
   } else if (vibe) {
     fields.push({ label: 'Vibe', state: 'provided', value: vibe });
+  } else if (predates(order.created_at, VIBE_SELECTOR_LIVE_AT)) {
+    // We never asked — not the customer's omission. Quiet, with the real reason.
+    fields.push({
+      label: 'Vibe',
+      state: 'na',
+      note: 'vibe selector not yet available when this order was placed',
+    });
   } else {
     // A pet/adult order WITHOUT a vibe is unexpected — both flows collect one.
     fields.push({ label: 'Vibe', state: 'empty', note: `${bookType} books select a vibe` });
