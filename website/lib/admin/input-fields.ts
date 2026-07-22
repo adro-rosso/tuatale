@@ -20,15 +20,6 @@ import type { Tables } from '@/types/database';
 
 type OrderRow = Tables<'orders'>;
 
-/**
- * `vibe` exists on public.orders (verified against prod information_schema: text,
- * nullable) but is absent from the generated `database.ts` — the known generated-types
- * lag. Narrow, local cast rather than loosening OrderRow everywhere; delete it when the
- * types are regenerated (the same lag-cast pattern used for the pet columns, which were
- * dropped once types caught up in 2ab04b3).
- */
-type OrderWithVibe = OrderRow & { vibe?: string | null };
-
 export type InputField =
   | { label: string; state: 'provided'; value: string }
   | { label: string; state: 'na'; note: string }
@@ -142,7 +133,7 @@ export function buildChoiceFields(order: OrderRow): InputField[] {
   );
 
   // vibe — offered by the pet and adult flows only. The child wizard never asks.
-  const vibe = text((order as OrderWithVibe).vibe);
+  const vibe = text(order.vibe);
   if (!isPet && !isAdult) {
     fields.push({ label: 'Vibe', state: 'na', note: 'child books do not set a vibe' });
   } else if (vibe) {

@@ -69,6 +69,7 @@ export type Database = {
           theme: string | null
           theme_template_id: string | null
           updated_at: string
+          vibe: string | null
         }
         Insert: {
           age_range?: string | null
@@ -99,6 +100,7 @@ export type Database = {
           theme?: string | null
           theme_template_id?: string | null
           updated_at?: string
+          vibe?: string | null
         }
         Update: {
           age_range?: string | null
@@ -129,12 +131,46 @@ export type Database = {
           theme?: string | null
           theme_template_id?: string | null
           updated_at?: string
+          vibe?: string | null
+        }
+        Relationships: []
+      }
+      ops_health: {
+        Row: {
+          alert_state: string
+          checked_at: string
+          detail: string | null
+          healthy: boolean
+          kind: string
+          last_alert_at: string | null
+          reason: string | null
+          unhealthy_streak: number
+        }
+        Insert: {
+          alert_state?: string
+          checked_at?: string
+          detail?: string | null
+          healthy: boolean
+          kind: string
+          last_alert_at?: string | null
+          reason?: string | null
+          unhealthy_streak?: number
+        }
+        Update: {
+          alert_state?: string
+          checked_at?: string
+          detail?: string | null
+          healthy?: boolean
+          kind?: string
+          last_alert_at?: string | null
+          reason?: string | null
+          unhealthy_streak?: number
         }
         Relationships: []
       }
       orders: {
         Row: {
-          age_range: string
+          age_range: string | null
           amount_paid_cents: number
           animal_kind: string | null
           art_style: string
@@ -168,9 +204,10 @@ export type Database = {
           theme: string
           theme_template_id: string | null
           updated_at: string
+          vibe: string | null
         }
         Insert: {
-          age_range: string
+          age_range?: string | null
           amount_paid_cents: number
           animal_kind?: string | null
           art_style?: string
@@ -204,9 +241,10 @@ export type Database = {
           theme: string
           theme_template_id?: string | null
           updated_at?: string
+          vibe?: string | null
         }
         Update: {
-          age_range?: string
+          age_range?: string | null
           amount_paid_cents?: number
           animal_kind?: string | null
           art_style?: string
@@ -240,6 +278,7 @@ export type Database = {
           theme?: string
           theme_template_id?: string | null
           updated_at?: string
+          vibe?: string | null
         }
         Relationships: []
       }

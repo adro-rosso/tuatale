@@ -69,6 +69,7 @@ function fakeOrder(over: Partial<OrderRow> = {}): OrderRow {
     dedication_message: null,
     book_type: 'child',
     animal_kind: null,
+    vibe: null,
     created_at: '2026-06-06T08:55:00Z',
     updated_at: '2026-06-06T08:55:00Z',
     ...over,
