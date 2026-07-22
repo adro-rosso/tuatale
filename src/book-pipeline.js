@@ -1119,6 +1119,10 @@ export async function generateBook({
       bikeColour,
       helmetColour,
       reviewNote: reviewNoteForPage(scene.page),
+      // Adult-only screen/interface directive (verification-scope gating — see
+      // buildScreenDirective). Child/pet pass false → page prompt byte-identical
+      // to the currently-deployed worker.
+      adultMode,
       // W-E: per-style MEDIUM-token fills for the template composition. Absent on
       // legacy stories → renderPageWithTemplate defaults per-key to watercolour.
       styleMedium: story.styleMedium,

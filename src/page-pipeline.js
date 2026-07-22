@@ -480,7 +480,18 @@ function buildReviewNoteDirective(reviewNote) {
 // non-text imagery on a screen (a face, a photo) is explicitly allowed. Self-cancels
 // when no screen is present, like the bike/helmet locks. Env-gated (SCREEN_TEXT_LOCK=off)
 // for rollback.
-function buildScreenDirective() {
+//
+// ADULT-ONLY, DELIBERATELY (2026-07-21). This clause was verified on ONE ADULT page
+// re-roll. "Inert for a no-screen CHILD scene" is a DESIGN claim, not an observation —
+// and it can only be observed with Gemini, which has been unreliable for a week. So the
+// deploy scope is matched to the VERIFICATION scope: adult ships, child/pet do not.
+// Consequence, and it is the safe one: for child/pet the returned "" makes the assembled
+// page prompt BYTE-IDENTICAL to the currently-deployed worker. Child/pet keep the
+// PREVENTION half (the global story-gen steer, verified on child prose) and lose only
+// this backstop — for a case prevention already handles. Revisit going global once a
+// clean child render check is possible on a healthy provider window.
+function buildScreenDirective(adultMode = false) {
+  if (!adultMode) return "";
   if (process.env.SCREEN_TEXT_LOCK === "off") return "";
   return (
     `SCREENS AND DISPLAYS: if any screen or display appears in this scene — a television, ` +
@@ -502,6 +513,7 @@ export function buildScenePrompt({
   bikeColour = null,
   helmetColour = null,
   reviewNote = "",
+  adultMode = false,   // gates buildScreenDirective; false → child/pet byte-identical
 }) {
   if (!Array.isArray(subjects) || subjects.length === 0) {
     throw new Error("buildScenePrompt: subjects must be a non-empty array");
@@ -529,7 +541,7 @@ export function buildScenePrompt({
       `Template composition: ${templateComposition}`,
       `Avoid: ${negativePrompt}.`,
     ].join("\n")
-      + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}${buildScreenDirective()}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`
+      + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildWardrobeLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}${buildScreenDirective(adultMode)}Use the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`
       + buildReviewNoteDirective(reviewNote);
   }
 
@@ -568,7 +580,7 @@ export function buildScenePrompt({
     `Template composition: ${templateCompositionV2}`,
     `Avoid: ${negativePrompt}.`,
   ].join("\n")
-    + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildCrowdFramingDirective(subjects)}${buildWardrobeLock(subjects)}${buildShirtColourLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}${buildScreenDirective()}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`
+    + `\n\nScene: ${scene.action}\n\n${buildReferenceAuthorityDirective(subjects)}${buildCrowdFramingDirective(subjects)}${buildWardrobeLock(subjects)}${buildShirtColourLock(subjects)}${buildBikeLock(bikeColour)}${buildHelmetLock(helmetColour)}${buildScreenDirective(adultMode)}Use the provided reference images of the subjects to keep each one's appearance, clothing, and proportions consistent. References: ${refMappingPieces.join(", ")}.`
     + buildReviewNoteDirective(reviewNote);
 }
 
@@ -616,6 +628,7 @@ export async function renderPageWithTemplate({
   helmetColour = null,      // Spec D-H: helmet colour (= bike colour), or null
   reviewNote = "",          // Review station: per-page operator directive, or "" (inert)
   styleMedium = null,       // W-E: per-style MEDIUM-token fills, or null (→ watercolour default)
+  adultMode = false,        // adult-only screen directive; false → child/pet prompt unchanged
 }) {
   const timing = {
     imageGenMs: 0,
@@ -761,6 +774,7 @@ export async function renderPageWithTemplate({
         bikeColour,
         helmetColour,
         reviewNote,
+        adultMode,
       });
 
       // Reference images: concatenate each subject's allocated sheets in
