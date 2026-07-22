@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getJobById } from '@/db/pipeline-jobs';
 import { getOrderById } from '@/db/orders';
+import { getOrderPhotos } from '@/lib/photos/order-photos';
 import { Heading } from '@/components/ui/Heading';
 import { OrderSummarySection } from '@/components/admin/OrderSummarySection';
 import { BookContentSection } from '@/components/admin/BookContentSection';
@@ -37,6 +38,11 @@ export default async function AdminOrderDetailPage({
   const order = await getOrderById(job.order_id);
   if (!order) notFound();
 
+  // Reference photos are signed per render with a short-lived URL (never public, never
+  // persisted). getOrderPhotos never throws — a Storage problem degrades to a per-photo
+  // 'error' tile so the page an operator uses to decide whether to ship still renders.
+  const photos = await getOrderPhotos(order);
+
   return (
     <div className="space-y-lg">
       <div className="space-y-xs">
@@ -52,7 +58,7 @@ export default async function AdminOrderDetailPage({
       </div>
 
       <OrderSummarySection order={order} job={job} />
-      <BookContentSection order={order} />
+      <BookContentSection order={order} photos={photos} />
       <PdfPreviewSection job={job} />
       <JobExecutionDetail job={job} />
       <ActionPanel
