@@ -93,7 +93,8 @@ a different and review-corrupting claim. The panel header tallies both counts.
 
 ## What you can do
 
-Per page you see the **rendered image** (`pages/page-NN-rendered.png`), an
+Per page you see the **rendered image** (rasterised from `pages/page-NN.pdf` — what
+actually ships, so *reviewed == shipped*; cached under a transient `_raster/`), an
 **editable narrative**, the **page number**, **template id**, **subjects**, and a
 **strip of prior rolls**. Then:
 
@@ -222,6 +223,7 @@ the current hash, so a freshly generated, unedited book shows no false flags.
 }
 ```
 
-Per-history-entry artifacts live at `_history/page-NN/<id>/{page.pdf, rendered.png, entry.json}`
+Per-history-entry artifacts live at `_history/page-NN/<id>/{page.pdf, entry.json}` (the
+thumbnail is rasterised from `page.pdf` on demand — no stored screenshot)
 (the `entry.json` holds the full narrative for restore). `_history/` is under
 `output/` and already gitignored.

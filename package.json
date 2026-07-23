@@ -17,6 +17,7 @@
     "dotenv": "^17.4.2",
     "jszip": "^3.10.1",
     "pdf-lib": "^1.17.1",
+    "pdf-to-img": "^4.5.0",
     "pdfkit": "^0.18.0",
     "puppeteer": "^25.0.3",
     "replicate": "^1.4.0",

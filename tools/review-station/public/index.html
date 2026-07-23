@@ -214,7 +214,7 @@ function render() {
     card.className = "card" + (p.status === "approved" ? " approved" : "");
     const imgCell = p.hasImage
       ? `<img src="/img/${p.page}?t=${p.mtime}" alt="page ${p.page}">`
-      : `<div class="noimg">no rendered image on disk<br>(page-${String(p.page).padStart(2,"0")}-rendered.png)</div>`;
+      : `<div class="noimg">no page PDF on disk<br>(page-${String(p.page).padStart(2,"0")}.pdf)</div>`;
 
     const histCells = (p.history && p.history.length)
       ? p.history.map(h => `

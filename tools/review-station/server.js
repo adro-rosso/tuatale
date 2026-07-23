@@ -13,8 +13,9 @@
 //   • Finalize ($0)                           stitch approved pages (+ front matter) → book.pdf
 //
 // Every re-render (image OR text) first SNAPSHOTS the page's current artifacts
-// (page-NN.pdf + page-NN-rendered.png + narrative) into _history/page-NN/<id>/,
-// capped at HISTORY_CAP per page, so any prior roll can be restored.
+// (page-NN.pdf + narrative) into _history/page-NN/<id>/, capped at HISTORY_CAP per page,
+// so any prior roll can be restored. The review IMAGE is rasterised from the PDF on
+// demand (reviewed == shipped), so no separate screenshot is stored.
 //
 // Launch:  node tools/review-station/server.js --dir output/books/<id> [--port 4600]
 // See tools/review-station/README.md.
@@ -26,6 +27,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PDFDocument } from "pdf-lib";
+import { pdf as pdfToImages } from "pdf-to-img";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
@@ -148,12 +150,51 @@ if (SESSION) {
 // ---- Small utils -----------------------------------------------------------
 const pad2 = (n) => String(n).padStart(2, "0");
 const readStory = () => JSON.parse(fs.readFileSync(STORY_PATH, "utf8"));
-const livePng = (page) => path.join(PAGES_DIR, `page-${pad2(page)}-rendered.png`);
 const livePdf = (page) => path.join(PAGES_DIR, `page-${pad2(page)}.pdf`);
 const rawPng = (page) => path.join(PAGES_DIR, `page-${pad2(page)}.png`);
 
 let idCounter = 0;
 const nextId = () => `${Date.now()}-${(idCounter++).toString(36)}`;
+
+// ---- PDF → image rasteriser (review display) -------------------------------
+// "REVIEWED == SHIPPED": the review image is RASTERISED FROM THE PAGE PDF, not read from a
+// separate page-NN-rendered.png screenshot that could drift from the PDF that actually
+// ships (and, for POD, prints). It also drops a stored rendered PORTRAIT artifact — the
+// review/ retention set (worker/src/review-artifacts.js) deliberately excludes
+// -rendered.png for exactly this reason, so a materialised prod book has only the PDF.
+//
+// Cached (mtime-keyed) under BOOK_DIR/_raster. For a --order prod book BOOK_DIR IS the
+// swept session temp dir, so the cache is TRANSIENT and orphan-swept; for a --dir local
+// book it sits beside an already-durable book (no new exposure). In-flight dedup so the
+// UI firing 12 /img requests at once doesn't rasterise the same page twice.
+const RASTER_CACHE = path.join(BOOK_DIR, "_raster");
+const rasterInflight = new Map();
+async function rasterisePage(pdfPath, key) {
+  if (!pdfPath || !fs.existsSync(pdfPath)) return null;
+  const mtime = Math.floor(fs.statSync(pdfPath).mtimeMs);
+  const cacheFile = path.join(RASTER_CACHE, `${key}-${mtime}.png`);
+  if (fs.existsSync(cacheFile)) return cacheFile;
+  if (rasterInflight.has(cacheFile)) return rasterInflight.get(cacheFile);
+  const job = (async () => {
+    fs.mkdirSync(RASTER_CACHE, { recursive: true });
+    const doc = await pdfToImages(pdfPath, { scale: 1.5 });
+    let buf = null;
+    for await (const pageBuf of doc) { buf = pageBuf; break; } // page-NN.pdf is one page
+    if (!buf) return null;
+    const tmp = `${cacheFile}.tmp${process.pid}`;
+    fs.writeFileSync(tmp, buf);
+    fs.renameSync(tmp, cacheFile);
+    // Drop stale rasters for this key (a re-roll bumped the PDF mtime → new cache name).
+    for (const f of fs.readdirSync(RASTER_CACHE)) {
+      if (f.startsWith(`${key}-`) && f !== path.basename(cacheFile)) {
+        try { fs.rmSync(path.join(RASTER_CACHE, f), { force: true }); } catch { /* ignore */ }
+      }
+    }
+    return cacheFile;
+  })().finally(() => rasterInflight.delete(cacheFile));
+  rasterInflight.set(cacheFile, job);
+  return job;
+}
 
 // IMAGE-provenance hash: image-relevant scene fields ONLY (EXCLUDES
 // narrative_text) so a text edit never falsely flags the image stale.
@@ -203,18 +244,19 @@ function setNarrative(page, text) {
 }
 
 // ---- History: snapshot + restore ------------------------------------------
-// Snapshot the page's CURRENT live artifacts (pdf + rendered png + narrative)
-// into _history/page-NN/<id>/ BEFORE it is replaced. Caps at HISTORY_CAP.
+// Snapshot the page's CURRENT live artifacts (page.pdf + narrative) into
+// _history/page-NN/<id>/ BEFORE it is replaced. Caps at HISTORY_CAP. The thumbnail is
+// rasterised from the snapshotted PDF on demand.
 function snapshotPage(page, source) {
-  const pdf = livePdf(page), png = livePng(page);
-  if (!fs.existsSync(pdf) && !fs.existsSync(png)) return null; // nothing to keep
+  const pdf = livePdf(page);
+  if (!fs.existsSync(pdf)) return null; // nothing to keep (the PDF is the artifact; the
+                                        // thumbnail is rasterised from it on demand)
   const story = readStory();
   const scene = story.scenes.find((s) => s.page === Number(page));
   const id = nextId();
   const dir = path.join(HISTORY_DIR, `page-${pad2(page)}`, id);
   fs.mkdirSync(dir, { recursive: true });
-  if (fs.existsSync(pdf)) fs.copyFileSync(pdf, path.join(dir, "page.pdf"));
-  if (fs.existsSync(png)) fs.copyFileSync(png, path.join(dir, "rendered.png"));
+  fs.copyFileSync(pdf, path.join(dir, "page.pdf"));
   const narrative = scene?.narrative_text ?? "";
   const entry = {
     id, source, created_at: new Date().toISOString(),
@@ -245,9 +287,9 @@ function restorePage(page, id) {
   const entry = JSON.parse(fs.readFileSync(entryPath, "utf8"));
   // Snapshot the current live version first so restoring never loses it.
   snapshotPage(page, "pre-restore");
-  const srcPdf = path.join(dir, "page.pdf"), srcPng = path.join(dir, "rendered.png");
-  if (fs.existsSync(srcPdf)) fs.copyFileSync(srcPdf, livePdf(page));
-  if (fs.existsSync(srcPng)) fs.copyFileSync(srcPng, livePng(page));
+  const srcPdf = path.join(dir, "page.pdf");
+  if (fs.existsSync(srcPdf)) fs.copyFileSync(srcPdf, livePdf(page)); // bumps the PDF mtime
+                                                                     // → raster cache re-mints
   setNarrative(page, entry.narrative_text);
   const state = readState();
   const key = String(page);
@@ -360,9 +402,9 @@ function buildViewModel() {
   const pages = [];
   for (const scene of story.scenes) {
     const p = scene.page, key = String(p);
-    const png = livePng(p);
-    const hasImg = fs.existsSync(png);
-    const mtime = hasImg ? Math.floor(fs.statSync(png).mtimeMs) : 0;
+    const pdfPath = livePdf(p); // the page image is rasterised from this on /img request
+    const hasImg = fs.existsSync(pdfPath);
+    const mtime = hasImg ? Math.floor(fs.statSync(pdfPath).mtimeMs) : 0;
     const curImgHash = imageHash(scene, story);
 
     const ps = state.pages[key] || {};
@@ -500,10 +542,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/state") {
       return sendJSON(res, 200, buildViewModel());
     }
-    // Live rendered page image
+    // Live page image — RASTERISED from the page PDF (reviewed == shipped), not a
+    // separate screenshot. Cached; ~470ms/page cold, instant warm.
     if (req.method === "GET" && pathname.startsWith("/img/")) {
       const page = parseInt(pathname.slice("/img/".length), 10);
-      return sendPng(res, livePng(page));
+      const raster = await rasterisePage(livePdf(page), `page-${pad2(page)}`);
+      if (!raster) { res.writeHead(404); return res.end("no page pdf"); }
+      return sendPng(res, raster);
     }
     // Reference photo: /photo/:key. The key is looked up in the meta-derived
     // whitelist, so no caller-supplied path is ever read. A photo the pipeline
@@ -519,12 +564,15 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "content-type": ct, "cache-control": "no-store" });
       return res.end(fs.readFileSync(entry.path));
     }
-    // History thumbnail: /hist/:page/:id
+    // History thumbnail: /hist/:page/:id — rasterised from the snapshotted page PDF.
     if (req.method === "GET" && pathname.startsWith("/hist/")) {
       const [, , pageStr, id] = pathname.split("/");
       const page = parseInt(pageStr, 10);
       if (!Number.isFinite(page) || !id) { res.writeHead(404); return res.end("bad"); }
-      return sendPng(res, path.join(HISTORY_DIR, `page-${pad2(page)}`, id, "rendered.png"));
+      const histPdf = path.join(HISTORY_DIR, `page-${pad2(page)}`, id, "page.pdf");
+      const raster = await rasterisePage(histPdf, `hist-${pad2(page)}-${id}`);
+      if (!raster) { res.writeHead(404); return res.end("no history pdf"); }
+      return sendPng(res, raster);
     }
     // Save image-render note (no render)
     if (req.method === "POST" && pathname === "/api/note") {
@@ -552,7 +600,7 @@ const server = http.createServer(async (req, res) => {
       snapshotPage(page, "image");
       const { code, log } = await rerenderImage(page);
       if (code === 0) { bumpCost(GEMINI_USD_PER_ROLL, "rerolls"); setImageHashCurrent(page); }
-      const mtime = fs.existsSync(livePng(page)) ? Math.floor(fs.statSync(livePng(page)).mtimeMs) : 0;
+      const mtime = fs.existsSync(livePdf(page)) ? Math.floor(fs.statSync(livePdf(page)).mtimeMs) : 0;
       return sendJSON(res, code === 0 ? 200 : 500, { ok: code === 0, code, mtime, log });
     }
     // Edit text directly ($0 re-lay). Snapshot first, save narrative, re-lay.
@@ -567,7 +615,7 @@ const server = http.createServer(async (req, res) => {
       setNarrative(page, text);
       const { code, log } = await relayText(page);
       if (code === 0) setImageHashCurrent(page); // status→pending (image unchanged)
-      const mtime = fs.existsSync(livePng(page)) ? Math.floor(fs.statSync(livePng(page)).mtimeMs) : 0;
+      const mtime = fs.existsSync(livePdf(page)) ? Math.floor(fs.statSync(livePdf(page)).mtimeMs) : 0;
       return sendJSON(res, code === 0 ? 200 : 500, { ok: code === 0, code, chars, maxChars, overflow, mtime, log });
     }
     // Regenerate text via Sonnet (~1¢) then $0 re-lay. Snapshot first.
@@ -596,7 +644,7 @@ const server = http.createServer(async (req, res) => {
       setNarrative(page, rewrite.text);
       const { code, log } = await relayText(page);
       if (code === 0) { bumpCost(SONNET_USD_PER_REGEN, "text_regens"); setImageHashCurrent(page); }
-      const mtime = fs.existsSync(livePng(page)) ? Math.floor(fs.statSync(livePng(page)).mtimeMs) : 0;
+      const mtime = fs.existsSync(livePdf(page)) ? Math.floor(fs.statSync(livePdf(page)).mtimeMs) : 0;
       return sendJSON(res, code === 0 ? 200 : 500, {
         ok: code === 0, code, newText: rewrite.text, chars: rewrite.text.length, maxChars,
         overflow: rewrite.overflow, mtime, log,
@@ -609,7 +657,7 @@ const server = http.createServer(async (req, res) => {
       try { entry = restorePage(page, id); }
       catch (err) { return sendJSON(res, 400, { ok: false, error: err.message }); }
       try { await stitchBook(); } catch { /* book.pdf refresh best-effort */ }
-      const mtime = fs.existsSync(livePng(page)) ? Math.floor(fs.statSync(livePng(page)).mtimeMs) : 0;
+      const mtime = fs.existsSync(livePdf(page)) ? Math.floor(fs.statSync(livePdf(page)).mtimeMs) : 0;
       return sendJSON(res, 200, { ok: true, restored: entry.id, chars: entry.chars, mtime });
     }
     // Finalize (gated) → stitch
