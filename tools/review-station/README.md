@@ -6,21 +6,90 @@ deploy needed to use it.**
 
 ## Launch
 
+**Local book** (generated on this machine, present under `output/books/`):
+
 ```bash
 node tools/review-station/server.js --dir output/books/<id>
 # then open http://localhost:4600
 ```
 
+**Prod book** (generated on the Fly worker; its per-page artifacts live in Storage under
+`orders/<id>/review/` while the job is `awaiting_review`):
+
+```bash
+node tools/review-station/server.js --order <orderId>
+```
+
+`--order` **materialises** that order's `review/` tree from Supabase Storage to a
+**transient temp dir** and runs against it exactly like a local book. The temp dir is
+deleted when you close the station (see *Transient sessions* below), so a customer's page
+illustrations and character portraits never persist locally past the review.
+
 Flags:
 
 | flag | default | meaning |
 | --- | --- | --- |
-| `--dir` | *(required)* | book directory under `output/books/` |
+| `--dir` | *(one of)* | book directory under `output/books/` (local book) |
+| `--order` | *(one of)* | order id (prod book — materialise from Storage) |
 | `--port` | `4600` | HTTP port |
-| `--env-file` | `worker/.env.local` | env-file passed to the pipeline on re-render (API keys + gated flags) |
+| `--env-file` | `worker/.env.local` | env-file: pipeline API keys on re-render **and** the Supabase creds (`NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`) that `--order` reads to reach Storage |
+
+**Credentials:** `--order` authenticates with the service-role key read from your local
+`--env-file` (gitignored, never embedded in code). Point `--env-file` at the environment
+whose books you're reviewing (prod for real orders).
+
+## Transient sessions (`--order` only)
+
+A materialised prod book is a copy of a real child's illustrations on the local machine, so
+it must not outlive the review. Three guarantees:
+
+1. **Delete-on-close** — `SIGINT` (Ctrl+C) / `SIGTERM` / `SIGBREAK` delete the temp dir and
+   **verify** it is gone (via `existsSync`, not the unlink's own success).
+2. **Orphan sweep on startup** — before doing anything else, the station removes temp dirs
+   left by any previously-**crashed** session (SIGKILL / power loss / panic, where no
+   handler runs). A session is orphaned when its owning PID is gone **or** its heartbeat
+   (`.heartbeat`, touched every 30 s) is stale — the latter catches PID reuse. A live
+   concurrent station keeps a fresh heartbeat and is spared.
+3. **Location** — temp dirs live under the OS temp dir
+   (`<tmp>/tuatale-review-sessions/session-pid<PID>-<rand>`), **never** under
+   `output/books/`, so a materialised prod book can't be mistaken for a durable local book.
+
+The sweep is what makes "transient" true even for a hard crash: the delete-on-close handler
+is an optimisation on top of it. (Residual: a station killed and never restarted leaves its
+temp dir until the next startup's sweep — or the OS's own temp cleanup.)
 
 Zero dependencies beyond what the repo already has (Node built-in `http` +
 `pdf-lib`). No `npm install`, no Express.
+
+## Customer inputs panel
+
+A collapsible panel above the pages shows **what the customer actually asked for**, so
+likeness and accuracy can be judged against the brief instead of from memory. Two columns,
+deliberately separated:
+
+- **Customer provided** — their own words and choices, read from `meta.json` `inputs`:
+  name, age, gender, book type, art style, reading level, age band, vibe, animal kind,
+  appearance text, background/heritage, theme, dedication, plus a block per secondary
+  (age, gender, relationship, subject type, appearance markers).
+- **Pipeline generated** — what the pipeline wrote *from* that: the title, the resolved
+  style string, and the Sonnet-authored protagonist/companion descriptions.
+
+Keeping these apart is the whole point: the question is "did we honour the input", which
+is unanswerable if given and derived values are mixed. Comparing the two columns makes a
+divergence visible immediately (e.g. a customer's "tousled brown hair" rendered by the
+physically-concrete rule as "straight brown hair in a blunt fringe").
+
+**Reference photos** are shown at the top of the panel, served from `GET /photo/:key`.
+Keys are whitelisted from `meta.json`, so no caller-supplied path is ever read.
+
+**Explicit absence.** A field the pipeline never recorded renders as *"not captured"*, and
+a photo whose file is not on this machine renders as *"reference photo not available
+locally"* — never a blank. Silent absence would read as "the customer didn't say", which is
+a different and review-corrupting claim. The panel header tallies both counts.
+
+> **Older books show more "not captured".** `book_type`, `art_style`, `vibe` and
+> `dedication_message` were added to `buildMetaObject` on 2026-07-22; books generated
+> before that never recorded them. This is reported honestly rather than hidden.
 
 ## What you can do
 

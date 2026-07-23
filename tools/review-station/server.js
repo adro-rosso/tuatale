@@ -52,31 +52,97 @@ function parseArgs(argv) {
 }
 
 const ARGS = parseArgs(process.argv.slice(2));
-if (!ARGS.dir) {
-  console.error("FAIL: --dir <book-dir> is required.");
-  console.error("Usage: node tools/review-station/server.js --dir output/books/<id> [--port 4600] [--env-file worker/.env.local]");
+if (!ARGS.dir && !ARGS.order) {
+  console.error("FAIL: one of --dir <book-dir> or --order <orderId> is required.");
+  console.error("Usage:");
+  console.error("  local book : node tools/review-station/server.js --dir output/books/<id> [--port 4600]");
+  console.error("  prod book  : node tools/review-station/server.js --order <orderId>       [--port 4600]");
+  console.error("               (materialises orders/<id>/review/ from Storage to a TRANSIENT temp dir,");
+  console.error("                deleted on close; needs Supabase creds in --env-file, default worker/.env.local)");
   process.exit(1);
 }
-const BOOK_DIR = path.resolve(ARGS.dir);
 const PORT = Number(ARGS.port) || 4600;
 const ENV_FILE = ARGS["env-file"] || "worker/.env.local";
+
+// Load the env-file into THIS process FIRST — the "Regenerate text" Sonnet call needs
+// ANTHROPIC_API_KEY, and --order mode needs NEXT_PUBLIC_SUPABASE_URL +
+// SUPABASE_SERVICE_ROLE_KEY (read by worker/src/db.js getClient). The service-role key
+// lives ONLY in the operator's local env-file (gitignored) — never embedded here.
+const envFileAbs = path.join(PROJECT_ROOT, ENV_FILE);
+let envLoaded = false;
+if (fs.existsSync(envFileAbs) && typeof process.loadEnvFile === "function") {
+  try { process.loadEnvFile(envFileAbs); envLoaded = true; } catch { /* regen will report */ }
+}
+
+// ---- Session lifecycle (prod --order mode) ---------------------------------
+// ORPHAN SWEEP FIRST, always: clear temp dirs left by any previously-crashed session
+// before doing anything else. This is the backstop that makes "transient" true even when
+// a prior process was SIGKILLed. (Harmless in --dir mode — nothing to sweep.)
+const { sweepOrphanSessions, materializeOrder, startHeartbeat, cleanupSession, cleanupSessionSync } =
+  await import("./session.js");
+try {
+  const { swept, kept } = await sweepOrphanSessions();
+  if (swept.length) console.log(`Orphan sweep: removed ${swept.length} crashed session dir(s): ${swept.join(", ")}`);
+  if (kept.length) console.log(`Orphan sweep: kept ${kept.length} live session dir(s).`);
+} catch (e) {
+  console.error(`Orphan sweep FAILED (a crashed session's artifacts may remain): ${e.message}`);
+  process.exit(1); // a failed sweep means we can't guarantee transience — refuse to start
+}
+
+let SESSION = null; // { dir, heartbeat } in --order mode; null for a durable --dir book
+let BOOK_DIR;
+if (ARGS.order) {
+  const { getClient } = await import("../../worker/src/db.js");
+  let client;
+  try {
+    client = getClient();
+  } catch (e) {
+    console.error(`FAIL: --order needs Supabase creds in ${ENV_FILE} (${e.message}).`);
+    process.exit(1);
+  }
+  console.log(`Materialising review artifacts for order ${ARGS.order} …`);
+  const { dir, count } = await materializeOrder(ARGS.order, client);
+  BOOK_DIR = dir;
+  const heartbeat = startHeartbeat(dir);
+  SESSION = { dir, heartbeat };
+  console.log(`  → ${count} object(s) → ${dir} (TRANSIENT — deleted on close)`);
+} else {
+  BOOK_DIR = path.resolve(ARGS.dir);
+}
+
 const STORY_PATH = path.join(BOOK_DIR, "story.json");
 const PAGES_DIR = path.join(BOOK_DIR, "pages");
 const HISTORY_DIR = path.join(BOOK_DIR, "_history");
 const STATE_PATH = path.join(BOOK_DIR, "review-state.json");
+const META_PATH = path.join(BOOK_DIR, "meta.json");
 
 if (!fs.existsSync(STORY_PATH)) {
   console.error(`FAIL: no story.json in ${BOOK_DIR}`);
   process.exit(1);
 }
 
-// Load the env-file into THIS process so the "Regenerate text" Sonnet call has
-// ANTHROPIC_API_KEY. Best-effort — if it fails, regen errors gracefully later;
-// image/text re-renders shell a child that loads the env-file itself.
-const envFileAbs = path.join(PROJECT_ROOT, ENV_FILE);
-let envLoaded = false;
-if (fs.existsSync(envFileAbs) && typeof process.loadEnvFile === "function") {
-  try { process.loadEnvFile(envFileAbs); envLoaded = true; } catch { /* regen will report */ }
+// VERIFIED DELETE-ON-CLOSE. Graceful exits (SIGINT/SIGTERM/normal) delete the temp dir and
+// VERIFY it is gone; a SIGKILL/crash runs nothing here and is caught by the next startup's
+// orphan sweep. Only armed in --order mode (a --dir book is durable and never deleted).
+if (SESSION) {
+  let cleaned = false;
+  const graceful = async (signal) => {
+    if (cleaned) return;
+    cleaned = true;
+    SESSION.heartbeat.stop();
+    try {
+      const { removed } = await cleanupSession(SESSION.dir);
+      console.log(`\n${signal}: session temp dir ${removed ? "deleted + verified gone" : "already gone"} (${SESSION.dir}).`);
+    } catch (e) {
+      console.error(`\n${signal}: session cleanup FAILED — ${e.message}. Next startup's sweep will retry.`);
+    }
+    process.exit(0);
+  };
+  process.on("SIGINT", () => graceful("SIGINT")); // Ctrl+C
+  process.on("SIGTERM", () => graceful("SIGTERM"));
+  process.on("SIGBREAK", () => graceful("SIGBREAK")); // Windows Ctrl+Break
+  // Synchronous backstop for a plain process.exit()/uncaught path (no async here).
+  process.on("exit", () => { if (!cleaned) cleanupSessionSync(SESSION.dir); });
 }
 
 // ---- Small utils -----------------------------------------------------------
@@ -193,6 +259,100 @@ function restorePage(page, id) {
 }
 
 // ---- View model ------------------------------------------------------------
+// ---- Customer inputs (Feature A) -------------------------------------------
+// The station judges "did we honour the input", which is impossible if what the
+// CUSTOMER GAVE is mixed with what the PIPELINE DERIVED. So provenance is explicit:
+//   given[]   — from meta.json inputs (the customer's own words + choices)
+//   derived[] — from story.json (Sonnet-written descriptions, resolved style)
+//   photos[]  — reference photos, each with an explicit availability state
+// A field the pipeline never recorded is reported as MISSING rather than omitted:
+// silent absence reads as "the customer didn't say", which is a different — and
+// review-corrupting — claim from "we didn't capture it".
+const readMeta = () => {
+  try { return JSON.parse(fs.readFileSync(META_PATH, "utf8")); } catch { return null; }
+};
+
+// Photo keys are whitelisted from meta (never taken from the request), so /photo/:key
+// cannot be pointed at an arbitrary path.
+function photoEntries(meta) {
+  const out = [];
+  const push = (key, label, p) => { if (p) out.push({ key, label, path: p }); };
+  const c = meta?.inputs?.child;
+  if (c) {
+    push("child", `${c.name ?? "Protagonist"} — reference photo`, c.photoPath);
+    if (Array.isArray(c.photo_paths)) {
+      c.photo_paths.forEach((p, i) => push(`child-${i}`, `${c.name ?? "Pet"} — photo ${i + 1}`, p));
+    }
+  }
+  (meta?.inputs?.secondaries ?? []).forEach((s, i) => {
+    push(`sec-${i}`, `${s.name ?? `Secondary ${i + 1}`} — reference photo`, s.photoPath);
+    if (Array.isArray(s.photo_paths)) {
+      s.photo_paths.forEach((p, j) => push(`sec-${i}-${j}`, `${s.name ?? "Secondary"} — photo ${j + 1}`, p));
+    }
+  });
+  return out;
+}
+
+function buildInputsModel(story) {
+  const meta = readMeta();
+  if (!meta) {
+    return {
+      metaPresent: false,
+      note: "No meta.json in this book directory — the customer's inputs were never recorded here.",
+      given: [], derived: [], photos: [],
+    };
+  }
+  const I = meta.inputs ?? {};
+  const c = I.child ?? {};
+  // present(v) distinguishes "recorded and empty" from "never recorded" (undefined).
+  const f = (label, value, hint = "") => ({
+    label, hint,
+    value: value === undefined || value === null || value === "" ? null : String(value),
+    missing: value === undefined || value === null || value === "",
+  });
+
+  const given = [
+    f("Name", c.name),
+    f("Age", c.age),
+    f("Gender", c.gender),
+    f("Book type", I.book_type, "child / pet / adult"),
+    f("Art style", I.art_style, "the style the customer picked"),
+    f("Reading level", I.reading_level),
+    f("Age band", I.ageRange),
+    f("Vibe", I.vibe, "pet + adult books only"),
+    f("Animal kind", c.animal_kind, "pet books"),
+    f("Appearance (their words)", c.appearance),
+    f("Background / heritage", c.background),
+    f("Theme (their words)", I.theme),
+    f("Dedication", I.dedication_message, "blank → the auto-default renders"),
+  ];
+
+  const secondaries = (I.secondaries ?? []).map((s) => ({
+    name: s.name ?? "(unnamed)",
+    fields: [
+      f("Age", s.age), f("Gender", s.gender), f("Relationship", s.relationship),
+      f("Subject type", s.subject_type), f("Appearance (their words)", s.appearance_markers),
+    ],
+  }));
+
+  // DERIVED — what the pipeline wrote from the above. This is the comparison target.
+  const derived = [
+    f("Title", story?.title),
+    f("Resolved art style", story?.style),
+    f("Protagonist description (Sonnet)", story?.character),
+  ];
+  (story?.companion_characters ?? []).forEach((cc) => {
+    derived.push(f(`${cc.name ?? "Companion"} description (Sonnet)`, cc.description ?? cc.character_description));
+  });
+
+  const photos = photoEntries(meta).map((p) => {
+    const exists = (() => { try { return fs.existsSync(p.path); } catch { return false; } })();
+    return { key: p.key, label: p.label, path: p.path, available: exists };
+  });
+
+  return { metaPresent: true, given, secondaries, derived, photos };
+}
+
 function buildViewModel() {
   const story = readStory();
   const state = readState();
@@ -236,6 +396,7 @@ function buildViewModel() {
     title: story.title ?? path.basename(BOOK_DIR),
     dir: path.basename(BOOK_DIR),
     envLoaded,
+    inputs: buildInputsModel(story),
     pages,
     summary: {
       approved, total: pages.length,
@@ -343,6 +504,20 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname.startsWith("/img/")) {
       const page = parseInt(pathname.slice("/img/".length), 10);
       return sendPng(res, livePng(page));
+    }
+    // Reference photo: /photo/:key. The key is looked up in the meta-derived
+    // whitelist, so no caller-supplied path is ever read. A photo the pipeline
+    // referenced but that no longer exists on this machine 404s, and the UI shows
+    // an explicit unavailable state rather than a blank frame.
+    if (req.method === "GET" && pathname.startsWith("/photo/")) {
+      const key = decodeURIComponent(pathname.slice("/photo/".length));
+      const entry = photoEntries(readMeta()).find((p) => p.key === key);
+      if (!entry) { res.writeHead(404); return res.end("unknown photo key"); }
+      if (!fs.existsSync(entry.path)) { res.writeHead(404); return res.end("photo not available locally"); }
+      const ext = path.extname(entry.path).toLowerCase();
+      const ct = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+      res.writeHead(200, { "content-type": ct, "cache-control": "no-store" });
+      return res.end(fs.readFileSync(entry.path));
     }
     // History thumbnail: /hist/:page/:id
     if (req.method === "GET" && pathname.startsWith("/hist/")) {

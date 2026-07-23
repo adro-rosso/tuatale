@@ -65,7 +65,38 @@
   footer { max-width:1120px; margin:0 auto 40px; padding:0 22px; }
   #finalizeMsg { color:var(--muted); font-size:13px; margin-top:8px; }
   .banner { background:var(--warnbg); color:var(--warn); font-size:12px; padding:4px 10px; border-radius:6px; }
-  @media(max-width:820px){ .card{ grid-template-columns:1fr; } }
+  /* ---- Customer inputs panel (Feature A) ---- */
+  .inputs { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 18px; }
+  .inputs > summary { cursor:pointer; font-weight:650; font-size:14px; list-style:none; display:flex;
+                      align-items:center; gap:10px; }
+  .inputs > summary::-webkit-details-marker { display:none; }
+  .inputs > summary::before { content:"▸"; color:var(--muted); }
+  .inputs[open] > summary::before { content:"▾"; }
+  .inputs .cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; margin-top:14px; }
+  .prov { border:1px solid var(--line); border-radius:10px; padding:11px 12px; }
+  .prov.given { border-color:#cfe0d5; background:#fbfdfc; }
+  .prov.derived { border-color:#d9dde3; background:#fafbfc; }
+  .prov h4 { margin:0 0 2px; font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.03em; }
+  .prov.given h4 { color:var(--ok); }
+  .prov.derived h4 { color:var(--accent); }
+  .prov .sub { font-size:11px; color:var(--muted); margin-bottom:9px; }
+  .fld { display:grid; grid-template-columns:132px minmax(0,1fr); gap:8px; padding:4px 0;
+         border-top:1px solid var(--line); font-size:13px; }
+  .fld:first-of-type { border-top:0; }
+  .fld .k { color:var(--muted); }
+  .fld .v { white-space:pre-wrap; word-break:break-word; }
+  .fld .v.miss { color:var(--warn); font-style:italic; }
+  .fld .hint { color:var(--muted); font-size:11px; }
+  .subj { margin-top:10px; padding-top:8px; border-top:1px dashed var(--line); }
+  .subj .nm { font-weight:650; font-size:13px; margin-bottom:2px; }
+  .photos { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  .ph { width:132px; }
+  .ph img { width:132px; height:132px; object-fit:cover; border:1px solid var(--line); border-radius:8px; display:block; }
+  .ph .none { width:132px; height:132px; border:1px dashed var(--line); border-radius:8px; display:flex;
+              align-items:center; justify-content:center; text-align:center; font-size:11px; color:var(--warn);
+              background:var(--warnbg); padding:8px; }
+  .ph small { display:block; font-size:11px; color:var(--muted); margin-top:4px; line-height:1.25; }
+  @media(max-width:820px){ .card{ grid-template-columns:1fr; } .inputs .cols{ grid-template-columns:1fr; } }
 </style>
 </head>
 <body>
@@ -77,7 +108,13 @@
   <span id="envWarn" class="banner" style="display:none">env-file not loaded → text regen disabled</span>
 </header>
 
-<main id="pages"></main>
+<main>
+  <details class="inputs" id="inputsPanel" open>
+    <summary>Customer inputs <span class="tally" id="inputsSummary"></span></summary>
+    <div id="inputsBody"></div>
+  </details>
+  <div id="pages" style="display:flex;flex-direction:column;gap:22px"></div>
+</main>
 
 <footer>
   <button id="finalizeBtn" class="ok" disabled>Finalize → stitch book.pdf</button>
@@ -96,8 +133,69 @@ async function api(path, body) {
 function esc(s){ return (s??"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 function counterText(chars, maxChars){ return maxChars==null ? `${chars} chars (no limit)` : `${chars} / ${maxChars} chars`; }
 
+// ---- Customer inputs panel (Feature A) -------------------------------------
+// GIVEN (what the customer provided) is rendered separately from DERIVED (what the
+// pipeline wrote from it) — the whole point is judging "did we honour the input",
+// which is impossible if the two are mixed. A field the pipeline never recorded
+// renders as "not captured", never as blank: silent absence would read as "the
+// customer didn't say", which is a different claim.
+function fldRow(f) {
+  const v = f.missing
+    ? `<span class="v miss">not captured</span>`
+    : `<span class="v">${esc(f.value)}</span>`;
+  const hint = f.hint ? `<span class="hint"> — ${esc(f.hint)}</span>` : "";
+  return `<div class="fld"><span class="k">${esc(f.label)}${hint}</span>${v}</div>`;
+}
+
+function renderInputs(inputs) {
+  const body = $("inputsBody");
+  const sum = $("inputsSummary");
+  if (!inputs || !inputs.metaPresent) {
+    sum.textContent = "";
+    body.innerHTML = `<div class="banner" style="display:inline-block;margin-top:12px">${
+      esc(inputs?.note || "No meta.json — customer inputs unavailable for this book.")}</div>`;
+    return;
+  }
+  const missingN = inputs.given.filter((f) => f.missing).length;
+  const photoN = inputs.photos.length;
+  const photoMissing = inputs.photos.filter((p) => !p.available).length;
+  sum.textContent = `· ${photoN} reference photo${photoN === 1 ? "" : "s"}`
+    + (photoMissing ? ` (${photoMissing} unavailable)` : "")
+    + (missingN ? ` · ${missingN} field${missingN === 1 ? "" : "s"} not captured` : "");
+
+  const photos = photoN
+    ? `<div class="photos">${inputs.photos.map((p) => `
+        <div class="ph">
+          ${p.available
+            ? `<img src="/photo/${encodeURIComponent(p.key)}" alt="${esc(p.label)}">`
+            : `<div class="none">reference photo not available locally</div>`}
+          <small>${esc(p.label)}</small>
+        </div>`).join("")}</div>`
+    : `<div class="banner" style="display:inline-block;margin-bottom:12px">no reference photos recorded for this book</div>`;
+
+  const secs = (inputs.secondaries ?? []).map((s) => `
+    <div class="subj"><div class="nm">${esc(s.name)}</div>${s.fields.map(fldRow).join("")}</div>`).join("");
+
+  body.innerHTML = `
+    ${photos}
+    <div class="cols">
+      <div class="prov given">
+        <h4>Customer provided</h4>
+        <div class="sub">Their own words and choices — the thing to judge the book against.</div>
+        ${inputs.given.map(fldRow).join("")}
+        ${secs}
+      </div>
+      <div class="prov derived">
+        <h4>Pipeline generated</h4>
+        <div class="sub">Written by the pipeline from the left-hand column. Not customer input.</div>
+        ${inputs.derived.map(fldRow).join("")}
+      </div>
+    </div>`;
+}
+
 function render() {
-  const { pages, summary, title, envLoaded } = STATE;
+  const { pages, summary, title, envLoaded, inputs } = STATE;
+  renderInputs(inputs);
   $("title").textContent = title;
   $("approvedN").textContent = summary.approved;
   $("totalN").textContent = summary.total;
