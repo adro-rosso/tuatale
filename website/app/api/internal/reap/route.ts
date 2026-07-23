@@ -15,6 +15,7 @@
  */
 import { NextResponse } from 'next/server';
 import { reapExpiredDrafts } from '@/lib/retention/reap-drafts';
+import { reapReviewArtifacts } from '@/lib/retention/reap-review-artifacts';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -28,15 +29,31 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   const dryRun = new URL(req.url).searchParams.get('apply') !== '1';
   try {
+    // 1. E1 — expired drafts + their photos (tuatale-previews).
     const report = await reapExpiredDrafts({ dryRun });
     // Errors are collected, not thrown: one bad draft must not stop the rest, and a
     // draft whose Storage delete failed keeps its row so the next run can retry it.
     if (report.errors.length) console.error('[reap] partial failure', report.errors);
+
+    // 2. Orphaned review artifacts — never-shipped / cancelled books past 30d
+    //    (tuatale-books/orders/<id>/review/). Runs AFTER the draft reap in the same
+    //    request → sequential, no self-race; different bucket + rows, so no cross-race.
+    //    Its own errors are collected the same way (one bad order can't stop the sweep).
+    const reviewReport = await reapReviewArtifacts({ dryRun });
+    if (reviewReport.errors.length) console.error('[reap] review partial failure', reviewReport.errors);
+
     console.log(
       `[reap] ${dryRun ? 'DRY-RUN' : 'APPLIED'} drafts=${report.draftsReaped} ` +
-        `photos=${report.photosDeleted.length} retained=${report.photosRetained.length} errors=${report.errors.length}`,
+        `photos=${report.photosDeleted.length} retained=${report.photosRetained.length} ` +
+        `errors=${report.errors.length} | review: scanned=${reviewReport.scanned} ` +
+        `cleared=${reviewReport.ordersCleared} objects=${reviewReport.objectsDeleted} ` +
+        `errors=${reviewReport.errors.length}`,
     );
-    return NextResponse.json({ ok: report.errors.length === 0, ...report });
+    return NextResponse.json({
+      ok: report.errors.length === 0 && reviewReport.errors.length === 0,
+      ...report,
+      review: reviewReport,
+    });
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error)?.message ?? 'reap failed' }, { status: 500 });
   }

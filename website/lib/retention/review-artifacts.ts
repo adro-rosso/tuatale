@@ -64,6 +64,19 @@ export interface ClearResult {
 }
 
 /**
+ * List (recursively) every review-artifact object for an order WITHOUT deleting. Used by
+ * the reaper's dry run to count precisely, sharing the one recursive walk so dry-run and
+ * apply can never disagree about what's there.
+ */
+export async function listReviewArtifacts(
+  orderId: string,
+  deps: { client?: ReturnType<typeof createServerClient> } = {},
+): Promise<string[]> {
+  const storage = (deps.client ?? createServerClient()).storage;
+  return listAllUnderPrefix(storage, BOOKS_BUCKET, reviewPrefix(orderId));
+}
+
+/**
  * Remove every object under orders/<orderId>/review/, then confirm absence via list().
  *
  * Idempotent: an order with no review/ prefix returns { deleted: 0 } without error.

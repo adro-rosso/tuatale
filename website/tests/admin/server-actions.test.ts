@@ -378,7 +378,10 @@ describe('cancelJobAction', () => {
     redirectSpy.mockReset();
     adminUsernameSpy.mockReset();
     adminUsernameSpy.mockReturnValue('adro');
-    markCancelledSpy.mockResolvedValue({ id: 'job-1', status: 'cancelled' });
+    clearReviewArtifactsSpy.mockReset();
+    sentryCaptureExceptionSpy.mockReset();
+    markCancelledSpy.mockResolvedValue({ id: 'job-1', order_id: 'order-1', status: 'cancelled' });
+    clearReviewArtifactsSpy.mockResolvedValue({ deleted: 0 });
   });
 
   it('calls markCancelled with admin + notes + redirects to list', async () => {
@@ -390,6 +393,25 @@ describe('cancelJobAction', () => {
       reviewNotes: 'customer changed their mind',
     });
     expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
+  });
+
+  it('clears review artifacts too — cancel is also an exit from awaiting_review', async () => {
+    await expect(cancelJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(clearReviewArtifactsSpy).toHaveBeenCalledWith('order-1');
+    expect(sentryCaptureExceptionSpy).not.toHaveBeenCalled();
+  });
+
+  it('cancel cleanup failure: Sentry ops-alert, cancel still completes + redirects', async () => {
+    clearReviewArtifactsSpy.mockRejectedValue(new Error('cleanup incomplete'));
+    await expect(cancelJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
+    expect(sentryCaptureExceptionSpy).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        tags: expect.objectContaining({ component: 'cancel-job-action', failure: 'review-cleanup' }),
+        extra: expect.objectContaining({ orderId: 'order-1' }),
+      }),
+    );
   });
 
   it('passes reviewNotes=undefined when textarea is empty', async () => {
