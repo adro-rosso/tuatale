@@ -1,5 +1,6 @@
 // E4 — OPERATOR ERASURE. Deletes everything we hold for one person: uploaded photos,
-// rendered previews, book PDFs, and the rows themselves.
+// rendered previews, and EVERY object under each order's books prefix (book.pdf plus any
+// retained per-page review artifacts), and the rows themselves.
 //
 // Two rules, inherited from E1 (lib/retention/reap-drafts.ts) and from a real incident:
 //
@@ -99,6 +100,35 @@ async function verifyGone(bucket, paths) {
   return remaining;
 }
 
+/**
+ * Recursively enumerate EVERY object path under a storage prefix.
+ *
+ * Supabase list() is NOT recursive (measured 2026-07-22): it returns files (id !== null)
+ * and one level of folders (id === null) — a folder's contents require a further list().
+ * An erasure that walked only the top level would leave nested objects behind, so this
+ * recurses into every folder. Paginated (list caps per call) because for erasure a silent
+ * cap = surviving personal data. Returns file paths only; empty prefix → [].
+ */
+async function listAllUnderPrefix(bucket, prefix) {
+  const LIMIT = 100;
+  const out = [];
+  const walk = async (p) => {
+    for (let offset = 0; ; offset += LIMIT) {
+      const { data, error } = await sb.storage.from(bucket).list(p, { limit: LIMIT, offset });
+      if (error) throw new Error(`list("${p}") failed: ${error.message}`);
+      const entries = data ?? [];
+      for (const o of entries) {
+        const full = `${p}/${o.name}`;
+        if (o.id === null) await walk(full); // folder → recurse
+        else out.push(full); // file
+      }
+      if (entries.length < LIMIT) break;
+    }
+  };
+  await walk(prefix);
+  return out;
+}
+
 // ── 1. Resolve the subject's rows ─────────────────────────────────────────
 const { data: orders, error: oErr } = EMAIL
   ? await sb.from("orders").select("id, customer_email, photo_urls, book_pdf_url, converted_from_draft_id, created_at").eq("customer_email", EMAIL)
@@ -126,8 +156,17 @@ for (const d of drafts ?? []) console.log(`  draft  ${d.id}  ${String(d.created_
 // ── 2. Candidate objects, FROM THE ROWS' OWN PATH LISTS ───────────────────
 const photoPaths = new Set();
 for (const r of [...(orders ?? []), ...(drafts ?? [])]) collectPhotoPaths(r.photo_urls, photoPaths);
-// Books are namespaced by order id already — a prefix delete, no cross-row sharing.
-const bookPaths = [...orderIds].map((id) => `orders/${id}/book.pdf`);
+// Books live under orders/<id>/ — namespaced by order id, so no cross-row sharing and
+// no referential check needed (unlike the content-hashed photos). GENUINE prefix delete:
+// recursively enumerate EVERY object under each order's prefix, not just book.pdf.
+// (Before 2026-07-22 this hardcoded `orders/<id>/book.pdf` while the comment CLAIMED a
+// prefix delete — so any sibling object under the prefix, e.g. retained per-page review
+// artifacts, would have SURVIVED an erasure. The review-lifecycle retention that lands
+// next is exactly such a sibling, which is why this had to be fixed first.)
+const bookPaths = [];
+for (const id of orderIds) {
+  bookPaths.push(...(await listAllUnderPrefix(BOOKS_BUCKET, `orders/${id}`)));
+}
 // Preview renders are per-job UUIDs (never content-shared).
 const previewPaths = (previews ?? [])
   .map((p) => (p.image_url || "").split(`${PREVIEW_BUCKET}/`)[1])
@@ -151,7 +190,7 @@ if (sharedPhotos.length) {
   console.log("   An erasure request that must cover these needs a manual decision.");
   sharedPhotos.forEach((p) => console.log(`  ${p}`));
 }
-console.log(`\nBOOK PDFs to delete (${bookPaths.length}):`);
+console.log(`\nBOOK OBJECTS to delete (${bookPaths.length}, whole orders/<id>/ prefix):`);
 bookPaths.forEach((p) => console.log(`  ${p}`));
 console.log(`\nPREVIEW RENDERS to delete (${previewPaths.length}):`);
 previewPaths.forEach((p) => console.log(`  ${p}`));
