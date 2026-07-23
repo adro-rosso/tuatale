@@ -118,6 +118,7 @@
 
 <footer>
   <button id="finalizeBtn" class="ok" disabled>Finalize → stitch book.pdf</button>
+  <button id="reshipBtn" class="primary" style="display:none" disabled>Verify &amp; re-ship → replace customer book</button>
   <div id="finalizeMsg"></div>
 </footer>
 
@@ -203,7 +204,13 @@ function render() {
   $("regenN").textContent = summary.textRegens;
   $("costN").textContent = "$" + summary.estCost.toFixed(2);
   $("barFill").style.width = (summary.total ? (summary.approved / summary.total * 100) : 0) + "%";
+  // A customer-facing overwrite (Verify & re-ship) is a DISTINCT control from the local
+  // Finalize, shown only for a prod (--order) session. Local (--dir) books see Finalize.
+  const isProd = STATE.mode === "prod";
+  $("finalizeBtn").style.display = isProd ? "none" : "";
   $("finalizeBtn").disabled = !summary.allApproved;
+  $("reshipBtn").style.display = isProd ? "" : "none";
+  $("reshipBtn").disabled = !summary.allApproved;
   $("envWarn").style.display = envLoaded ? "none" : "inline-block";
 
   const host = $("pages");
@@ -327,6 +334,23 @@ document.addEventListener("blur", (e) => {
 }, true);
 
 $("finalizeBtn").onclick = finalize;
+
+async function reship() {
+  if (!confirm("Verify the re-stitch and REPLACE the customer's book.pdf?\n\nThis overwrites the shipped book. The current book survives untouched if any completeness check fails.")) return;
+  const btn = $("reshipBtn"); busy(btn, "verifying…");
+  const r = await api("/api/reship", {});
+  if (r.ok) {
+    $("finalizeMsg").innerHTML = `✓ Re-shipped: book.pdf replaced (${r.bookPages} pages), pushed ${r.pushed.length} artifact(s). `
+      + `<span style="color:var(--warn)">Note: the admin PDF link may serve the old book for a short cache window.</span>`;
+  } else {
+    const failed = (r.checks || []).filter((c) => !c.pass).map((c) => `${c.name} (${c.detail})`);
+    $("finalizeMsg").innerHTML = `<span style="color:var(--err)">✗ Re-ship ABORTED — customer book UNTOUCHED.</span> `
+      + (failed.length ? `Failed: ${esc(failed.join("; "))}` : esc(r.error || "unknown error"));
+  }
+  unbusy(btn);
+  await refresh();
+}
+$("reshipBtn").onclick = reship;
 refresh();
 </script>
 </body>

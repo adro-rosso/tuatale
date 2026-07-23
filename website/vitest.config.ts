@@ -29,6 +29,10 @@ import path from 'node:path';
  */
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
+  // Allow tests to import the review-station module (tools/review-station/), which lives
+  // above the website root — so the reship whitelist/verify guards are CI-enforced here
+  // (CI runs the website suite). Scoped to the repo root, not the whole filesystem.
+  server: { fs: { allow: [path.resolve(__dirname, '..')] } },
   test: {
     env: loadEnv(mode, process.cwd(), ''),
     environment: 'jsdom',

@@ -28,6 +28,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PDFDocument } from "pdf-lib";
 import { pdf as pdfToImages } from "pdf-to-img";
+import { mergeBookBytes, verifyAndReship } from "./reship.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
@@ -106,7 +107,10 @@ if (ARGS.order) {
   const { dir, count } = await materializeOrder(ARGS.order, client);
   BOOK_DIR = dir;
   const heartbeat = startHeartbeat(dir);
-  SESSION = { dir, heartbeat };
+  // Everything materialised now has mtime <= this instant; a later re-roll rewrites a page
+  // to a NEWER mtime, so the reship derives its dirty-page set by comparing against it — no
+  // per-handler dirty bookkeeping needed.
+  SESSION = { dir, heartbeat, orderId: ARGS.order, materializedAt: Date.now() };
   console.log(`  → ${count} object(s) → ${dir} (TRANSIENT — deleted on close)`);
 } else {
   BOOK_DIR = path.resolve(ARGS.dir);
@@ -438,6 +442,11 @@ function buildViewModel() {
     title: story.title ?? path.basename(BOOK_DIR),
     dir: path.basename(BOOK_DIR),
     envLoaded,
+    // "prod" (--order, materialised — offers Verify & re-ship) vs "local" (--dir — Finalize
+    // stays local-only). A customer-facing overwrite must never share a control with a local
+    // operation, so the UI keys the button off this.
+    mode: SESSION ? "prod" : "local",
+    orderId: SESSION ? SESSION.orderId : null,
     inputs: buildInputsModel(story),
     pages,
     summary: {
@@ -472,27 +481,24 @@ const relayText = (page) => runGenerateBook(["--only-pages", String(page), "--te
 // Merge front-matter (< 50 = front, >= 50 = back) + page PDFs → book.pdf,
 // useObjectStreams:false (matches src/book-pipeline.js). $0 — reuses on-disk PDFs.
 async function stitchBook() {
-  const story = readStory();
-  const pagePdfs = story.scenes.map((s) => livePdf(s.page)).filter((p) => fs.existsSync(p));
-  const fmDir = path.join(BOOK_DIR, "front-matter");
-  let front = [], back = [];
-  if (fs.existsSync(fmDir)) {
-    for (const f of fs.readdirSync(fmDir).filter((f) => f.endsWith(".pdf")).sort()) {
-      const n = parseInt(f, 10);
-      (Number.isFinite(n) && n < 50 ? front : back).push(path.join(fmDir, f));
-    }
-  }
-  const ordered = [...front, ...pagePdfs, ...back];
-  const merged = await PDFDocument.create();
-  for (const pdfPath of ordered) {
-    const src = await PDFDocument.load(fs.readFileSync(pdfPath));
-    const copied = await merged.copyPages(src, src.getPageIndices());
-    copied.forEach((pg) => merged.addPage(pg));
-  }
-  const bytes = await merged.save({ useObjectStreams: false });
+  // Shares mergeBookBytes with the verified re-ship so the front/back split can't drift.
+  const { bytes, sourceCount } = await mergeBookBytes(BOOK_DIR, readStory());
   const outPath = path.join(BOOK_DIR, "book.pdf");
   fs.writeFileSync(outPath, bytes);
-  return { path: outPath, pages: ordered.length, bytes: bytes.length };
+  return { path: outPath, pages: sourceCount, bytes: bytes.length };
+}
+
+// Pages whose PDF was rewritten since materialise (a re-roll / text re-lay). Used by the
+// reship to push ONLY the changed pages' shipping artifacts.
+function computeDirtyPages() {
+  if (!SESSION) return [];
+  const story = readStory();
+  return story.scenes
+    .map((s) => s.page)
+    .filter((p) => {
+      const pdf = livePdf(p);
+      return fs.existsSync(pdf) && fs.statSync(pdf).mtimeMs > SESSION.materializedAt;
+    });
 }
 
 // ---- HTTP helpers ----------------------------------------------------------
@@ -668,6 +674,30 @@ const server = http.createServer(async (req, res) => {
       }
       const out = await stitchBook();
       return sendJSON(res, 200, { ok: true, ...out });
+    }
+
+    // Verify & re-ship (PROD --order mode ONLY): persist the fix + REPLACE the customer's
+    // book.pdf, but only after all four completeness checks pass. orderId is the SESSION's
+    // — never read from the request — so writes can only ever target this order.
+    if (req.method === "POST" && pathname === "/api/reship") {
+      if (!SESSION) return sendJSON(res, 400, { ok: false, error: "re-ship is --order (prod) mode only" });
+      const vm = buildViewModel();
+      if (!vm.summary.allApproved) {
+        return sendJSON(res, 400, { ok: false, error: `Not all pages approved (${vm.summary.approved}/${vm.summary.total}).` });
+      }
+      const { getClient } = await import("../../worker/src/db.js");
+      const client = getClient();
+      const dirtyPages = computeDirtyPages();
+      const storyDirty = fs.existsSync(STORY_PATH) && fs.statSync(STORY_PATH).mtimeMs > SESSION.materializedAt;
+      const result = await verifyAndReship({
+        orderId: SESSION.orderId, // NOT from the request body
+        bookDir: BOOK_DIR,
+        client,
+        dirtyPages,
+        storyDirty,
+      });
+      // 200 on success; 422 when a completeness check aborted the replace (nothing written).
+      return sendJSON(res, result.ok ? 200 : 422, result);
     }
 
     res.writeHead(404); res.end("not found");
