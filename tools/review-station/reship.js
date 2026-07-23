@@ -17,7 +17,24 @@
 //      book.pdf survives by construction (we simply don't call the upload).
 import fs from "node:fs";
 import path from "node:path";
-import { PDFDocument } from "pdf-lib";
+
+// pdf-lib is LAZY-imported (only the merge/verify paths need it), so the WHITELIST guards
+// (isShippingArtifact + uploadReviewArtifact) can be imported — and CI-enforced in the
+// website suite — WITHOUT pdf-lib on the resolution path. website CI installs only
+// website deps; pdf-lib lives in the repo-root node_modules a static import would need.
+let _PDFDocument = null;
+async function PDFLib() {
+  if (!_PDFDocument) {
+    // A VARIABLE specifier (not a string literal) so no bundler statically resolves it: the
+    // whitelist guards are imported by the website CI suite, which installs no root deps.
+    // Only the merge/verify paths ever CALL this, in the station's Node runtime where
+    // pdf-lib is present. (A literal `import("pdf-lib")` makes Vite resolve it at transform
+    // time, which fails in website-only CI.)
+    const spec = ["pdf", "lib"].join("-");
+    ({ PDFDocument: _PDFDocument } = await import(spec));
+  }
+  return _PDFDocument;
+}
 
 export const BOOKS_BUCKET = "tuatale-books";
 const pad2 = (n) => String(n).padStart(2, "0");
@@ -47,6 +64,7 @@ export function shippingArtifactsForPage(page) {
  * Front matter numbered < 50 goes before the pages; >= 50 after.
  */
 export async function mergeBookBytes(bookDir, story) {
+  const PDFDocument = await PDFLib();
   const fmDir = path.join(bookDir, "front-matter");
   const front = [];
   const back = [];
@@ -78,6 +96,7 @@ export async function mergeBookBytes(bookDir, story) {
 }
 
 async function pageCount(bytes) {
+  const PDFDocument = await PDFLib();
   return (await PDFDocument.load(bytes)).getPageCount();
 }
 

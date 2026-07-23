@@ -24,6 +24,15 @@ jobs:
     # repo root has no CI yet — it's developer-machine-only code with no
     # deploy target. When Phase 4 wires pipeline integration, add a
     # second job here for pipeline tests.
+    #
+    # FOLLOW-UP (add-worker/tools-test-job): that second job should run the
+    # WORKER suite (`cd worker && npm ci && npm test` with root deps installed),
+    # which is NOT CI-run today. Its scope must cover the tests that had to live
+    # there because they need root deps the website suite doesn't install:
+    #   - worker/tests/review-artifacts.test.js  (step-2 -rendered.png exclusion)
+    #   - worker/tests/reship-verify.test.js      (reship merge / verify / abort)
+    # The reship WHITELIST guard IS CI-enforced here in website (needs no pdf-lib);
+    # only the pdf-dependent halves are the honour-system gap this job would close.
     defaults:
       run:
         working-directory: website
