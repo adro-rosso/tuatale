@@ -8,6 +8,7 @@ import { getOrderById } from '@/db/orders';
 import { adminUsername } from '@/lib/admin-auth';
 import { sendEmail } from '@/lib/email/send';
 import { buildShipNotification } from '@/lib/email/templates/ship-notification';
+import { clearReviewArtifacts } from '@/lib/retention/review-artifacts';
 
 const NO_PDF_REASON = 'no PDF URL on shipped job — email skipped';
 const ORDER_MISSING_REASON = 'order not found at ship time — email skipped';
@@ -54,6 +55,22 @@ export async function shipJobAction(jobId: string, formData: FormData): Promise<
     reviewedBy,
     reviewNotes: reviewNotes || undefined,
   });
+
+  // 1b. End the review-artifact lifecycle: delete orders/<id>/review/ (keeps book.pdf).
+  //     BEST-EFFORT vs the ship — the customer getting their book is the priority, so a
+  //     cleanup failure does NOT roll back the ship. But a silent failure means a child's
+  //     artifacts outlived their lifecycle, so it is RAISED as an ops alert (Sentry, the
+  //     same path this action already uses for post-ship failures), with the orderId so it
+  //     can be swept. The abandoned-order reaper (follow-up) is the durable backstop.
+  try {
+    await clearReviewArtifacts(shippedJob.order_id);
+  } catch (err) {
+    Sentry.captureException(err, {
+      level: 'error',
+      tags: { component: 'ship-job-action', failure: 'review-cleanup' },
+      extra: { jobId: shippedJob.id, orderId: shippedJob.order_id },
+    });
+  }
 
   // 2. Decide what to do about the customer email.
   try {

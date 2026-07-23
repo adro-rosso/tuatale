@@ -22,6 +22,7 @@ const {
   inngestSendSpy,
   revalidatePathSpy,
   redirectSpy,
+  clearReviewArtifactsSpy,
 } = vi.hoisted(() => ({
   markShippedSpy: vi.fn(),
   markCancelledSpy: vi.fn(),
@@ -36,6 +37,7 @@ const {
   inngestSendSpy: vi.fn(),
   revalidatePathSpy: vi.fn(),
   redirectSpy: vi.fn(),
+  clearReviewArtifactsSpy: vi.fn(),
 }));
 
 class RedirectSentinel extends Error {
@@ -59,6 +61,10 @@ vi.mock('@/db/orders', () => ({
 
 vi.mock('@/lib/email/send', () => ({
   sendEmail: sendEmailSpy,
+}));
+
+vi.mock('@/lib/retention/review-artifacts', () => ({
+  clearReviewArtifacts: clearReviewArtifactsSpy,
 }));
 
 vi.mock('@sentry/nextjs', () => ({
@@ -151,11 +157,13 @@ describe('shipJobAction', () => {
     redirectSpy.mockReset();
     adminUsernameSpy.mockReset();
     adminUsernameSpy.mockReturnValue('adro');
-    // Defaults: real PDF, order found, email sent successfully.
+    clearReviewArtifactsSpy.mockReset();
+    // Defaults: real PDF, order found, email sent successfully, cleanup succeeds.
     markShippedSpy.mockResolvedValue(shippedJob());
     getOrderByIdSpy.mockResolvedValue(fakeOrder());
     sendEmailSpy.mockResolvedValue({ success: true, messageId: 'msg_xyz' });
     updateJobNotificationStatusSpy.mockResolvedValue({});
+    clearReviewArtifactsSpy.mockResolvedValue({ deleted: 12 });
   });
 
   it('happy path: markShipped + send email + records notification_sent + redirects', async () => {
@@ -186,6 +194,29 @@ describe('shipJobAction', () => {
     expect(revalidatePathSpy).toHaveBeenCalledWith('/admin/orders/job-1');
     expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
     expect(sentryCaptureExceptionSpy).not.toHaveBeenCalled();
+  });
+
+  it('ends the review lifecycle: clears review artifacts for the shipped order', async () => {
+    await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(clearReviewArtifactsSpy).toHaveBeenCalledWith('order-1');
+    // Cleanup success ⇒ no ops alert.
+    expect(sentryCaptureExceptionSpy).not.toHaveBeenCalled();
+  });
+
+  it('review cleanup failure: ship NOT rolled back, Sentry ops-alert raised, still redirects', async () => {
+    clearReviewArtifactsSpy.mockRejectedValue(new Error('review cleanup incomplete for order-1'));
+    await expect(shipJobAction('job-1', fd())).rejects.toBeInstanceOf(RedirectSentinel);
+    // Ship went through: the customer email still dispatched, redirect still happened.
+    expect(sendEmailSpy).toHaveBeenCalledTimes(1);
+    expect(redirectSpy).toHaveBeenCalledWith('/admin/orders');
+    // The failure is surfaced as an ops alert tagged so it can be filtered + swept.
+    expect(sentryCaptureExceptionSpy).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        tags: expect.objectContaining({ failure: 'review-cleanup' }),
+        extra: expect.objectContaining({ orderId: 'order-1' }),
+      }),
+    );
   });
 
   it('passes reviewNotes=undefined when textarea is empty', async () => {
