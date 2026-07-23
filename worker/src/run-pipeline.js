@@ -32,6 +32,10 @@ import {
   pushCheckpoint as realPushCheckpoint,
   clearCheckpoint as realClearCheckpoint,
 } from "./checkpoint.js";
+import {
+  pushReviewArtifacts as realPushReviewArtifacts,
+  reviewRetentionEnabled,
+} from "./review-artifacts.js";
 import { dominantCause } from "./resume-policy.js";
 
 /**
@@ -112,6 +116,16 @@ export function syncPhotoPathsIntoMeta(input, meta) {
   return meta;
 }
 
+/**
+ * Derive the book type from the pipeline input alone (no order needed): the adapter
+ * sets `audience='adult'` for adult books and `child.subject_type='non_human'` for pets.
+ */
+function deriveBookType(input) {
+  if (input?.audience === "adult") return "adult";
+  if (input?.child?.subject_type === "non_human") return "pet";
+  return "child";
+}
+
 export function buildMetaObject(input, story, usage) {
   return {
     inputs: {
@@ -120,6 +134,16 @@ export function buildMetaObject(input, story, usage) {
       theme: input.theme,
       ageRange: input.ageRange,
       reading_level: input.reading_level,
+      // The customer's own CHOICES (2026-07-22). Previously these lived only in the
+      // Supabase drafts/orders row, so a book's own record could not answer "what did
+      // they actually pick?" — which is exactly what operator review needs, and a DB
+      // row may be reaped while the book dir persists. Recorded here so the book is
+      // self-describing. Additive: every existing meta.json consumer reads
+      // inputs.child/theme and is unaffected.
+      book_type: deriveBookType(input),
+      art_style: input.style ?? null,
+      vibe: input.vibe ?? null,
+      dedication_message: input.dedicationMessage ?? null,
     },
     story: { title: story?.title ?? null },
     generatedAt: new Date().toISOString(),
@@ -209,6 +233,7 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
     restoreCheckpoint = realRestoreCheckpoint,
     pushCheckpoint = realPushCheckpoint,
     clearCheckpoint = realClearCheckpoint,
+    pushReviewArtifacts = realPushReviewArtifacts,
     resolveImageOverride = null,
     scratchDir: scratchDirOverride = null,
   } = deps;
@@ -296,6 +321,20 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
 
     // 7. Complete → upload + drop the checkpoint (work is done).
     const { pdfUrl, storagePath } = await uploadBookPdf({ orderId, pdfBytes: result.bookPdfBytes });
+
+    // 7b. Retain the minimum per-page review set (flag-gated, default off; deleted on
+    //     ship — step 3). BEST-EFFORT: the customer's book.pdf is already uploaded, so a
+    //     retention failure must NOT fail an otherwise-good book. Worst case the operator
+    //     reviews the PDF as before. Runs before clearCheckpoint so scratch is intact.
+    if (reviewRetentionEnabled()) {
+      try {
+        const { count, prefix } = await pushReviewArtifacts({ orderId, scratchDir, story, meta });
+        console.log(`  review artifacts retained: ${count} object(s) under ${prefix}/`);
+      } catch (e) {
+        console.warn(`pushReviewArtifacts failed (job=${jobId} order=${orderId}): ${e.message}`);
+      }
+    }
+
     await clearCheckpoint({ jobId }).catch((e) => console.warn(`clearCheckpoint failed (${jobId}): ${e.message}`));
 
     return { pdfUrl, metadata: { ...result.summary, tokens: usage, storagePath } };
