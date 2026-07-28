@@ -33,6 +33,11 @@ import { validateArtStyle } from "../../src/art-styles.js";
 
 const HUMAN = "human";
 
+// Cap on how many of a secondary's photos anchor their view-0 mint. Mirrors the
+// website secondary-uploader limit (secondarySchema: photos.max(5)) so a
+// many-photo upload can't bloat the single mint call. (2026-07-24)
+const MAX_SECONDARY_PHOTOS = 5;
+
 /**
  * Default age for a secondary. Non-humans get 5; humans use their explicit age
  * if the order somehow carries one, else 30. (The current wizard captures no
@@ -105,13 +110,21 @@ export function adaptSecondary(s, index) {
     // Only set when true, so a non-adult secondary's meta stays byte-identical.
     if (deriveIsAdult(s)) adapted.is_adult = true;
   }
-  // Forward a photos array if present (forward-compat with the deferred
-  // child-photo workstream; the pipeline ignores it today).
+  // Forward the full photos array.
   if (Array.isArray(s.photos)) adapted.photos = s.photos;
-  // Photo-anchor plumbing (probe, 2026-07-07): first photo = a Supabase Storage
-  // path; expose it as photoPath so the worker can download it to a local file
-  // and book-pipeline can photo-anchor this secondary's view-0.
-  if (Array.isArray(s.photos) && s.photos[0]) adapted.photoPath = s.photos[0];
+  // Photo-anchor plumbing (2026-07-24): a companion's photos drive their likeness,
+  // so ALL of them anchor view-0 at mint — the same multi-photo path the pet
+  // protagonist uses (meta.inputs.child.photo_paths). Previously only photos[0]
+  // reached the mint (singular photoPath), so a secondary's clean frontal portraits
+  // could sit unused while the worst photo anchored their sheet. book-pipeline reads
+  // photo_paths (preferred); the worker's downloadSubjectPhotos already handles the
+  // plural array generically. Capped at MAX_SECONDARY_PHOTOS.
+  if (Array.isArray(s.photos) && s.photos.filter(Boolean).length) {
+    adapted.photo_paths = s.photos.filter(Boolean).slice(0, MAX_SECONDARY_PHOTOS);
+    // Legacy singular fallback — a lone photoPath still anchors if photo_paths is
+    // ever absent downstream. photo_paths is the preferred path.
+    adapted.photoPath = adapted.photo_paths[0];
+  }
   return adapted;
 }
 

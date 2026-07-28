@@ -117,17 +117,29 @@ export function formatMarkers(name, markersStr) {
 // injected colour also changes the fingerprint, which forces the re-mint.
 // Env-gated SHIRT_COLOUR_LOCK=off for the A/B baseline. Protagonist untouched.
 const SECONDARY_SHIRT_PALETTE = ["denim blue", "burgundy", "mustard", "forest teal"];
-function secondaryShirtColour(subject) {
+function secondaryShirtColour(subject, hasPhoto = false) {
   if (process.env.SHIRT_COLOUR_LOCK === "off") return null;
+  // Photo-anchored → the photo owns the outfit; an invented colour fights it at
+  // mint AND would be restated at render (page-pipeline buildShirtColourLock derives
+  // the colour from this Appearance text). Mirrors the markers-line hasPhoto
+  // suppression in buildSubjectSheetBasePrompt (2026-07-17) — the shirt-lock (older,
+  // Spec D-R) never got the guard, so a photo-anchored secondary was minted with an
+  // invented tee contradicting every one of their photos. Default false → non-photo
+  // secondaries + every existing caller stay byte-identical. (2026-07-24)
+  if (hasPhoto) return null;
   if (!subject || subject.isProtagonist || subject.subject_type !== "human") return null;
   const m = /companion-(\d+)/.exec(subject.id || "");
   const idx = m ? parseInt(m[1], 10) - 1 : 0;
   const len = SECONDARY_SHIRT_PALETTE.length;
   return SECONDARY_SHIRT_PALETTE[((idx % len) + len) % len];
 }
+// A subject is photo-anchored when it carries any readable photo reference.
+function subjectHasPhoto(subject) {
+  return !!(subject?.photoPaths?.length || subject?.photoPath);
+}
 // Append the pinned colour to a (masked) description, gender-appropriate pronoun.
-function injectShirtColour(description, subject) {
-  const colour = secondaryShirtColour(subject);
+function injectShirtColour(description, subject, hasPhoto = false) {
+  const colour = secondaryShirtColour(subject, hasPhoto);
   if (!colour) return description ?? "";
   const pronoun = subject.gender === "girl" ? "Her" : subject.gender === "non_binary" ? "Their" : "His";
   return `${description ?? ""} ${pronoun} t-shirt is a solid ${colour}.`;
@@ -338,16 +350,25 @@ export function buildSubjectListForSheetGen(story, meta, protagonistName, protag
         );
       }
     }
+    // Photo-anchor references (2026-07-24): mirror the protagonist's plural
+    // childPhotoPaths — ALL of the secondary's photos anchor view-0, not just
+    // photos[0]. Falls back to the single legacy photoPath. A secondary is
+    // photo-anchored iff it has any → drives the shirt-lock suppression below.
+    const secondaryPhotoPaths = Array.isArray(ms.photo_paths) && ms.photo_paths.length
+      ? ms.photo_paths
+      : (ms.photoPath ? [ms.photoPath] : null);
+    const secondaryHasPhoto = !!(secondaryPhotoPaths && secondaryPhotoPaths.length);
     subjects.push({
       id: ms.id,
       name: c.name,
       age: ms.age,
       // Spec D-R: pin the secondary's shirt colour into the description so it
       // flows to the fingerprint (forces re-mint), the sheet-mint Appearance,
-      // and the render Appearance (via subj.character_description below).
+      // and the render Appearance (via subj.character_description below). SUPPRESSED
+      // for a photo-anchored secondary (2026-07-24) — the photo owns the outfit.
       character_description: deemphasiseMarkWording(injectShirtColour(c.character_description, {
         id: ms.id, subject_type: ms.subject_type, isProtagonist: false, gender: isHuman ? ms.gender : null,
-      })),
+      }, secondaryHasPhoto)),
       markers: ms.appearance_markers,
       subject_type: ms.subject_type,
       gender: isHuman ? ms.gender : null,
@@ -357,8 +378,10 @@ export function buildSubjectListForSheetGen(story, meta, protagonistName, protag
       sheetPathPrefix: ms.id, // → <id>-NN.png (e.g. companion-1-01.png)
       // Photo-anchor + adult labelling (opt-in via meta; absent → unchanged).
       // is_adult lets a human secondary (e.g. a parent) be labelled an adult
-      // instead of the default child wording.
+      // instead of the default child wording. photoPaths (plural, ALL photos) is
+      // the mint anchor; photoPath kept for the legacy single-photo fallback.
       photoPath: ms.photoPath ?? null,
+      photoPaths: secondaryPhotoPaths,
       isAdult: ms.is_adult === true,
     });
   }
@@ -949,7 +972,7 @@ export async function generateBook({
         fingerprint: reuse.fingerprint,
         sheetPathPrefix: subject.sheetPathPrefix,
         presentViews,
-        lockedShirtColour: secondaryShirtColour(subject), // Spec D-R (null for protagonist/non-human)
+        lockedShirtColour: secondaryShirtColour(subject, subjectHasPhoto(subject)), // Spec D-R (null for protagonist/non-human/photo-anchored)
         mintedAt: reuse.state === SheetState.PARTIAL_RESUME
           ? reuse.existingMeta?.minted_at
           : undefined,

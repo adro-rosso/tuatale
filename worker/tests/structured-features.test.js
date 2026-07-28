@@ -72,3 +72,51 @@ describe("buildSubjectListForSheetGen wiring", () => {
     expect(dad.markers).toBe("tall");
   });
 });
+
+// Secondary multi-photo anchoring + shirt-lock photo-guard (2026-07-24). Levers:
+//   1. secondaries get ALL their photos as photoPaths (was: only photos[0] singular);
+//   2. the invented shirt-colour is SUPPRESSED for a photo-anchored secondary.
+// The byte-identical guard: single-protagonist, text-only, and no-photo secondaries
+// are unchanged — incl. a stable fingerprint (only photo-anchored secondaries change).
+describe("secondary photo-anchor plumbing + shirt-lock guard", () => {
+  const secWith = (extra) => ({
+    inputs: {
+      child: { name: "Kid", age: 8, gender: "boy", appearance: "freckly" },
+      secondaries: [{ id: "companion-1", name: "Dad", age: 40, subject_type: "human", gender: "boy", anchor: "tier2", appearance_markers: "tall", ...extra }],
+    },
+  });
+
+  it("photo-anchored secondary: photoPaths = ALL photos, shirt clause SUPPRESSED", () => {
+    const subs = buildSubjectListForSheetGen(STORY, secWith({ photo_paths: ["p1.png", "p2.png", "p3.png"] }), "Kid", 8);
+    const dad = subs.find((s) => !s.isProtagonist);
+    expect(dad.photoPaths).toEqual(["p1.png", "p2.png", "p3.png"]); // all photos, not just [0]
+    expect(dad.character_description).not.toMatch(/t-shirt is a solid/i); // invented outfit gone
+    expect(dad.character_description).toBe("Dad is a tall man."); // exactly the raw description
+  });
+
+  it("legacy singular photoPath still anchors (fallback → photoPaths=[photoPath], shirt suppressed)", () => {
+    const subs = buildSubjectListForSheetGen(STORY, secWith({ photoPath: "solo.png" }), "Kid", 8);
+    const dad = subs.find((s) => !s.isProtagonist);
+    expect(dad.photoPaths).toEqual(["solo.png"]);
+    expect(dad.character_description).not.toMatch(/t-shirt is a solid/i);
+  });
+
+  it("BYTE-IDENTICAL — no-photo secondary: photoPaths=null, shirt clause PRESENT (fingerprint stable)", () => {
+    const subs = buildSubjectListForSheetGen(STORY, secWith({}), "Kid", 8);
+    const dad = subs.find((s) => !s.isProtagonist);
+    expect(dad.photoPaths).toBeNull();
+    // character_description is the fingerprint input (buildAppearanceForFingerprint =
+    // maskName(character_description)). Unchanged string → unchanged fingerprint → no
+    // spurious re-mint of an existing no-photo secondary's sheet.
+    expect(dad.character_description).toBe("Dad is a tall man. His t-shirt is a solid denim blue.");
+  });
+
+  it("BYTE-IDENTICAL — single-protagonist / text-only book: only the protagonist, unchanged", () => {
+    const soloStory = { character: STORY.character, companion_characters: [] };
+    const soloMeta = { inputs: { child: { name: "Kid", age: 8, gender: "boy", appearance: "freckly" }, secondaries: [] } };
+    const subs = buildSubjectListForSheetGen(soloStory, soloMeta, "Kid", 8);
+    expect(subs).toHaveLength(1);
+    expect(subs[0].isProtagonist).toBe(true);
+    expect(subs[0].photoPaths ?? null).toBeNull();
+  });
+});

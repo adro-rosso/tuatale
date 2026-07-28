@@ -24,6 +24,7 @@ import { generateStory as realGenerateStory, isAdultAudience } from "../../src/a
 import { generateBook as realGenerateBook } from "../../src/book-pipeline.js";
 import { adaptOrderToPipelineInput } from "./adapter.js";
 import { downloadPhoto } from "./preview.js";
+import { photoFaceQuality as realPhotoFaceQuality } from "./face-detect.js";
 import { uploadBookPdf as realUploadBookPdf } from "./storage.js";
 import { getOrderById as realGetOrderById } from "./db.js";
 import { IncompletePipelineError } from "./incomplete-pipeline-error.js";
@@ -217,6 +218,68 @@ async function downloadSubjectPhotos(input, scratchDir, deps = {}) {
   for (let i = 0; i < secs.length; i++) await one(secs[i], secs[i].id || `companion-${i + 1}`);
 }
 
+// Photo-quality selection thresholds (2026-07-24). CALIBRATED n=1 on Nicki: her clear
+// frontal photos scored faceH 36-47% vs cap/distance shots ~10% — a ~3.5x cliff, so a
+// 20% floor separates them cleanly. Face-size is a sound signal so the RULE generalises,
+// but the specific 20% VALUE is a STARTING POINT — sanity-check against another real
+// photo set when one comes through (see project_photo-quality-selection). The never-zero
+// fallback below is the safety net if 20% is wrong for some subject.
+const FACE_SIZE_FLOOR = 0.20;   // min face height / image height to count a photo "clear"
+const MAX_ANCHOR_PHOTOS = 3;    // cap (Gemini multi-ref parity; protagonist uses up to 3)
+
+/**
+ * Rank each HUMAN subject's downloaded photos by face size and anchor the mint on the
+ * CLEAR-face ones — so a cap/distance/behind shot can't dilute likeness (the Nicki
+ * failure: photos[0] was her worst). In-place on subject.photo_paths (book-pipeline reads
+ * it via the photoPaths plumbing). Runs AFTER downloadSubjectPhotos (local files).
+ *
+ * GUARANTEES:
+ *   - PET GUARD: non_human subjects are SKIPPED entirely (YuNet finds HUMAN faces; a pet
+ *     scores "no face"). Pets keep ALL photos → byte-identical.
+ *   - NEVER ZERO: if no photo clears the floor (all bad, or detector finds nothing), the
+ *     subject keeps ALL its photos unchanged. Selection can only ever REMOVE known-worse
+ *     photos, never leave a subject with none.
+ *   - Subjects with < 2 photos (or none) are untouched.
+ */
+export async function selectBestPhotos(input, deps = {}) {
+  const scoreQuality = deps.photoFaceQuality ?? realPhotoFaceQuality;
+  const readFile = deps.readFile ?? fsp.readFile;
+  const log = deps.log ?? console;
+  const subjects = [input?.child, ...(Array.isArray(input?.secondaries) ? input.secondaries : [])].filter(Boolean);
+
+  for (const subj of subjects) {
+    if (subj.subject_type === "non_human") continue;                  // PET GUARD
+    const photos = Array.isArray(subj.photo_paths) ? subj.photo_paths : null;
+    if (!photos || photos.length < 2) continue;                        // nothing to rank
+
+    const scored = [];
+    for (const p of photos) {
+      try {
+        const q = await scoreQuality(await readFile(p), deps);
+        scored.push({ p, quality: q.quality, faceH: q.faceH });
+      } catch (e) {
+        log.warn?.(`  ⚠ face-rank failed for ${subj.name} (${p}); treating as no-face: ${e.message}`);
+        scored.push({ p, quality: 0, faceH: 0 });
+      }
+    }
+    const clear = scored
+      .filter((s) => s.faceH >= FACE_SIZE_FLOOR)
+      .sort((a, b) => b.quality - a.quality)
+      .slice(0, MAX_ANCHOR_PHOTOS);
+
+    if (clear.length === 0) {
+      // NEVER-ZERO fallback: keep every photo, original order, unchanged.
+      log.warn?.(`  ⚠ ${subj.name}: no photo cleared the face-size floor (${FACE_SIZE_FLOOR}); keeping all ${photos.length} (never-zero fallback)`);
+      continue;
+    }
+    const selected = clear.map((s) => s.p);
+    if (selected.length !== photos.length) {
+      log.log?.(`  📷 ${subj.name}: photo-ranked ${photos.length} → kept ${selected.length} clear-face (dropped ${photos.length - selected.length})`);
+    }
+    subj.photo_paths = selected;
+  }
+}
+
 /**
  * @param {{ orderId: string, jobId: string }} args
  * @param {object} [deps]  test seam — override any of the collaborators:
@@ -255,6 +318,13 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
   // reads a LOCAL file (fs.readFileSync). Download each into the scratch dir and
   // rewrite photoPath to the local path so view-0 mints photo-anchored.
   await downloadSubjectPhotos(input, scratchDir);
+
+  // Photo-quality selection (2026-07-24): rank each HUMAN subject's downloaded photos by
+  // face size and anchor the mint on the CLEAR-face ones — a cap/distance/behind shot
+  // mustn't dilute likeness (the Nicki failure). Pets skip (YuNet finds human faces);
+  // never-zero fallback keeps all photos if none clear the floor. Builds on the
+  // multi-photo photo_paths plumbing.
+  await selectBestPhotos(input);
 
   // R3a: if a prior attempt of this job left a checkpoint, restore story + meta +
   // completed sheets into the fresh scratch dir and SKIP generateStory — so

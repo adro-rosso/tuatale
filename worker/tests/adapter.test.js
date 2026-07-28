@@ -104,6 +104,32 @@ describe("adaptSecondary", () => {
     expect(out.photos).toEqual(["a.jpg", "b.jpg"]);
   });
 
+  it("photos → photo_paths (ALL photos, plural) + photoPath = first (2026-07-24)", () => {
+    const out = adaptSecondary(
+      { name: "Mum", subject_type: "human", gender: "girl", relationship: "parent", appearance: "x", photos: ["a.jpg", "b.jpg", "c.jpg", "d.jpg"] },
+      0,
+    );
+    expect(out.photo_paths).toEqual(["a.jpg", "b.jpg", "c.jpg", "d.jpg"]); // all four anchor the mint, not just a.jpg
+    expect(out.photoPath).toBe("a.jpg"); // legacy singular fallback = first
+  });
+
+  it("caps photo_paths at the secondary-uploader max (5) so a many-photo upload can't bloat the mint", () => {
+    const out = adaptSecondary(
+      { name: "Mum", subject_type: "human", gender: "girl", relationship: "parent", appearance: "x", photos: ["1", "2", "3", "4", "5", "6", "7"] },
+      0,
+    );
+    expect(out.photo_paths).toEqual(["1", "2", "3", "4", "5"]);
+  });
+
+  it("BYTE-IDENTICAL — no photos: neither photo_paths nor photoPath is set", () => {
+    const out = adaptSecondary(
+      { name: "Mum", subject_type: "human", gender: "girl", relationship: "parent", appearance: "x" },
+      0,
+    );
+    expect("photo_paths" in out).toBe(false);
+    expect("photoPath" in out).toBe(false);
+  });
+
   it("does NOT default a missing gender on a human (surfaces as undefined)", () => {
     // The wizard's Zod refine enforces gender on humans; absence = data
     // corruption. The adapter must not paper over it — pipeline validator throws.
