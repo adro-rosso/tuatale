@@ -403,7 +403,9 @@ function sheetsToMintForSubject(subject, subjectReuseInfo) {
       || info.state === SheetState.LEGACY_PARTIAL) {
     return subject.viewCount;
   }
-  if (info.state === SheetState.PARTIAL_RESUME) {
+  // PARTIAL_RESUME and LOCKED both reuse view-0 and mint only the missing views.
+  // (LOCKED: the chosen view-0 is reused unconditionally; views 2-3 chain off it.)
+  if (info.state === SheetState.PARTIAL_RESUME || info.state === SheetState.LOCKED) {
     return info.missingViewIndices.length;
   }
   return 0;
@@ -677,11 +679,16 @@ export async function generateBook({
 
     // ---- Mint branches (COLD_START / PARTIAL_RESUME / MISMATCH_REMINT / LEGACY_PARTIAL) --
     const indicesToMint =
-      reuse.state === SheetState.PARTIAL_RESUME
+      // LOCKED behaves like PARTIAL_RESUME: reuse the present view-0, mint the missing
+      // (chained) views. Difference lives upstream in resolveSheetState (fingerprint
+      // exempt), not here — the per-view reuse path keys on indicesToMint, not state.
+      reuse.state === SheetState.PARTIAL_RESUME || reuse.state === SheetState.LOCKED
         ? reuse.missingViewIndices.map((i1based) => i1based - 1)
         : Array.from({ length: subject.viewCount }, (_, i) => i);
     const headerSuffix =
-      reuse.state === SheetState.PARTIAL_RESUME
+      reuse.state === SheetState.LOCKED
+        ? ` (LOCKED: reusing the customer-chosen view-0, chaining ${indicesToMint.length} remaining view${indicesToMint.length === 1 ? "" : "s"})`
+        : reuse.state === SheetState.PARTIAL_RESUME
         ? ` (partial-resume: minting ${indicesToMint.length} of ${subject.viewCount} missing view${indicesToMint.length === 1 ? "" : "s"}, reusing ${reuse.presentFiles.length})`
         : reuse.state === SheetState.MISMATCH_REMINT
         ? ` (MISMATCH: markers changed since last mint — re-painting all ${subject.viewCount} view${subject.viewCount === 1 ? "" : "s"})`
@@ -692,13 +699,14 @@ export async function generateBook({
     emit({
       event: {
         kind:
-          reuse.state === SheetState.PARTIAL_RESUME ? "sheet_mint_partial_resume"
+          reuse.state === SheetState.LOCKED ? "sheet_mint_locked"
+          : reuse.state === SheetState.PARTIAL_RESUME ? "sheet_mint_partial_resume"
           : reuse.state === SheetState.MISMATCH_REMINT ? "sheet_mint_marker_mismatch_remint"
           : reuse.state === SheetState.LEGACY_PARTIAL ? "sheet_mint_legacy_partial_recovery"
           : "sheet_mint_cold_start",
         subject: subject.name,
         views_to_mint: indicesToMint.map((i) => i + 1),
-        views_reused: reuse.state === SheetState.PARTIAL_RESUME ? reuse.presentFiles.length : 0,
+        views_reused: (reuse.state === SheetState.PARTIAL_RESUME || reuse.state === SheetState.LOCKED) ? reuse.presentFiles.length : 0,
         ...(reuse.state === SheetState.MISMATCH_REMINT
           ? {
             previous_fingerprint: reuse.existingMeta?.marker_fingerprint ?? null,
@@ -973,9 +981,13 @@ export async function generateBook({
         sheetPathPrefix: subject.sheetPathPrefix,
         presentViews,
         lockedShirtColour: secondaryShirtColour(subject, subjectHasPhoto(subject)), // Spec D-R (null for protagonist/non-human/photo-anchored)
-        mintedAt: reuse.state === SheetState.PARTIAL_RESUME
+        // Preserve the chosen sheet's original mint time for both resume-style states.
+        mintedAt: (reuse.state === SheetState.PARTIAL_RESUME || reuse.state === SheetState.LOCKED)
           ? reuse.existingMeta?.minted_at
           : undefined,
+        // Slice 1: re-assert the lock so it survives this rewrite (and thus R3 resume).
+        // Absent for every non-locked subject → byte-identical meta.
+        locked: reuse.existingMeta?.locked === true,
         mintedForBook: path.basename(outputDir),
       }));
       emit({

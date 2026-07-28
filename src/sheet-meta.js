@@ -136,6 +136,8 @@ export function buildSheetMeta({
   mintedAt,            // ISO; preserved from existing meta on partial resume
   mintedForBook,
   lockedShirtColour,   // Spec D-R: pinned secondary shirt colour (or null/undefined)
+  locked,              // Slice 1: customer-chosen view-0. Persisted so the LOCKED
+                       // state survives an R3 resume (a resume rewrites the meta).
 }) {
   return {
     subject_name: subjectName,
@@ -149,6 +151,9 @@ export function buildSheetMeta({
     minted_for_book: mintedForBook,
     locked_shirt_colour: lockedShirtColour ?? null,
     views: presentViews,
+    // Conditional spread — the key is ABSENT entirely unless locked, so every
+    // existing (non-locked) meta serialises byte-identically.
+    ...(locked === true ? { locked: true } : {}),
   };
 }
 
@@ -201,7 +206,33 @@ export const SheetState = Object.freeze({
   PARTIAL_RESUME: "partial_resume",
   VIEW_EXCESS: "view_excess",
   MISMATCH_REMINT: "mismatch_remint",
+  // LOCKED (character-picker Slice 1, 2026-07-28): a customer-CHOSEN view-0 was
+  // injected (meta.locked === true). Reuse it UNCONDITIONALLY — the marker
+  // fingerprint is EXEMPT — so no drift (customer edit, style-token shift, or a
+  // pipeline code change) can ever discard the customer's pick. Behaves like
+  // PARTIAL_RESUME at mint time: reuse the locked view-0, chain the missing views.
+  LOCKED: "locked",
 });
+
+/**
+ * A subject was marked locked (a customer-chosen view-0) but that view-0 is
+ * missing / empty on disk. FAIL LOUD — never silently mint a DIFFERENT face, which
+ * is exactly the silent substitution the lock exists to prevent. Thrown from
+ * resolveSheetState (surfaced by planBook, before any mint spend). Its own class so
+ * the injection/recovery wiring (Slice 4) can classify it resumable-vs-terminal.
+ */
+export class LockedSheetMissingError extends Error {
+  constructor(subjectId, sheetPathPrefix) {
+    super(
+      `Locked subject "${subjectId}" is missing its chosen view-0 (${sheetPathPrefix}-01.png). ` +
+      `Refusing to mint a different character in place of the customer's pick.`,
+    );
+    this.name = "LockedSheetMissingError";
+    this.code = "LOCKED_SHEET_MISSING";
+    this.subjectId = subjectId;
+    this.sheetPathPrefix = sheetPathPrefix;
+  }
+}
 
 /**
  * Resolve the per-subject reuse state by inspecting on-disk sheets +
@@ -258,6 +289,20 @@ export function resolveSheetState({ subjectId, sheetPathPrefix, expectedViewCoun
   const result = (state, fingerprintMatch) => ({
     state, presentFiles, missingViewIndices, excessFiles, existingMeta, fingerprintMatch,
   });
+
+  // LOCKED (Slice 1) — a customer-CHOSEN view-0 was injected. Checked BEFORE the
+  // fingerprint gate below, so no drift can flip it to MISMATCH_REMINT and discard
+  // the pick. view-0 (the chosen image) MUST be present + non-empty; if it is not,
+  // FAIL LOUD rather than mint a different face (the exact substitution this prevents).
+  if (existingMeta?.locked === true) {
+    const view0 = `${sheetPathPrefix}-01.png`;
+    if (!presentFiles.includes(view0)) {
+      throw new LockedSheetMissingError(subjectId, sheetPathPrefix);
+    }
+    // fingerprintMatch reported true: the chosen sheet IS the intended identity by
+    // construction, so it is authoritative regardless of the computed fingerprint.
+    return result(SheetState.LOCKED, true);
+  }
 
   // State B — nothing on disk → cold mint.
   if (presentFiles.length === 0 && excessFiles.length === 0) {
