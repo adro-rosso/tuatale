@@ -32,6 +32,7 @@ import type {
   PreviewResult,
   RequestPreviewBatchInput,
   PreviewBatchResult,
+  ChosenSheet,
 } from '@/lib/preview/types';
 
 const PREVIEW_BUCKET = 'tuatale-previews';
@@ -385,8 +386,12 @@ export async function requestPreviewBatch(input: RequestPreviewBatchInput): Prom
  */
 export async function getPreviewBatchStatus(batchId: string): Promise<PreviewBatchResult> {
   const rows = await getBatchRows(batchId);
+  // Escalation signal (A): the worker records best-photo faceH on each option row; surface
+  // the first non-null (same subject across the batch → same value).
+  const faceQuality = rows.map((r) => r.face_quality).find((v) => v != null) ?? null;
   return {
     batchId,
+    faceQuality,
     options: rows.map((r) => ({
       variant: r.variant_index ?? 0,
       previewId: r.id,
@@ -395,4 +400,45 @@ export async function getPreviewBatchStatus(batchId: string): Promise<PreviewBat
       bgColor: r.bg_color ?? null,
     })),
   };
+}
+
+// ---- The pick: persist + resume (Slice 3) ----------------------------------------------
+/**
+ * Persist the customer's chosen option to draft.chosen_sheet (protagonist) or nest it into
+ * the matching secondaries card (subjectKey = a companion id). Ownership from the caller's
+ * OWN cookie draft. The pick is OPTIONAL — it never gates Continue; it just locks the look.
+ */
+export async function persistChosenSheet(subjectKey: string, chosen: ChosenSheet | null): Promise<{ ok: true }> {
+  const cookieId = await getDraftCookieFromRequest();
+  if (!cookieId) throw new Error('persistChosenSheet: no active session.');
+  const draft = await getDraftByCookieId(cookieId);
+  if (!draft) throw new Error('persistChosenSheet: no active session.');
+
+  if (subjectKey === 'protagonist') {
+    await updateDraftByCookieId(cookieId, { chosen_sheet: chosen } as unknown as DraftUpdate);
+  } else {
+    // Nest per-companion in the secondaries jsonb (matched by id).
+    const secondaries = Array.isArray((draft as { secondaries?: unknown }).secondaries)
+      ? ((draft as { secondaries: Array<Record<string, unknown>> }).secondaries)
+      : [];
+    const next = secondaries.map((s) => (s.id === subjectKey || s.secondary_id === subjectKey ? { ...s, chosen_sheet: chosen } : s));
+    await updateDraftByCookieId(cookieId, { secondaries: next } as unknown as DraftUpdate);
+  }
+  return { ok: true };
+}
+
+/** Read a persisted pick back on wizard re-entry (resume into the PICKED state). */
+export async function getChosenSheet(subjectKey: string): Promise<ChosenSheet | null> {
+  const cookieId = await getDraftCookieFromRequest();
+  if (!cookieId) return null;
+  const draft = await getDraftByCookieId(cookieId);
+  if (!draft) return null;
+  if (subjectKey === 'protagonist') {
+    return ((draft as { chosen_sheet?: ChosenSheet | null }).chosen_sheet) ?? null;
+  }
+  const secondaries = Array.isArray((draft as { secondaries?: unknown }).secondaries)
+    ? ((draft as { secondaries: Array<Record<string, unknown>> }).secondaries)
+    : [];
+  const card = secondaries.find((s) => s.id === subjectKey || s.secondary_id === subjectKey);
+  return (card?.chosen_sheet as ChosenSheet | null) ?? null;
 }

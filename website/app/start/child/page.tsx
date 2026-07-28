@@ -44,6 +44,7 @@ export default async function ChildStepPage() {
     const petPhotos = (draft?.photo_urls as { pet?: string[] } | null)?.pet ?? [];
     return (
       <PetForm
+        artStyle={artStyle}
         initial={{
           name: draft?.child_name ?? '',
           reading_level: (draft as { reading_level?: string | null } | null)?.reading_level ?? 'standard',

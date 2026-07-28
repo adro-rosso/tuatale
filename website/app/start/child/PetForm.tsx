@@ -3,12 +3,14 @@
 import { useActionState, useRef, useState } from 'react';
 import { submitPetStep, type SubmitPetState, type PetFormValues } from '@/app/start/_actions/submit-pet';
 import { uploadPetPhoto } from '@/app/start/_actions/preview';
+import { CharacterPicker } from './CharacterPicker';
 import { READING_LEVEL_VALUES } from '@/lib/validation/schemas';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl, sectionCard, segTrack, segButton } from '@/components/ui/form-styles';
 
 interface PetFormProps {
+  artStyle: string;
   initial: {
     name: string;
     reading_level: string;
@@ -80,7 +82,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
  * band, and — critically — several photos of the SAME pet (their likeness comes from
  * the photos; text alone renders a generic breed). Persists onto the draft.
  */
-export function PetForm({ initial }: PetFormProps) {
+export function PetForm({ initial, artStyle }: PetFormProps) {
   const [state, formAction, isPending] = useActionState(submitPetStep, initialState);
   const echoed = state.values as PetFormValues | undefined;
   const errors = state.errors;
@@ -258,6 +260,25 @@ export function PetForm({ initial }: PetFormProps) {
           <p className="font-body text-iron-oxide text-caption" role="alert">
             {errors['consent']}
           </p>
+        )}
+
+        {photos.length > 0 && (
+          <div className="pt-md border-warm-grey-light/50 mt-md border-t">
+            <CharacterPicker
+              subjectKey="protagonist"
+              name={fieldValue('name') || 'your pet'}
+              role="protagonist"
+              inputs={{
+                name: fieldValue('name'),
+                subject_type: 'non_human',
+                animal_kind: fieldValue('animal_kind'),
+                appearance: fieldValue('appearance'),
+              }}
+              artStyle={artStyle}
+              photoPaths={photos.map((p) => p.path)}
+              ready={photos.length > 0}
+            />
+          </div>
         )}
       </section>
 

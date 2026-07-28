@@ -3,7 +3,7 @@
 import { useActionState, useRef, useState } from 'react';
 import { submitAdultStep, type SubmitAdultState, type AdultFormValues } from '@/app/start/_actions/submit-adult';
 import { uploadAdultPhoto, removeAdultPhoto } from '@/app/start/_actions/preview';
-import { GeneratedPreview } from './GeneratedPreview';
+import { CharacterPicker } from './CharacterPicker';
 import { GENDERS, ADULT_AGE_MIN, ADULT_AGE_MAX } from '@/lib/validation/schemas';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
@@ -255,14 +255,21 @@ export function AdultForm({ initial, artStyle, draftId }: AdultFormProps) {
 
             {previewReady && (
               <div className="pt-sm">
-                <GeneratedPreview
-                  inputs={{ age: ageNum, style: artStyle, isAdult: true, draftId }}
-                  photo={photo}
+                <CharacterPicker
+                  subjectKey="protagonist"
+                  name={fieldValue('name') || 'them'}
+                  role="protagonist"
+                  inputs={{
+                    name: fieldValue('name'),
+                    subject_type: 'human',
+                    is_adult: true,
+                    gender: fieldValue('gender'),
+                    appearance: fieldValue('appearance'),
+                  }}
+                  artStyle={artStyle}
+                  photoPaths={photo ? [photo.path] : []}
+                  ready={previewReady}
                 />
-                <p className="font-body text-warm-grey text-caption mt-xs">
-                  This is a preview of how they’ll look. If the age reads wrong, try a clearer or more
-                  recent photo.
-                </p>
               </div>
             )}
           </div>

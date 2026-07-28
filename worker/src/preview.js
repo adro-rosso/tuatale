@@ -38,10 +38,12 @@ export async function markPreviewRunning(previewId) {
   if (error) throw new Error(`markPreviewRunning(${previewId}) failed: ${error.message}`);
 }
 
-export async function markPreviewDone(previewId, { imageUrl, bgColor = null }) {
-  const { error } = await getClient().from("preview_jobs")
-    .update({ status: "done", image_url: imageUrl, bg_color: bgColor, completed_at: new Date().toISOString() })
-    .eq("id", previewId);
+export async function markPreviewDone(previewId, { imageUrl, bgColor = null, faceQuality }) {
+  const update = { status: "done", image_url: imageUrl, bg_color: bgColor, completed_at: new Date().toISOString() };
+  // Escalation signal (Slice 3, picker only): the subject's best-photo faceH. Set ONLY
+  // when provided → single-preview update stays byte-identical.
+  if (faceQuality !== undefined && faceQuality !== null) update.face_quality = faceQuality;
+  const { error } = await getClient().from("preview_jobs").update(update).eq("id", previewId);
   if (error) throw new Error(`markPreviewDone(${previewId}) failed: ${error.message}`);
 }
 
@@ -98,11 +100,22 @@ async function mintPickerOption(event, deps) {
   const selInput = { child: { subject_type: inputs.subject_type, name: inputs.name, photo_paths: locals }, secondaries: [] };
   await selectBestPhotos(selInput);
   const selected = selInput.child.photo_paths;
-  return generatePickerOption(
+  // Escalation signal (A): the subject's best-photo faceH (selectBestPhotos sorted the
+  // clearest first). HUMAN only — a pet has no human face → null → the UI defaults to the
+  // hard-case branch. Detector failure is non-fatal (null); the picker never blocks.
+  let faceQuality = null;
+  if (inputs.subject_type !== "non_human") {
+    try {
+      const { photoFaceQuality } = await import("../../src/face-detect.js");
+      faceQuality = (await photoFaceQuality(fs.readFileSync(selected[0]))).faceH;
+    } catch (e) { console.warn(`picker(${previewId}): faceH probe failed (non-fatal): ${e.message}`); }
+  }
+  const png = await generatePickerOption(
     { role, inputs: { ...inputs, photoPaths: selected }, artStyle },
     selected,
     { callKind: "picker_mint", subjectName: `picker-${previewId}` },
   );
+  return { png, faceQuality };
 }
 
 /**
@@ -124,8 +137,9 @@ export async function runPreview(event, deps = {}) {
   try {
     await markRunning(previewId);
     let png;
+    let faceQuality; // picker-only escalation signal; undefined for single preview
     if (mode === "picker") {
-      png = await mintPickerOption(event, deps);
+      ({ png, faceQuality } = await mintPickerOption(event, deps));
     } else {
       const photoBuf = photoPath ? await getPhoto(photoPath) : undefined;
       png = await generateCharacterPreview(
@@ -137,7 +151,7 @@ export async function runPreview(event, deps = {}) {
     // Sample the generated image's background so the client box can match it
     // (no seam against page cream). Best-effort: null → client keeps the default.
     const bgColor = await sampleBackgroundColor(png);
-    await markDone(previewId, { imageUrl, bgColor });
+    await markDone(previewId, { imageUrl, bgColor, faceQuality });
     return { previewId, status: "done", imageUrl, bgColor };
   } catch (err) {
     try { await markFailed(previewId, { errorMessage: err?.message ?? "preview failed" }); }

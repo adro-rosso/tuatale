@@ -62,6 +62,21 @@ export interface PreviewJobRow {
   /** Character-picker batch grouping (Slice 2). NULL for single previews. */
   batch_id?: string | null;
   variant_index?: number | null;
+  /** Slice 3 escalation signal: best-photo faceH (0..1). NULL for pets/single previews. */
+  face_quality?: number | null;
+}
+
+/** The customer's locked pick, persisted to draft.chosen_sheet (Slice 4 reads it). */
+export interface ChosenSheet {
+  subjectId: string;
+  previewId: string;
+  /** Stable Storage path of the chosen option's PNG — Slice 4 durably copies it. */
+  imagePath: string;
+  inputHash?: string;
+  batchId?: string;
+  imageUrl?: string | null;
+  /** Set on the operator-fine-tune escalation path. */
+  escalated?: boolean;
 }
 
 // ---- Character-picker batch (Slice 2) --------------------------------------
@@ -101,6 +116,8 @@ export interface PreviewBatchOption {
 export interface PreviewBatchResult {
   batchId: string;
   options: PreviewBatchOption[];
+  /** Best-photo faceH across the batch (Slice 3 escalation). null = pet / not yet known. */
+  faceQuality?: number | null;
   /** Set when the batch was refused up-front (no spend, no rows). */
   blocked?: 'capped' | 'rate_limited' | 'no_photos';
 }
