@@ -61,6 +61,17 @@ export type PreviewRequestedData = {
   photoPath?: string;
   /** Adult-subject preview: audience-neutral render + "an adult" mint label. */
   isAdult?: boolean;
+  // ---- Character-picker (Slice 2): mode:"picker" mints a BOOK-FAITHFUL option. ----
+  /** When "picker", the worker mints a real book view-0 sheet (not the loose preview). */
+  mode?: 'picker';
+  /** Which character the option is for. */
+  role?: 'protagonist' | 'secondary';
+  /** Subject fields the worker builds the book-faithful subject from. */
+  inputs?: Record<string, unknown>;
+  /** Chosen art style — the option mints in the book's real style. */
+  artStyle?: string;
+  /** The subject's uploaded photo bucket paths (worker downloads + selectBestPhotos). */
+  photo_paths?: string[];
 } & Record<string, unknown>;
 
 export const previewRequested = eventType('preview/requested', {

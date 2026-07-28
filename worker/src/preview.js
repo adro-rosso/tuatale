@@ -5,8 +5,12 @@
 // → ONE generateImage). Uploads the PNG to the tuatale-previews bucket and marks
 // the preview_jobs row done/failed. The website polls the row.
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { getClient } from "./db.js";
 import { generateCharacterPreview as realGenerateCharacterPreview } from "../../src/character-preview.js";
+import { generatePickerOption as realGeneratePickerOption } from "../../src/picker-mint.js";
 import { sampleBackgroundColor } from "../../src/image-bg.js";
 
 export const PREVIEW_BUCKET = "tuatale-previews";
@@ -69,9 +73,43 @@ export async function downloadPhoto(photoPath) {
 }
 
 /**
+ * Mint ONE book-faithful character-picker option (mode:"picker"). Downloads the
+ * subject's photos, applies the shipped good-face selection, and mints a REAL book
+ * view-0 sheet via generatePickerOption. Kept separate so the single-preview path
+ * below stays byte-identical.
+ */
+async function mintPickerOption(event, deps) {
+  const getPhoto = deps.getPhoto ?? downloadPhoto;
+  const generatePickerOption = deps.generatePickerOption ?? realGeneratePickerOption;
+  const { previewId, role, inputs, artStyle, photo_paths } = event;
+  const dir = path.join(os.tmpdir(), `picker-${previewId}`);
+  fs.mkdirSync(dir, { recursive: true });
+  const locals = [];
+  for (let i = 0; i < (photo_paths ?? []).length; i++) {
+    const buf = await getPhoto(photo_paths[i]);
+    const p = path.join(dir, `photo-${i + 1}.png`);
+    fs.writeFileSync(p, buf);
+    locals.push(p);
+  }
+  if (!locals.length) throw new Error(`picker(${previewId}): no photos to anchor the option`);
+  // Good-face selection (human subjects rank + subset; pets keep all). Lazy import
+  // avoids a load-time cycle (run-pipeline statically imports downloadPhoto from here).
+  const { selectBestPhotos } = await import("./run-pipeline.js");
+  const selInput = { child: { subject_type: inputs.subject_type, name: inputs.name, photo_paths: locals }, secondaries: [] };
+  await selectBestPhotos(selInput);
+  const selected = selInput.child.photo_paths;
+  return generatePickerOption(
+    { role, inputs: { ...inputs, photoPaths: selected }, artStyle },
+    selected,
+    { callKind: "picker_mint", subjectName: `picker-${previewId}` },
+  );
+}
+
+/**
  * Orchestrate one preview: mark running → mint → upload → mark done. On any
  * failure marks the row failed and rethrows (so Inngest's onFailure can log).
- * Deps injectable for unit tests.
+ * mode:"picker" mints a book-faithful option; otherwise the single-preview path
+ * (BYTE-IDENTICAL to before). Deps injectable for unit tests.
  */
 export async function runPreview(event, deps = {}) {
   const {
@@ -82,14 +120,19 @@ export async function runPreview(event, deps = {}) {
     upload = uploadPreviewImage,
     getPhoto = downloadPhoto,
   } = deps;
-  const { previewId, age, name, features, freeText, background, style, photoPath, isAdult } = event;
+  const { previewId, age, name, features, freeText, background, style, photoPath, isAdult, mode } = event;
   try {
     await markRunning(previewId);
-    const photoBuf = photoPath ? await getPhoto(photoPath) : undefined;
-    const png = await generateCharacterPreview(
-      { age, name, features, freeText, background, style, photoBuf, isAdult: isAdult ?? false },
-      { callKind: "preview_mint", subjectName: `preview-${previewId}` },
-    );
+    let png;
+    if (mode === "picker") {
+      png = await mintPickerOption(event, deps);
+    } else {
+      const photoBuf = photoPath ? await getPhoto(photoPath) : undefined;
+      png = await generateCharacterPreview(
+        { age, name, features, freeText, background, style, photoBuf, isAdult: isAdult ?? false },
+        { callKind: "preview_mint", subjectName: `preview-${previewId}` },
+      );
+    }
     const imageUrl = await upload({ previewId, pngBytes: png });
     // Sample the generated image's background so the client box can match it
     // (no seam against page cream). Best-effort: null → client keeps the default.

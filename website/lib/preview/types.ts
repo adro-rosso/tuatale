@@ -19,6 +19,10 @@ export interface PreviewInputs {
   /** Adult-subject preview (book_type='adult'): labels the mint "an adult" and keeps
    *  the render audience-neutral. Part of the cache key. Absent/false for child+pet. */
   isAdult?: boolean;
+  /** Character-picker (Slice 2): distinguishes the N options of a batch — each variant
+   *  is a distinct dice roll, so they must NOT collapse to one cache slot. Absent for the
+   *  single-preview path → BYTE-IDENTICAL cache key. Value = `${batchId}:${index}`. */
+  variant?: string;
 }
 
 /** Full request — inputs + the non-cache-key extras. */
@@ -55,4 +59,48 @@ export interface PreviewJobRow {
   error_message: string | null;
   input_hash: string;
   draft_id: string | null;
+  /** Character-picker batch grouping (Slice 2). NULL for single previews. */
+  batch_id?: string | null;
+  variant_index?: number | null;
+}
+
+// ---- Character-picker batch (Slice 2) --------------------------------------
+/** One subject's picker request → up to MAX_BATCH_OPTIONS book-faithful options. */
+export interface RequestPreviewBatchInput {
+  /** Which character: the hero, or a companion. */
+  role: 'protagonist' | 'secondary';
+  /** Subject fields the worker builds the (book-faithful) subject from. */
+  inputs: {
+    id?: string;
+    name?: string;
+    age?: number;
+    gender?: string;
+    subject_type: 'human' | 'non_human';
+    appearance?: string;
+    features?: Record<string, string>;
+    background?: string;
+    animal_kind?: string;
+    is_adult?: boolean;
+  };
+  /** Chosen art style — options mint in the book's real style. */
+  artStyle?: string;
+  /** Bucket paths of the subject's uploaded photos (confined to the caller's draft). */
+  photoPaths: string[];
+  /** Requested option count — SERVER-CAPPED at MAX_BATCH_OPTIONS, never client-trusted. */
+  count?: number;
+}
+
+export interface PreviewBatchOption {
+  variant: number;
+  previewId: string;
+  status: PreviewStatus;
+  imageUrl?: string | null;
+  bgColor?: string | null;
+}
+
+export interface PreviewBatchResult {
+  batchId: string;
+  options: PreviewBatchOption[];
+  /** Set when the batch was refused up-front (no spend, no rows). */
+  blocked?: 'capped' | 'rate_limited' | 'no_photos';
 }

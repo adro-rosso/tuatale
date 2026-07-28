@@ -24,8 +24,15 @@ import {
   getPreviewJob,
   countPreviewsForDraft,
   countPreviewsForDraftSince,
+  getBatchRows,
+  countBatchesForDraft,
 } from '@/lib/preview/preview-jobs';
-import type { RequestPreviewInput, PreviewResult } from '@/lib/preview/types';
+import type {
+  RequestPreviewInput,
+  PreviewResult,
+  RequestPreviewBatchInput,
+  PreviewBatchResult,
+} from '@/lib/preview/types';
 
 const PREVIEW_BUCKET = 'tuatale-previews';
 
@@ -35,6 +42,11 @@ const FREE_PREVIEW_CAP = 10;          // distinct gens per draft (~$0.40 COGS ce
 const RATE_BURST_MS = 5_000;          // ≥1 new gen per 5s = throttle (burst debounce)
 const RATE_HOUR_MS = 3_600_000;
 const RATE_HOURLY_MAX = 40;           // hard per-draft hourly ceiling
+
+// Character-picker batch (Slice 2). Options per batch is SERVER-CAPPED — never trust a
+// client count. A batch of N counts as ONE request against the batch-scoped cap +
+// rate-limit (countBatchesForDraft), so firing N options can't self-throttle.
+const MAX_BATCH_OPTIONS = 3;
 
 // ---- Upload hardening (security fix C + D, 2026-07-17) ---------------------
 // These upload actions previously had NO auth, NO ownership check, NO content
@@ -293,4 +305,94 @@ export async function getPreviewStatus(previewId: string): Promise<PreviewResult
   const job = await getPreviewJob(previewId);
   if (!job) return { previewId, status: 'failed', imageUrl: null, cached: false };
   return { previewId, status: job.status, imageUrl: job.image_url, bgColor: job.bg_color ?? null, cached: false };
+}
+
+// ---- Character-picker: N book-faithful options per subject (Slice 2) -------------------
+/**
+ * Generate up to MAX_BATCH_OPTIONS book-faithful character options for ONE subject. Each
+ * variant is an independent dice roll (distinct cache slot via the variant hash). All
+ * cost guards are re-applied SERVER-SIDE and are BATCH-AWARE: a batch counts as one
+ * request against the cap + rate-limit, so N parallel options can't self-throttle.
+ * Ownership + photoPath confinement come from the caller's OWN cookie draft — never a
+ * client-supplied id.
+ */
+export async function requestPreviewBatch(input: RequestPreviewBatchInput): Promise<PreviewBatchResult> {
+  const draft = await requireOwnDraft('requestPreviewBatch'); // cookie-derived; never trust the client
+  const draftId = draft.id;
+
+  // photoPaths must be the caller's own uploads. No photo → nothing to anchor.
+  const ownPrefix = `${draftUploadPrefix(draftId)}/`;
+  const photoPaths = (input.photoPaths ?? []).filter((p) => p.startsWith(ownPrefix) && !p.includes('..'));
+  if (photoPaths.length === 0) {
+    return { batchId: '', options: [], blocked: 'no_photos' };
+  }
+
+  // Batch-aware cap + rate-limit — count BATCHES, not images.
+  if ((await countBatchesForDraft(draftId)) >= FREE_PREVIEW_CAP) {
+    return { batchId: '', options: [], blocked: 'capped' };
+  }
+  const now = Date.now();
+  const [burst, hourly] = await Promise.all([
+    countBatchesForDraft(draftId, new Date(now - RATE_BURST_MS).toISOString()),
+    countBatchesForDraft(draftId, new Date(now - RATE_HOUR_MS).toISOString()),
+  ]);
+  if (burst >= 1 || hourly >= RATE_HOURLY_MAX) {
+    return { batchId: '', options: [], blocked: 'rate_limited' };
+  }
+
+  const count = Math.max(1, Math.min(input.count ?? MAX_BATCH_OPTIONS, MAX_BATCH_OPTIONS)); // server-capped
+  const batchId = createHash('sha256').update(`${draftId}:${now}:${Math.random()}`).digest('hex').slice(0, 32);
+
+  const options: PreviewBatchResult['options'] = [];
+  for (let i = 0; i < count; i++) {
+    // Fresh batchId ⇒ fresh variant hash ⇒ a real new dice roll (never a stale cache hit).
+    const inputHash = computeInputHash({
+      age: input.inputs.age ?? 0,
+      gender: input.inputs.gender,
+      features: input.inputs.features,
+      freeText: input.inputs.appearance,
+      style: input.artStyle,
+      isAdult: input.inputs.is_adult,
+      variant: `${batchId}:${i}`,
+    });
+    const job = await createPreviewJob({
+      draftId,
+      inputHash,
+      inputs: { role: input.role, subject_type: input.inputs.subject_type, style: input.artStyle, hasPhoto: true },
+      batchId,
+      variantIndex: i,
+    });
+    await inngest.send({
+      name: 'preview/requested',
+      data: {
+        previewId: job.id,
+        mode: 'picker',
+        role: input.role,
+        inputs: input.inputs,
+        artStyle: input.artStyle,
+        photo_paths: photoPaths,
+      },
+    });
+    options.push({ variant: i, previewId: job.id, status: 'queued' });
+  }
+  return { batchId, options };
+}
+
+/**
+ * Poll a picker batch. GRACEFUL: returns whatever has landed — done options carry their
+ * imageUrl; still-running/failed ones report their status so the UI can render the ones
+ * that succeeded and ignore the rest ("some failed → return the ones that landed").
+ */
+export async function getPreviewBatchStatus(batchId: string): Promise<PreviewBatchResult> {
+  const rows = await getBatchRows(batchId);
+  return {
+    batchId,
+    options: rows.map((r) => ({
+      variant: r.variant_index ?? 0,
+      previewId: r.id,
+      status: r.status,
+      imageUrl: r.image_url,
+      bgColor: r.bg_color ?? null,
+    })),
+  };
 }

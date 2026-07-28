@@ -222,6 +222,63 @@ export function buildSubjectSheetBasePrompt(subject, story, hasPhoto = false) {
   return lines.join("\n");
 }
 
+// Sheet-mint per-view directives (character-picker Slice 2, 2026-07-28). MOVED VERBATIM
+// out of generateBook's inline mint loop — byte-identical strings — so buildSheetViewPrompt
+// below is the SINGLE source of truth for the book's sheet-mint prompt, shared by the book
+// AND the character-picker (src/picker-mint.js). That is what makes a picked option a REAL
+// book view-0 sheet. Any change to these strings changes EVERY customer's book; the
+// golden-master characterization test pins them byte-for-byte.
+const VIEW_PHOTO_REF = {
+  non_human:
+    `\n\nThe reference image(s) are PHOTOGRAPHS of the specific pet to depict. ` +
+    `Translate it into the illustration style above — same species, breed, coat ` +
+    `colour, and markings as the photos, recognisably the SAME individual animal ` +
+    `(not a generic example of the breed); do NOT reproduce photographic detail, ` +
+    `lighting, or background.`,
+  human:
+    `\n\nThe reference image(s) are PHOTOGRAPH(S) of the person to depict. Translate them ` +
+    `into the illustration style above — same face shape, features, and hair as the ` +
+    `photo, recognisably the same person; do NOT reproduce photographic detail, ` +
+    `lighting, or background.`,
+};
+function refAuthorityDirective(isPet) {
+  return `\n\nREFERENCE IS AUTHORITATIVE: the reference image(s) are the exact, definitive ` +
+    `source for this ${isPet ? "animal's coat colour, markings, and shape" : "person's face, hair, skin tone, and build"}. ` +
+    `If any word of the Appearance text above seems to conflict with a reference image, ` +
+    `FOLLOW THE IMAGE. Do not substitute a generic or stereotyped ${isPet ? "example of the breed" : "person"}; ` +
+    `this must be individually recognisable as the specific ${isPet ? "animal" : "person"} in the reference.`;
+}
+function matchRefDirective(isPet) {
+  return isPet
+    ? `\n\nThis is the SAME individual animal as in the reference image — keep the ` +
+      `identical face, coat colour, and markings; only the camera angle changes from ` +
+      `the reference.`
+    : `\n\nThis is the SAME child as in the reference image — keep the IDENTICAL outfit ` +
+      `(same shirt, shorts, and shoes, same colours), the same face and hair, and any facial ` +
+      `mark on the SAME side of the face; only the camera angle changes from the reference.`;
+}
+
+/**
+ * The full mint prompt for ONE sheet view — SINGLE source of truth, shared by generateBook
+ * and the character-picker. Byte-identical to the pre-extraction inline loop (guarded by
+ * the golden-master test). `subjectHasPhoto` drives the base prompt's markers suppression
+ * (subject-level); `usePhoto`/`hasChainRef` are per-view (view-0 photo-anchor vs chained).
+ */
+export function buildSheetViewPrompt(subject, story, { viewIndex, subjectHasPhoto, usePhoto, hasChainRef }) {
+  const basePrompt = buildSubjectSheetBasePrompt(subject, story, subjectHasPhoto);
+  const viewPrompt = CHARACTER_SHEET_PROMPTS[viewIndex];
+  const isPet = subject.subject_type === "non_human";
+  const photoRef = usePhoto ? VIEW_PHOTO_REF[isPet ? "non_human" : "human"] : "";
+  const refAuthority = usePhoto && process.env.REF_AUTHORITY !== "off" ? refAuthorityDirective(isPet) : "";
+  const matchRef = !usePhoto && hasChainRef ? matchRefDirective(isPet) : "";
+  return `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${refAuthority}${matchRef}`;
+}
+
+// Picker convenience: a photo-anchored view-0 (front) — exactly the sheet the book LOCKS.
+export function buildSubjectViewZeroPrompt(subject, story) {
+  return buildSheetViewPrompt(subject, story, { viewIndex: 0, subjectHasPhoto: true, usePhoto: true, hasChainRef: false });
+}
+
 // Chained sheet minting (Spec D-M Stage-3 fix, 2026-06-10). View-1 (front) is the
 // anchor; views 2-3 are minted WITH view-1 passed as a reference image (the same
 // mechanism page renders use to consume sheets) so the 3 views agree on outfit +
@@ -798,51 +855,19 @@ export async function generateBook({
         });
         continue;
       }
-      // Mint this view.
-      const viewPrompt = CHARACTER_SHEET_PROMPTS[i];
-      // Photo-anchor: view-0 mints WITH the photo as reference + a translate-the-
-      // photograph directive (the proven preview path). Views 2-3 still chain off
+      // Mint this view. The prompt assembly is EXTRACTED into buildSheetViewPrompt
+      // (shared with the character-picker so a picked option IS a real book view-0
+      // sheet). Byte-identical to the former inline loop — golden-master-guarded.
+      // Photo-anchor: view-0 mints WITH the photo as reference; views 2-3 chain off
       // the minted view-0 (anchorBuf) as before.
       const usePhoto = i === 0 && photoBufs.length > 0;
       const refs = usePhoto ? photoBufs : chainedSheetRefs(i, anchorBuf);
-      const isPet = subject.subject_type === "non_human";
-      const photoRef = usePhoto
-        ? (isPet
-            ? `\n\nThe reference image(s) are PHOTOGRAPHS of the specific pet to depict. ` +
-              `Translate it into the illustration style above — same species, breed, coat ` +
-              `colour, and markings as the photos, recognisably the SAME individual animal ` +
-              `(not a generic example of the breed); do NOT reproduce photographic detail, ` +
-              `lighting, or background.`
-            : `\n\nThe reference image(s) are PHOTOGRAPH(S) of the person to depict. Translate them ` +
-              `into the illustration style above — same face shape, features, and hair as the ` +
-              `photo, recognisably the same person; do NOT reproduce photographic detail, ` +
-              `lighting, or background.`)
-        : "";
-      // REFERENCE AUTHORITY at MINT (2026-07-17). The render stage has long carried
-      // this rule (page-pipeline buildReferenceAuthorityDirective) but the MINT never
-      // did — so when story-gen's Appearance prose invented a face that contradicted
-      // the photo, the model followed the WORDS and minted a stranger (root-caused on
-      // a photo-anchored adult secondary: prose said "thirty-year-old, short brown
-      // hair", photo showed a bald 60-year-old; the prose won). Only emitted when a
-      // photo is actually attached, so every non-photo mint stays byte-identical.
-      // Env-gated REF_AUTHORITY=off, matching the render stage's convention.
-      const refAuthority = usePhoto && process.env.REF_AUTHORITY !== "off"
-        ? `\n\nREFERENCE IS AUTHORITATIVE: the reference image(s) are the exact, definitive ` +
-          `source for this ${isPet ? "animal's coat colour, markings, and shape" : "person's face, hair, skin tone, and build"}. ` +
-          `If any word of the Appearance text above seems to conflict with a reference image, ` +
-          `FOLLOW THE IMAGE. Do not substitute a generic or stereotyped ${isPet ? "example of the breed" : "person"}; ` +
-          `this must be individually recognisable as the specific ${isPet ? "animal" : "person"} in the reference.`
-        : "";
-      const matchRef = !usePhoto && refs.length
-        ? (isPet
-            ? `\n\nThis is the SAME individual animal as in the reference image — keep the ` +
-              `identical face, coat colour, and markings; only the camera angle changes from ` +
-              `the reference.`
-            : `\n\nThis is the SAME child as in the reference image — keep the IDENTICAL outfit ` +
-              `(same shirt, shorts, and shoes, same colours), the same face and hair, and any facial ` +
-              `mark on the SAME side of the face; only the camera angle changes from the reference.`)
-        : "";
-      const fullPrompt = `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${refAuthority}${matchRef}`;
+      const fullPrompt = buildSheetViewPrompt(subject, story, {
+        viewIndex: i,
+        subjectHasPhoto: photoBufs.length > 0,
+        usePhoto,
+        hasChainRef: refs.length > 0,
+      });
       const t0 = Date.now();
       emit({
         event: { kind: "sheet_mint_start", subject: subject.name, view: i + 1, chained: refs.length > 0 },

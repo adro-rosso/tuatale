@@ -48,6 +48,11 @@ export function computeInputHash(inputs: PreviewInputs): string {
     // key. That is what lets us NOT bump PREVIEW_STYLE_VERSION: existing child previews
     // keep their cache slot, only adult gets a new one.
     ...(inputs.isAdult ? { isAdult: true } : {}),
+    // Character-picker (Slice 2): the N options of a batch share every OTHER input, so
+    // without a per-variant key findCachedPreview would collapse them to ONE image. The
+    // variant (`${batchId}:${index}`) gives each dice roll its own cache slot. Included
+    // ONLY when present → the single-preview key is BYTE-IDENTICAL to before.
+    ...(inputs.variant ? { variant: inputs.variant } : {}),
   };
   return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
 }

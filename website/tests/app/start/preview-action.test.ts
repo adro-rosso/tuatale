@@ -11,13 +11,15 @@ vi.mock('@/lib/preview/preview-jobs', () => ({
   getPreviewJob: vi.fn(),
   countPreviewsForDraft: vi.fn(),
   countPreviewsForDraftSince: vi.fn(),
+  getBatchRows: vi.fn(),
+  countBatchesForDraft: vi.fn(),
 }));
 vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }));
 vi.mock('@/lib/supabase', () => ({ createServerClient: vi.fn() }));
 vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
 vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn(), updateDraftByCookieId: vi.fn() }));
 
-import { requestPreview, getPreviewStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto } from '@/app/start/_actions/preview';
+import { requestPreview, getPreviewStatus, requestPreviewBatch, getPreviewBatchStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto } from '@/app/start/_actions/preview';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId } from '@/db/drafts';
 import { createServerClient } from '@/lib/supabase';
@@ -27,6 +29,8 @@ import {
   getPreviewJob,
   countPreviewsForDraft,
   countPreviewsForDraftSince,
+  getBatchRows,
+  countBatchesForDraft,
 } from '@/lib/preview/preview-jobs';
 import { inngest } from '@/lib/inngest/client';
 
@@ -331,6 +335,96 @@ describe('requestPreview — isAdult flows to the worker', () => {
   });
 });
 
+
+// ---- requestPreviewBatch — N book-faithful options (character-picker Slice 2) ----
+describe('requestPreviewBatch', () => {
+  const cn = () => createPreviewJob as ReturnType<typeof vi.fn>;
+  const batchInput = {
+    role: 'protagonist' as const,
+    inputs: { name: 'Benji', subject_type: 'non_human' as const, animal_kind: 'dog', appearance: 'a labradoodle' },
+    artStyle: 'watercolour',
+    photoPaths: ['uploads/draft-1/a.png', 'uploads/draft-1/b.png'],
+  };
+  beforeEach(() => {
+    mockOwnDraft('draft-1');
+    (countBatchesForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(0); // under cap, no recent batch
+    let n = 0;
+    cn().mockImplementation(async () => ({ id: `p-${n++}`, status: 'queued', input_hash: 'h' }));
+  });
+
+  it('mints MAX_BATCH_OPTIONS (3) rows + 3 picker events; batch_id + variant_index set', async () => {
+    const r = await requestPreviewBatch(batchInput);
+    expect(r.blocked).toBeUndefined();
+    expect(r.options).toHaveLength(3);
+    expect(r.options.map((o) => o.variant)).toEqual([0, 1, 2]);
+    expect(cn()).toHaveBeenCalledTimes(3);
+    // every row carries the SAME batch_id and its own variant_index
+    const batchIds = cn().mock.calls.map((c) => c[0].batchId);
+    expect(new Set(batchIds).size).toBe(1);
+    expect(cn().mock.calls.map((c) => c[0].variantIndex)).toEqual([0, 1, 2]);
+    // 3 picker events, book-faithful mode + subject inputs + photos
+    expect((inngest.send as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(3);
+    const sent = (inngest.send as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(sent.name).toBe('preview/requested');
+    expect(sent.data).toMatchObject({ mode: 'picker', role: 'protagonist', artStyle: 'watercolour', photo_paths: batchInput.photoPaths });
+  });
+
+  it('the 3 variants get 3 DISTINCT input hashes (no cache-collapse to one image)', async () => {
+    await requestPreviewBatch(batchInput);
+    const hashes = cn().mock.calls.map((c) => c[0].inputHash);
+    expect(new Set(hashes).size).toBe(3);
+  });
+
+  it('SERVER-CAPS the count: a client asking for 99 still gets only 3', async () => {
+    const r = await requestPreviewBatch({ ...batchInput, count: 99 });
+    expect(r.options).toHaveLength(3);
+    expect(cn()).toHaveBeenCalledTimes(3);
+  });
+
+  it('NO PHOTOS (all foreign/absent) → blocked no_photos, no spend', async () => {
+    const r = await requestPreviewBatch({ ...batchInput, photoPaths: ['uploads/draft-2/x.png'] });
+    expect(r.blocked).toBe('no_photos');
+    expect(cn()).not.toHaveBeenCalled();
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('BATCH-AWARE CAP: at the free cap (counting BATCHES) → capped, no spend', async () => {
+    (countBatchesForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(10); // == FREE_PREVIEW_CAP
+    const r = await requestPreviewBatch(batchInput);
+    expect(r.blocked).toBe('capped');
+    expect(cn()).not.toHaveBeenCalled();
+  });
+
+  it('BATCH-AWARE RATE: a recent BATCH in the burst window → rate_limited (N options are ONE request)', async () => {
+    // cap call (no since) = 0; burst call (with since) = 1.
+    (countBatchesForDraft as ReturnType<typeof vi.fn>).mockImplementation(async (_id: string, since?: string) => (since ? 1 : 0));
+    const r = await requestPreviewBatch(batchInput);
+    expect(r.blocked).toBe('rate_limited');
+    expect(cn()).not.toHaveBeenCalled();
+  });
+
+  it('OWNERSHIP: no draft cookie → refuses before any spend', async () => {
+    mockOwnDraft(null);
+    await expect(requestPreviewBatch(batchInput)).rejects.toThrow(/no active session/i);
+    expect(cn()).not.toHaveBeenCalled();
+  });
+});
+
+describe('getPreviewBatchStatus — graceful (returns what landed)', () => {
+  it('maps rows to options; done carry url, failed/running reported as-is', async () => {
+    (getBatchRows as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 'p0', status: 'done', image_url: 'u0', bg_color: '#eee', variant_index: 0 },
+      { id: 'p1', status: 'failed', image_url: null, variant_index: 1 },
+      { id: 'p2', status: 'running', image_url: null, variant_index: 2 },
+    ]);
+    const r = await getPreviewBatchStatus('batch-1');
+    expect(r.options).toEqual([
+      { variant: 0, previewId: 'p0', status: 'done', imageUrl: 'u0', bgColor: '#eee' },
+      { variant: 1, previewId: 'p1', status: 'failed', imageUrl: null, bgColor: null },
+      { variant: 2, previewId: 'p2', status: 'running', imageUrl: null, bgColor: null },
+    ]);
+  });
+});
 
 // ---- removeAdultPhoto — the "you can remove it any time" promise (Slice 2) ---
 // Must be true at full scope: unlink from the draft AND delete the object.

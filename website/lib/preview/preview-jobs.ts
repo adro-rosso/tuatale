@@ -38,15 +38,47 @@ export async function findCachedPreview(inputHash: string, client?: unknown): Pr
 }
 
 export async function createPreviewJob(
-  args: { draftId?: string | null; inputHash: string; inputs: unknown },
+  args: { draftId?: string | null; inputHash: string; inputs: unknown; batchId?: string; variantIndex?: number },
   client?: unknown,
 ): Promise<PreviewJobRow> {
   const { data, error } = await previewTable(client)
-    .insert({ draft_id: args.draftId ?? null, input_hash: args.inputHash, inputs: args.inputs, status: 'queued' })
+    .insert({
+      draft_id: args.draftId ?? null,
+      input_hash: args.inputHash,
+      inputs: args.inputs,
+      status: 'queued',
+      // Batch fields added ONLY for picker batches → single-preview insert is byte-identical.
+      ...(args.batchId !== undefined ? { batch_id: args.batchId } : {}),
+      ...(args.variantIndex !== undefined ? { variant_index: args.variantIndex } : {}),
+    })
     .select('*')
     .single();
   if (error) throw new Error(`createPreviewJob failed: ${error.message}`);
   return data as PreviewJobRow;
+}
+
+/** All rows of a picker batch, ordered by variant — for getPreviewBatchStatus (graceful). */
+export async function getBatchRows(batchId: string, client?: unknown): Promise<PreviewJobRow[]> {
+  const { data } = await previewTable(client)
+    .select('*')
+    .eq('batch_id', batchId)
+    .order('variant_index', { ascending: true });
+  return (data as PreviewJobRow[] | null) ?? [];
+}
+
+/**
+ * Count BATCHES (not images) for a draft — the batch-aware cap/rate-limit ledger. Each
+ * batch has exactly one variant_index=0 row, so counting those counts batches. Single
+ * previews (variant_index NULL) are never counted here, so they don't interfere.
+ */
+export async function countBatchesForDraft(draftId: string, sinceIso?: string, client?: unknown): Promise<number> {
+  let q = previewTable(client)
+    .select('*', { count: 'exact', head: true })
+    .eq('draft_id', draftId)
+    .eq('variant_index', 0);
+  if (sinceIso) q = q.gte('created_at', sinceIso);
+  const { count } = await q;
+  return count ?? 0;
 }
 
 export async function getPreviewJob(id: string, client?: unknown): Promise<PreviewJobRow | null> {

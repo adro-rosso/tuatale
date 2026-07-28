@@ -49,4 +49,19 @@ describe('computeInputHash', () => {
     const base = { age: 6, style: 'watercolour' };
     expect(computeInputHash(base)).toBe(computeInputHash({ ...base, isAdult: false }));
   });
+
+  // Character-picker (Slice 2): the variant dimension.
+  it('BYTE-IDENTICAL: absent variant === the pre-picker key (single-preview path unchanged)', () => {
+    const base = { age: 6, style: 'watercolour', features: { eye_colour: 'green' } };
+    expect(computeInputHash(base)).toBe(computeInputHash({ ...base, variant: undefined }));
+  });
+  it('distinct variants → distinct hashes (N options do NOT collapse to one cache slot)', () => {
+    const base = { age: 6, style: 'watercolour' };
+    const h0 = computeInputHash({ ...base, variant: 'batch-1:0' });
+    const h1 = computeInputHash({ ...base, variant: 'batch-1:1' });
+    const h2 = computeInputHash({ ...base, variant: 'batch-1:2' });
+    expect(new Set([h0, h1, h2]).size).toBe(3);
+    // a different batch is a different set of slots (fresh dice on regenerate)
+    expect(h0).not.toBe(computeInputHash({ ...base, variant: 'batch-2:0' }));
+  });
 });

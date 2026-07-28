@@ -113,7 +113,9 @@ const RETRY_PROFILES = {
   book:    { perAttemptMs: 70_000, timeoutBackoffs: [1500, 1500, 1500, 1500, 1500, 1500], hedge: 1 },
 };
 function profileFor(callKind) {
-  return callKind === "preview_mint" ? RETRY_PROFILES.preview : RETRY_PROFILES.book;
+  // preview_mint AND picker_mint are both INTERACTIVE (a customer is waiting) → the
+  // fail-fast + 2x hedge preview profile. Everything else (book sheets/pages) → book.
+  return callKind === "preview_mint" || callKind === "picker_mint" ? RETRY_PROFILES.preview : RETRY_PROFILES.book;
 }
 
 function isCreditError(err) {
