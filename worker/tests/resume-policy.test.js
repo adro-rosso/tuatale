@@ -24,6 +24,9 @@ describe("classifyJobFailure", () => {
     expect(classifyJobFailure({ name: "ShapeValidationError", message: "x" })).toBe("terminal");
     expect(classifyJobFailure({ message: "child_gender is required" })).toBe("terminal");
     expect(classifyJobFailure({ kind: "protagonist_sheets_insufficient", message: "only 1 of 3" })).toBe("terminal");
+    // Slice 4 (D): a genuinely-gone customer-locked sheet must be TERMINAL — never R3-loop.
+    expect(classifyJobFailure({ name: "LockedSheetMissingError", message: "missing its chosen view-0" })).toBe("terminal");
+    expect(classifyJobFailure({ code: "LOCKED_SHEET_MISSING", message: "x", kind: "LOCKED_SHEET_MISSING" })).toBe("terminal");
   });
   it("ambiguous → resumable (delay≠failure; caps backstop)", () => {
     expect(classifyJobFailure({ message: "something odd happened" })).toBe("resumable");

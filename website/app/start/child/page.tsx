@@ -17,6 +17,9 @@ export default async function ChildStepPage() {
   const result = await getDraft();
   const draft = result.kind === 'found' ? result.draft : null;
   const artStyle = (draft as { art_style?: string | null } | null)?.art_style ?? 'watercolour';
+  // CHARACTER_PICKER_ENABLED (server-side, fail-closed). OFF → the forms fall back to today's
+  // behavior (adult single-preview; pet/secondaries no picker), byte-identical.
+  const pickerEnabled = process.env.CHARACTER_PICKER_ENABLED === 'on';
 
   const bookType = draft?.book_type ?? 'child';
 
@@ -26,6 +29,7 @@ export default async function ChildStepPage() {
     return (
       <AdultForm
         artStyle={artStyle}
+        pickerEnabled={pickerEnabled}
         draftId={draft?.id ?? null}
         initial={{
           name: draft?.child_name ?? '',
@@ -45,6 +49,7 @@ export default async function ChildStepPage() {
     return (
       <PetForm
         artStyle={artStyle}
+        pickerEnabled={pickerEnabled}
         initial={{
           name: draft?.child_name ?? '',
           reading_level: (draft as { reading_level?: string | null } | null)?.reading_level ?? 'standard',

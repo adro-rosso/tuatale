@@ -345,11 +345,33 @@ describe('requestPreviewBatch', () => {
     artStyle: 'watercolour',
     photoPaths: ['uploads/draft-1/a.png', 'uploads/draft-1/b.png'],
   };
+  const ORIGINAL_FLAG = process.env.CHARACTER_PICKER_ENABLED;
   beforeEach(() => {
+    process.env.CHARACTER_PICKER_ENABLED = 'on'; // the batch action is flag-gated (Gate 2)
     mockOwnDraft('draft-1');
     (countBatchesForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(0); // under cap, no recent batch
     let n = 0;
     cn().mockImplementation(async () => ({ id: `p-${n++}`, status: 'queued', input_hash: 'h' }));
+  });
+  afterEach(() => {
+    if (ORIGINAL_FLAG === undefined) delete process.env.CHARACTER_PICKER_ENABLED;
+    else process.env.CHARACTER_PICKER_ENABLED = ORIGINAL_FLAG;
+  });
+
+  it('FLAG OFF (byte-identical): CHARACTER_PICKER_ENABLED unset → blocked:disabled, NO spend', async () => {
+    delete process.env.CHARACTER_PICKER_ENABLED;
+    const r = await requestPreviewBatch(batchInput);
+    expect(r.blocked).toBe('disabled');
+    expect(r.options).toEqual([]);
+    expect(cn()).not.toHaveBeenCalled();
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('FLAG must be exactly "on" (fail-closed): "true" → disabled', async () => {
+    process.env.CHARACTER_PICKER_ENABLED = 'true';
+    const r = await requestPreviewBatch(batchInput);
+    expect(r.blocked).toBe('disabled');
+    expect(cn()).not.toHaveBeenCalled();
   });
 
   it('mints MAX_BATCH_OPTIONS (3) rows + 3 picker events; batch_id + variant_index set', async () => {

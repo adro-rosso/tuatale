@@ -82,11 +82,12 @@ export async function markChosenSheetDegraded(orderId, subjectIds, reason) {
   }
   const secs = Array.isArray(order?.secondaries) ? order.secondaries : [];
   if (secs.length && [...ids].some((id) => id !== "protagonist")) {
-    updates.secondaries = secs.map((s) =>
-      (ids.has(s.id || s.secondary_id) && s.chosen_sheet)
+    updates.secondaries = secs.map((s, i) => {
+      const id = s.id || s.secondary_id || `companion-${i + 1}`; // positional (form cards have no id)
+      return (ids.has(id) && s.chosen_sheet)
         ? { ...s, chosen_sheet: { ...s.chosen_sheet, degraded: true, degradedReason: reason } }
-        : s,
-    );
+        : s;
+    });
   }
   if (Object.keys(updates).length) {
     const { error } = await client.from("orders").update(updates).eq("id", orderId);

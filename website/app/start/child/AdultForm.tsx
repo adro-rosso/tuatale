@@ -4,6 +4,7 @@ import { useActionState, useRef, useState } from 'react';
 import { submitAdultStep, type SubmitAdultState, type AdultFormValues } from '@/app/start/_actions/submit-adult';
 import { uploadAdultPhoto, removeAdultPhoto } from '@/app/start/_actions/preview';
 import { CharacterPicker } from './CharacterPicker';
+import { GeneratedPreview } from './GeneratedPreview';
 import { GENDERS, ADULT_AGE_MIN, ADULT_AGE_MAX } from '@/lib/validation/schemas';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
@@ -33,6 +34,8 @@ interface AdultFormProps {
   };
   artStyle: string;
   draftId: string | null;
+  /** CHARACTER_PICKER_ENABLED (server-side). OFF → the original single preview (today). */
+  pickerEnabled: boolean;
 }
 
 const SELECT_CLASS = fieldControl;
@@ -95,7 +98,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
  * path + inline live preview. An adult book still works text-only (Slice 1); a photo
  * (with attested consent) drives real likeness and the pre-purchase preview.
  */
-export function AdultForm({ initial, artStyle, draftId }: AdultFormProps) {
+export function AdultForm({ initial, artStyle, draftId, pickerEnabled }: AdultFormProps) {
   const [state, formAction, isPending] = useActionState(submitAdultStep, initialState);
   const echoed = state.values as AdultFormValues | undefined;
   const errors = state.errors;
@@ -253,7 +256,7 @@ export function AdultForm({ initial, artStyle, draftId }: AdultFormProps) {
             </div>
             {photoError && <p className="font-body text-iron-oxide text-caption" role="alert">{photoError}</p>}
 
-            {previewReady && (
+            {previewReady && pickerEnabled ? (
               <div className="pt-sm">
                 <CharacterPicker
                   subjectKey="protagonist"
@@ -271,7 +274,18 @@ export function AdultForm({ initial, artStyle, draftId }: AdultFormProps) {
                   ready={previewReady}
                 />
               </div>
-            )}
+            ) : null}
+
+            {/* Flag OFF → today's behavior: the single cream-bg preview (byte-identical). */}
+            {previewReady && !pickerEnabled ? (
+              <div className="pt-sm">
+                <GeneratedPreview inputs={{ age: ageNum, style: artStyle, isAdult: true, draftId }} photo={photo} />
+                <p className="font-body text-warm-grey text-caption mt-xs">
+                  This is a preview of how they’ll look. If the age reads wrong, try a clearer or more
+                  recent photo.
+                </p>
+              </div>
+            ) : null}
           </div>
         </section>
       )}

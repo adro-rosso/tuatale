@@ -11,6 +11,8 @@ import { fieldControl, sectionCard, segTrack, segButton } from '@/components/ui/
 
 interface PetFormProps {
   artStyle: string;
+  /** CHARACTER_PICKER_ENABLED (server-side). OFF → no picker (today's pet behavior). */
+  pickerEnabled: boolean;
   initial: {
     name: string;
     reading_level: string;
@@ -82,7 +84,7 @@ function Field({ label, error, children }: { label: string; error?: string; chil
  * band, and — critically — several photos of the SAME pet (their likeness comes from
  * the photos; text alone renders a generic breed). Persists onto the draft.
  */
-export function PetForm({ initial, artStyle }: PetFormProps) {
+export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
   const [state, formAction, isPending] = useActionState(submitPetStep, initialState);
   const echoed = state.values as PetFormValues | undefined;
   const errors = state.errors;
@@ -262,7 +264,7 @@ export function PetForm({ initial, artStyle }: PetFormProps) {
           </p>
         )}
 
-        {photos.length > 0 && (
+        {photos.length > 0 && pickerEnabled && (
           <div className="pt-md border-warm-grey-light/50 mt-md border-t">
             <CharacterPicker
               subjectKey="protagonist"

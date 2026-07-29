@@ -318,6 +318,12 @@ export async function getPreviewStatus(previewId: string): Promise<PreviewResult
  * client-supplied id.
  */
 export async function requestPreviewBatch(input: RequestPreviewBatchInput): Promise<PreviewBatchResult> {
+  // CHARACTER_PICKER_ENABLED (server-side, fail-closed) — the REAL control. A UI gate alone
+  // isn't (a Server Action id ships in the client bundle). OFF → no-op: no spend, no rows,
+  // byte-identical to the picker not existing. Never NEXT_PUBLIC.
+  if (process.env.CHARACTER_PICKER_ENABLED !== 'on') {
+    return { batchId: '', options: [], blocked: 'disabled' };
+  }
   const draft = await requireOwnDraft('requestPreviewBatch'); // cookie-derived; never trust the client
   const draftId = draft.id;
 
@@ -403,10 +409,21 @@ export async function getPreviewBatchStatus(batchId: string): Promise<PreviewBat
 }
 
 // ---- The pick: persist + resume (Slice 3) ----------------------------------------------
+// Form secondary cards carry no stable id, so a companion subjectKey encodes its POSITION:
+// 'companion-N' ↔ secondaries[N-1] — the SAME scheme the worker adapter synthesises
+// (companion-{index+1}). Match by explicit id if present, else by this index. -1 = no match.
+function companionIndex(subjectKey: string): number {
+  const m = /companion-(\d+)/.exec(subjectKey);
+  return m ? parseInt(m[1]!, 10) - 1 : -1;
+}
+function secondaryMatches(s: Record<string, unknown>, i: number, subjectKey: string): boolean {
+  return s.id === subjectKey || s.secondary_id === subjectKey || i === companionIndex(subjectKey);
+}
+
 /**
  * Persist the customer's chosen option to draft.chosen_sheet (protagonist) or nest it into
- * the matching secondaries card (subjectKey = a companion id). Ownership from the caller's
- * OWN cookie draft. The pick is OPTIONAL — it never gates Continue; it just locks the look.
+ * the matching secondaries card. Ownership from the caller's OWN cookie draft. The pick is
+ * OPTIONAL — it never gates Continue; it just locks the look.
  */
 export async function persistChosenSheet(subjectKey: string, chosen: ChosenSheet | null): Promise<{ ok: true }> {
   const cookieId = await getDraftCookieFromRequest();
@@ -417,11 +434,10 @@ export async function persistChosenSheet(subjectKey: string, chosen: ChosenSheet
   if (subjectKey === 'protagonist') {
     await updateDraftByCookieId(cookieId, { chosen_sheet: chosen } as unknown as DraftUpdate);
   } else {
-    // Nest per-companion in the secondaries jsonb (matched by id).
     const secondaries = Array.isArray((draft as { secondaries?: unknown }).secondaries)
       ? ((draft as { secondaries: Array<Record<string, unknown>> }).secondaries)
       : [];
-    const next = secondaries.map((s) => (s.id === subjectKey || s.secondary_id === subjectKey ? { ...s, chosen_sheet: chosen } : s));
+    const next = secondaries.map((s, i) => (secondaryMatches(s, i, subjectKey) ? { ...s, chosen_sheet: chosen } : s));
     await updateDraftByCookieId(cookieId, { secondaries: next } as unknown as DraftUpdate);
   }
   return { ok: true };
@@ -439,6 +455,6 @@ export async function getChosenSheet(subjectKey: string): Promise<ChosenSheet | 
   const secondaries = Array.isArray((draft as { secondaries?: unknown }).secondaries)
     ? ((draft as { secondaries: Array<Record<string, unknown>> }).secondaries)
     : [];
-  const card = secondaries.find((s) => s.id === subjectKey || s.secondary_id === subjectKey);
+  const card = secondaries.find((s, i) => secondaryMatches(s, i, subjectKey));
   return (card?.chosen_sheet as ChosenSheet | null) ?? null;
 }

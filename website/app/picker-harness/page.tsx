@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import { CharacterPicker } from '@/app/start/child/CharacterPicker';
+import { GeneratedPreview } from '@/app/start/child/GeneratedPreview';
+import { sectionCard } from '@/components/ui/form-styles';
 import type { PreviewBatchOption } from '@/lib/preview/types';
 
 /**
@@ -77,6 +79,37 @@ export default function PickerHarness() {
         <button type="button" className="bg-iron-oxide text-cream rounded-full px-6 py-3 font-body" data-continue>
           Continue →
         </button>
+      </Panel>
+
+      <Panel label="SECONDARIES per-card picker (new — inside a companion card)">
+        <fieldset className={`${sectionCard} space-y-md`}>
+          <legend className="font-heading text-near-black text-h3 not-italic">Nicki</legend>
+          <p className="font-body text-warm-grey text-caption">…name / relationship / photo fields above…</p>
+          <div className="pt-sm border-warm-grey-light/50 mt-sm border-t">
+            <CharacterPicker
+              subjectKey="companion-1"
+              name="Nicki"
+              role="secondary"
+              inputs={{ name: 'Nicki', subject_type: 'human' }}
+              artStyle="watercolour"
+              photoPaths={['uploads/harness/a.png']}
+              ready
+              __forceMode="options"
+              __forceOptions={opts(['done', 'done', 'done'])}
+            />
+          </div>
+        </fieldset>
+      </Panel>
+
+      <Panel label="FLAG OFF — ADULT falls back to today's single preview (byte-identical)">
+        <GeneratedPreview inputs={{ age: 40, style: 'watercolour', isAdult: true, draftId: 'harness' }} photo={null} />
+      </Panel>
+
+      <Panel label="FLAG OFF — PET / SECONDARIES render NO picker (today's behavior)">
+        <p className="font-body text-warm-grey text-body">
+          (Nothing renders — with the flag off the pet hero form and the companion cards show exactly today’s UI, no
+          picker block. Only the adult form shows its original single preview, above.)
+        </p>
       </Panel>
     </main>
   );

@@ -39,6 +39,9 @@ export default async function SecondariesStepPage() {
   const isPet = draft?.book_type === 'pet';
   const name = draft?.child_name || null;
   const possessive = name ? `${name}'s` : isPet ? 'your pet’s' : 'their';
+  const artStyle = (draft as { art_style?: string | null } | null)?.art_style ?? 'watercolour';
+  // CHARACTER_PICKER_ENABLED (server-side, fail-closed). OFF → no per-card picker (today).
+  const pickerEnabled = process.env.CHARACTER_PICKER_ENABLED === 'on';
 
   return (
     <div className="space-y-lg">
@@ -59,6 +62,8 @@ export default async function SecondariesStepPage() {
         initialSecondaries={initial}
         bookType={isPet ? 'pet' : 'child'}
         protagonistName={name}
+        artStyle={artStyle}
+        pickerEnabled={pickerEnabled}
       />
     </div>
   );

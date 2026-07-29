@@ -123,5 +123,5 @@ export interface PreviewBatchResult {
   /** Best-photo faceH across the batch (Slice 3 escalation). null = pet / not yet known. */
   faceQuality?: number | null;
   /** Set when the batch was refused up-front (no spend, no rows). */
-  blocked?: 'capped' | 'rate_limited' | 'no_photos';
+  blocked?: 'capped' | 'rate_limited' | 'no_photos' | 'disabled';
 }

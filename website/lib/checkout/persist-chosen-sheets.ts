@@ -66,10 +66,11 @@ export async function persistChosenSheetsForOrder(order: OrderLike): Promise<voi
   const secs = Array.isArray(order.secondaries) ? (order.secondaries as Array<Record<string, unknown>>) : [];
   if (secs.some((s) => (s.chosen_sheet as ChosenSheet | undefined)?.imagePath)) {
     updates.secondaries = await Promise.all(
-      secs.map(async (s) => {
+      secs.map(async (s, i) => {
         const c = s.chosen_sheet as ChosenSheet | undefined;
-        const id = (s.id || s.secondary_id) as string | undefined;
-        if (!c?.imagePath || !id) return s;
+        // Positional companion-{index+1} (form cards have no id) — matches the adapter.
+        const id = (s.id || s.secondary_id || `companion-${i + 1}`) as string;
+        if (!c?.imagePath) return s;
         return { ...s, chosen_sheet: await copyOne(client, order.id, id, c) };
       }),
     );

@@ -34,10 +34,13 @@ export function collectPicks(order) {
   const p = order?.chosen_sheet;
   if (p && p.imagePath && !p.degraded) picks.push({ subjectId: "protagonist", imagePath: p.imagePath });
   const secs = Array.isArray(order?.secondaries) ? order.secondaries : [];
-  for (const s of secs) {
+  for (let i = 0; i < secs.length; i++) {
+    const s = secs[i];
     const c = s?.chosen_sheet;
-    const id = s?.id || s?.secondary_id;
-    if (c && c.imagePath && !c.degraded && id) picks.push({ subjectId: id, imagePath: c.imagePath });
+    // Form cards carry no stable id → derive the same positional companion-{index+1} the
+    // adapter synthesises. Explicit id/secondary_id wins if present.
+    const id = s?.id || s?.secondary_id || `companion-${i + 1}`;
+    if (c && c.imagePath && !c.degraded) picks.push({ subjectId: id, imagePath: c.imagePath });
   }
   return picks;
 }

@@ -7,6 +7,7 @@ import { Body } from '@/components/ui/Body';
 import { fieldControl, sectionCard, segTrack, segItem } from '@/components/ui/form-styles';
 import { GENDERS, SUBJECT_TYPES } from '@/lib/validation/schemas';
 import { PhotoUploader } from '@/app/start/child/PhotoUploader';
+import { CharacterPicker } from '@/app/start/child/CharacterPicker';
 import type { FieldErrors } from '@/lib/validation/validate';
 
 interface SecondaryCardData {
@@ -38,6 +39,10 @@ interface SecondariesFormProps {
   bookType: 'child' | 'pet';
   /** The hero's name, for the pet-aware "who are they to {name}?" copy. */
   protagonistName: string | null;
+  /** Chosen art style — per-card picker options mint in the book's real style. */
+  artStyle: string;
+  /** CHARACTER_PICKER_ENABLED (server-side). OFF → no per-card picker (today's behavior). */
+  pickerEnabled: boolean;
 }
 
 // Companion photo-upload — PET BOOKS ONLY. Enabled 2026-07-17, once the
@@ -54,7 +59,7 @@ const SECONDARY_PHOTO_ENABLED = true;
 
 const MAX_CARDS = 3;
 
-export function SecondariesForm({ initialSecondaries, bookType, protagonistName }: SecondariesFormProps) {
+export function SecondariesForm({ initialSecondaries, bookType, protagonistName, artStyle, pickerEnabled }: SecondariesFormProps) {
   const [cards, setCards] = useState<SecondaryCardData[]>(initialSecondaries);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [consent, setConsent] = useState(false);
@@ -110,10 +115,13 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName 
           {cards.map((card, idx) => (
             <SecondaryCard
               key={idx}
+              idx={idx}
               data={card}
               errors={errorsForCard(errors, idx)}
               isPet={isPet}
               protagonistName={protagonistName}
+              artStyle={artStyle}
+              pickerEnabled={pickerEnabled}
               onChange={(patch) => updateCard(idx, patch)}
               onRemove={() => removeCard(idx)}
             />
@@ -170,15 +178,18 @@ function errorsForCard(all: FieldErrors, idx: number): Record<string, string> {
 }
 
 interface SecondaryCardProps {
+  idx: number;
   data: SecondaryCardData;
   errors: Record<string, string>;
   isPet: boolean;
   protagonistName: string | null;
+  artStyle: string;
+  pickerEnabled: boolean;
   onChange: (patch: Partial<SecondaryCardData>) => void;
   onRemove: () => void;
 }
 
-function SecondaryCard({ data, errors, isPet, protagonistName, onChange, onRemove }: SecondaryCardProps) {
+function SecondaryCard({ idx, data, errors, isPet, protagonistName, artStyle, pickerEnabled, onChange, onRemove }: SecondaryCardProps) {
   const isHuman = data.subject_type === 'human';
   const isNonHuman = data.subject_type === 'non_human';
   const uid = useId();
@@ -280,6 +291,26 @@ function SecondaryCard({ data, errors, isPet, protagonistName, onChange, onRemov
             A clear photo or two helps us capture their true likeness. For grown-ups and pets only,
             please don&apos;t upload photos of children here.
           </p>
+
+          {/* Per-card character picker (flag-gated). Non-blocking — never gates Continue. */}
+          {pickerEnabled && data.photos.length > 0 ? (
+            <div className="pt-sm border-warm-grey-light/50 mt-sm border-t">
+              <CharacterPicker
+                subjectKey={`companion-${idx + 1}`}
+                name={data.name || 'this character'}
+                role="secondary"
+                inputs={{
+                  name: data.name,
+                  subject_type: (data.subject_type || 'human') as 'human' | 'non_human',
+                  gender: data.gender,
+                  appearance: data.appearance,
+                }}
+                artStyle={artStyle}
+                photoPaths={data.photos}
+                ready={data.photos.length > 0}
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
 

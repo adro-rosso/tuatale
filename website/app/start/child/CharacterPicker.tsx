@@ -141,7 +141,7 @@ export function CharacterPicker(props: Props) {
             <p className="font-body text-warm-grey text-caption">Let’s refresh your options for {name}.</p>
           ) : (
             <p className="font-body text-warm-grey text-caption">
-              {ready ? `Optional — see a few looks for ${name} and pick your favourite.` : `Add a photo above to preview ${name}.`}
+              {ready ? `Optional. See a few looks for ${name} and pick your favourite.` : `Add a photo above to preview ${name}.`}
             </p>
           )}
         </div>
@@ -167,7 +167,7 @@ export function CharacterPicker(props: Props) {
           </div>
           {mode === 'options' ? (
             <div className="space-y-xs flex flex-col items-center text-center">
-              <p className="font-body text-warm-grey text-caption">Like several? Pick your favourite — we’ll use it throughout the book.</p>
+              <p className="font-body text-warm-grey text-caption">Like several? Pick your favourite, and we’ll use it throughout the book.</p>
               <button type="button" onClick={tryAgain} className="font-body text-iron-oxide underline text-caption">
                 None of these look like {name}? Try again
               </button>
@@ -199,7 +199,7 @@ export function CharacterPicker(props: Props) {
           ) : (
             <>
               <p className="font-body text-near-black text-body">We’ll make sure {name} looks just right.</p>
-              <p className="font-body text-warm-grey text-caption">Our team fine-tunes {name} for your book — nothing more you need to do. Continue whenever you’re ready.</p>
+              <p className="font-body text-warm-grey text-caption">Our team fine-tunes {name} for your book, so there’s nothing more you need to do. Continue whenever you’re ready.</p>
               <button type="button" onClick={() => void escalateToOperator()} className="font-body text-iron-oxide underline text-caption">Continue with our help</button>
             </>
           )}
@@ -209,7 +209,7 @@ export function CharacterPicker(props: Props) {
       {mode === 'degraded' ? (
         <div className="border-warm-grey-light/70 bg-paper p-md space-y-sm rounded-2xl border text-center">
           <p className="font-body text-near-black text-body">We’ll craft {name}’s character together with your book.</p>
-          <p className="font-body text-warm-grey text-caption">Our art engine is busy right now — no problem, and you haven’t been charged. Your book will still feature {name}.</p>
+          <p className="font-body text-warm-grey text-caption">Our art engine is busy right now. No problem, and you haven’t been charged. Your book will still feature {name}.</p>
           <button type="button" onClick={begin} className="font-body text-iron-oxide underline text-caption">Try again</button>
         </div>
       ) : null}
