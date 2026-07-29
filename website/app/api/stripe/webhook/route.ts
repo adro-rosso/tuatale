@@ -34,6 +34,7 @@ import { getDraftById, markDraftConverted } from '@/db/drafts';
 import { getOrderByStripeSessionId } from '@/db/orders';
 import * as pipelineJobs from '@/db/pipeline-jobs';
 import { createOrderFromDraft, AdultBranchDisabledError } from '@/lib/checkout/create-order';
+import { persistChosenSheetsForOrder } from '@/lib/checkout/persist-chosen-sheets';
 import { handleFailure } from '@/lib/recovery/recover-failed-order';
 import { inngest } from '@/lib/inngest/client';
 import type { Tables } from '@/types/database';
@@ -179,6 +180,11 @@ export async function POST(req: Request): Promise<NextResponse> {
     if (draft.status === 'active') {
       await markDraftConverted(draft.id, existing.id);
     }
+    // Slice 4: ensure the durable chosen-sheet copy happened (a prior attempt may have
+    // died before it). Idempotent + never fails a paid order (B).
+    await persistChosenSheetsForOrder(existing).catch((e) =>
+      console.error(`[webhook] chosen-sheet copy (reconcile) failed for order ${existing.id}: ${e.message}`),
+    );
     // Same reconciliation for pipeline_jobs: a prior attempt may
     // have died between createOrder and createJob. If so, finish
     // the job creation + dispatch now. dispatchPipelineJob is
@@ -216,6 +222,13 @@ export async function POST(req: Request): Promise<NextResponse> {
     throw err;
   }
   await markDraftConverted(draft.id, order.id);
+
+  // Slice 4: durably copy each picked character's preview PNG to stable orders/<id>/chosen/
+  // BEFORE the pipeline runs (which may be days later). Copy failure (B) degrades that pick
+  // to a normal mint + operator flag and the order PROCEEDS — it must never fail a paid order.
+  await persistChosenSheetsForOrder(order).catch((e) =>
+    console.error(`[webhook] chosen-sheet copy failed for order ${order.id}: ${e.message}`),
+  );
 
   const result = await dispatchPipelineJob(order, session.id);
 

@@ -43,6 +43,14 @@ export default async function AdminOrderDetailPage({
   // 'error' tile so the page an operator uses to decide whether to ship still renders.
   const photos = await getOrderPhotos(order);
 
+  // Character-picker Slice 4: was any chosen character pick lost (durable copy/PNG gone),
+  // so this book was made from photos instead of the exact pick? (Types lag the migration.)
+  const chosenP = (order as { chosen_sheet?: { degraded?: boolean; degradedReason?: string } | null }).chosen_sheet;
+  const secsForFlag = (order as { secondaries?: Array<{ chosen_sheet?: { degraded?: boolean } }> | null }).secondaries;
+  const degradedPick =
+    Boolean(chosenP?.degraded) || (Array.isArray(secsForFlag) && secsForFlag.some((s) => s?.chosen_sheet?.degraded));
+  const degradedReason = chosenP?.degradedReason ?? 'unavailable at generation';
+
   return (
     <div className="space-y-lg">
       <div className="space-y-xs">
@@ -56,6 +64,18 @@ export default async function AdminOrderDetailPage({
           {order.child_name}&apos;s book
         </Heading>
       </div>
+
+      {degradedPick ? (
+        <div className="border-iron-oxide/40 bg-iron-oxide/5 space-y-xs rounded-2xl border p-md" role="alert">
+          <p className="font-body text-near-black text-body">⚑ Character pick lost — book made from photos.</p>
+          <p className="font-body text-warm-grey text-caption">
+            The customer chose a specific character look, but its saved image was {degradedReason}, so this book was
+            generated from their photos (good likeness via face-selection, but not the exact pick they chose). Recourse
+            is manual for now — regenerate the book, or accept the good-photo result. (One-click sheet re-roll to restore
+            the exact pick is a planned follow-up, not yet built.)
+          </p>
+        </div>
+      ) : null}
 
       <OrderSummarySection order={order} job={job} />
       <BookContentSection order={order} photos={photos} />

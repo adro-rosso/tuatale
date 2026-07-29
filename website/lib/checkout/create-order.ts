@@ -193,6 +193,11 @@ export async function createOrderFromDraft(
   };
   // vibe (pet story mood) — new column lagging the generated DB types; cast read+write.
   (payload as { vibe?: string | null }).vibe = (draft as { vibe?: string | null }).vibe ?? null;
+  // chosen_sheet (character-picker pick, Slice 4) — new column lagging the generated
+  // types; cast. The durable-copy step (in the webhook, after this) rewrites its
+  // imagePath to the stable orders/<id>/chosen/ path, or nulls it on copy failure (B).
+  (payload as { chosen_sheet?: unknown }).chosen_sheet =
+    (draft as { chosen_sheet?: unknown }).chosen_sheet ?? null;
 
   return client ? createOrder(payload, client) : createOrder(payload);
 }

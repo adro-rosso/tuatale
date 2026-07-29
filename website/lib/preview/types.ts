@@ -69,14 +69,18 @@ export interface PreviewJobRow {
 /** The customer's locked pick, persisted to draft.chosen_sheet (Slice 4 reads it). */
 export interface ChosenSheet {
   subjectId: string;
-  previewId: string;
-  /** Stable Storage path of the chosen option's PNG — Slice 4 durably copies it. */
+  previewId?: string;
+  /** Storage path of the chosen option's PNG. previews/<id>.png at pick time; Slice 4
+   *  rewrites it to the durable orders/<id>/chosen/<subjectId>.png. '' when degraded. */
   imagePath: string;
   inputHash?: string;
   batchId?: string;
   imageUrl?: string | null;
   /** Set on the operator-fine-tune escalation path. */
   escalated?: boolean;
+  /** Slice 4: the durable copy/PNG was unavailable → book made from photos, pick lost. */
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 // ---- Character-picker batch (Slice 2) --------------------------------------

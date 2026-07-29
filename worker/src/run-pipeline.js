@@ -26,7 +26,8 @@ import { adaptOrderToPipelineInput } from "./adapter.js";
 import { downloadPhoto } from "./preview.js";
 import { photoFaceQuality as realPhotoFaceQuality } from "./face-detect.js";
 import { uploadBookPdf as realUploadBookPdf } from "./storage.js";
-import { getOrderById as realGetOrderById } from "./db.js";
+import { getOrderById as realGetOrderById, markChosenSheetDegraded } from "./db.js";
+import { injectChosenSheets } from "./chosen-sheet-inject.js";
 import { IncompletePipelineError } from "./incomplete-pipeline-error.js";
 import {
   restoreCheckpoint as realRestoreCheckpoint,
@@ -332,6 +333,17 @@ export async function runPipeline({ orderId, jobId }, deps = {}) {
   // story is essential: a re-gen'd story would change the sheet fingerprints and
   // force a full re-mint.)
   const restored = await restoreCheckpoint({ jobId, scratchDir });
+
+  // Character-picker Slice 4: inject any durably-copied CHOSEN character sheets as LOCKED
+  // (Slice 1) so the book reuses the customer's picked view-0 (chains views 2-3). No picks
+  // → NO-OP → generateBook is BYTE-IDENTICAL to a non-picked order. A durable PNG gone at
+  // gen time (C) degrades to a normal mint + flags the operator — never a different-face
+  // swap. Runs after restoreCheckpoint (idempotent on resume) and before generateBook.
+  const chosen = await injectChosenSheets(order, scratchDir);
+  if (chosen.degraded.length) {
+    await markChosenSheetDegraded(orderId, chosen.degraded, "durable_gone_at_gen")
+      .catch((e) => console.warn(`markChosenSheetDegraded failed (order=${orderId}): ${e.message}`));
+  }
 
   // story/meta held in outer scope so the catch can checkpoint them on failure.
   let story = restored?.story ?? null;

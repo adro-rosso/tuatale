@@ -23,7 +23,11 @@ export function nextRetryDelayMs(attemptCount) {
 
 const CREDIT_RE = /RESOURCE_EXHAUSTED|exceeded your current quota|insufficient[_ ]?quota|\bquota\b|billing/i;
 const TRANSIENT_RE = /wall.?ceiling|wall_ceiling_exceeded|\b50[0234]\b|fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|socket hang up|network|timed?[_ ]?out|incomplete[_ ]?(book|pipeline)/i;
-const DETERMINISTIC_RE = /ShapeValidation|MaxTokens|\binvalid\b|\brequired\b|not found|malformed|unsupported|protagonist_sheets_insufficient/i;
+// LockedSheetMissingError (character-picker Slice 1/4): a customer-locked sheet whose PNG
+// is genuinely gone. It will NOT recover on retry → TERMINAL, so R3 never retry-loops for
+// 5 days (Slice-4 decision D). In practice Slice-4 injection degrades BEFORE this can fire
+// (it never writes a locked meta without its PNG), so this is a should-never-happen guard.
+const DETERMINISTIC_RE = /ShapeValidation|MaxTokens|\binvalid\b|\brequired\b|not found|malformed|unsupported|protagonist_sheets_insufficient|LockedSheetMissingError|LOCKED_SHEET_MISSING/i;
 
 /**
  * Classify the thrown failure from its (serialization-safe) message/name/kind.

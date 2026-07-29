@@ -63,6 +63,37 @@ export async function getOrderById(orderId) {
   return data;
 }
 
+/**
+ * Character-picker Slice 4 (C, gen-time degrade): flag the order's chosen picks whose
+ * durable PNG was gone at generation, so the operator SEES on the admin surface that the
+ * book was made from photos and the exact pick was lost. Merges `degraded:true` into the
+ * protagonist chosen_sheet and/or the matching secondary cards. Best-effort — never fails
+ * the (successful) book.
+ */
+export async function markChosenSheetDegraded(orderId, subjectIds, reason) {
+  const client = getClient();
+  const { data: order, error: readErr } = await client
+    .from("orders").select("chosen_sheet, secondaries").eq("id", orderId).single();
+  if (readErr) throw new Error(`markChosenSheetDegraded read(${orderId}) failed: ${readErr.message}`);
+  const ids = new Set(subjectIds);
+  const updates = {};
+  if (ids.has("protagonist") && order?.chosen_sheet) {
+    updates.chosen_sheet = { ...order.chosen_sheet, degraded: true, degradedReason: reason };
+  }
+  const secs = Array.isArray(order?.secondaries) ? order.secondaries : [];
+  if (secs.length && [...ids].some((id) => id !== "protagonist")) {
+    updates.secondaries = secs.map((s) =>
+      (ids.has(s.id || s.secondary_id) && s.chosen_sheet)
+        ? { ...s, chosen_sheet: { ...s.chosen_sheet, degraded: true, degradedReason: reason } }
+        : s,
+    );
+  }
+  if (Object.keys(updates).length) {
+    const { error } = await client.from("orders").update(updates).eq("id", orderId);
+    if (error) throw new Error(`markChosenSheetDegraded update(${orderId}) failed: ${error.message}`);
+  }
+}
+
 export async function getJobById(jobId) {
   const { data, error } = await getClient()
     .from("pipeline_jobs")
