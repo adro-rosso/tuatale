@@ -270,8 +270,23 @@ export function buildSheetViewPrompt(subject, story, { viewIndex, subjectHasPhot
   const isPet = subject.subject_type === "non_human";
   const photoRef = usePhoto ? VIEW_PHOTO_REF[isPet ? "non_human" : "human"] : "";
   const refAuthority = usePhoto && process.env.REF_AUTHORITY !== "off" ? refAuthorityDirective(isPet) : "";
+  // Expression-scope (2026-07-29): the photo is authoritative for FEATURES/identity but NOT
+  // EXPRESSION. A base sheet must be neutral so it reads as one consistent character (and so a
+  // picker grid is judged on likeness, not mood). "neutral expression" in the view prompt was
+  // losing to a smiling photo under REF_AUTHORITY (reference beats words) — this is the
+  // POSITIVE-axis fix: explicitly carve expression OUT of the reference's authority. Photo-only
+  // (usePhoto) → NO-OP for non-photo books (the view prompt's "neutral" already suffices there).
+  const expressionScope = usePhoto ? expressionScopeDirective(isPet) : "";
   const matchRef = !usePhoto && hasChainRef ? matchRefDirective(isPet) : "";
-  return `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${refAuthority}${matchRef}`;
+  return `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${refAuthority}${expressionScope}${matchRef}`;
+}
+
+function expressionScopeDirective(isPet) {
+  return `\n\nEXPRESSION — NEUTRAL BASE: give ${isPet ? "the animal" : "them"} a calm, relaxed, ` +
+    `closed-mouth NEUTRAL expression, REGARDLESS of the expression in the reference photo(s). The ` +
+    `reference defines ${isPet ? "the animal's features, coat, and markings" : "their face, features, and hair"}, ` +
+    `NOT their mood — do NOT copy a ${isPet ? "smile, open mouth, or panting tongue" : "smile, laugh, grin, or open mouth"} ` +
+    `from the photo.`;
 }
 
 // Picker convenience: a photo-anchored view-0 (front) — exactly the sheet the book LOCKS.

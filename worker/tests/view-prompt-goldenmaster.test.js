@@ -46,6 +46,16 @@ const MATCH_HUMAN =
   `\n\nThis is the SAME child as in the reference image — keep the IDENTICAL outfit ` +
   `(same shirt, shorts, and shoes, same colours), the same face and hair, and any facial ` +
   `mark on the SAME side of the face; only the camera angle changes from the reference.`;
+// Expression-scope directive (2026-07-29) — RE-BASELINE. Photo-anchored views only; the
+// ONLY intended change to the mint. Non-photo views (usePhoto=false) stay byte-identical.
+const EXPR_HUMAN =
+  `\n\nEXPRESSION — NEUTRAL BASE: give them a calm, relaxed, closed-mouth NEUTRAL expression, ` +
+  `REGARDLESS of the expression in the reference photo(s). The reference defines their face, ` +
+  `features, and hair, NOT their mood — do NOT copy a smile, laugh, grin, or open mouth from the photo.`;
+const EXPR_PET =
+  `\n\nEXPRESSION — NEUTRAL BASE: give the animal a calm, relaxed, closed-mouth NEUTRAL expression, ` +
+  `REGARDLESS of the expression in the reference photo(s). The reference defines the animal's ` +
+  `features, coat, and markings, NOT their mood — do NOT copy a smile, open mouth, or panting tongue from the photo.`;
 
 const story = (style) => ({
   style: resolveStyle(style).style,
@@ -59,8 +69,9 @@ const expected = (subject, st, { viewIndex, subjectHasPhoto, usePhoto, hasChainR
   const base = buildSubjectSheetBasePrompt(subject, st, subjectHasPhoto); // REAL, unchanged
   const photoRef = usePhoto ? (isPet ? PHOTO_REF_PET : PHOTO_REF_HUMAN) : "";
   const refAuthority = usePhoto ? refAuth(isPet) : ""; // REF_AUTHORITY unset in tests (prod default)
+  const expressionScope = usePhoto ? (isPet ? EXPR_PET : EXPR_HUMAN) : ""; // RE-BASELINE: photo-only
   const matchRef = !usePhoto && hasChainRef ? (isPet ? MATCH_PET : MATCH_HUMAN) : "";
-  return `${base}\n\nView for this image: ${CHARACTER_SHEET_PROMPTS[viewIndex]}.${photoRef}${refAuthority}${matchRef}`;
+  return `${base}\n\nView for this image: ${CHARACTER_SHEET_PROMPTS[viewIndex]}.${photoRef}${refAuthority}${expressionScope}${matchRef}`;
 };
 
 const CASES = [

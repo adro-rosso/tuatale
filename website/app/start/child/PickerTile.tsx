@@ -30,13 +30,17 @@ export function PickerTile({ status, imageUrl, bgColor, selected, name, onPick, 
       style={{ backgroundColor: bgColor ?? '#fffdf8' }}
     >
       {done ? (
+        // Uniform grid framing (display-only): object-cover + top anchor crops every option
+        // to the SAME head-anchored frame, so the tiles read as one set (compare faces, not
+        // framing) regardless of residual mint scale/crop drift. The STORED sheet is the full
+        // image; only the tile display is normalized.
         // eslint-disable-next-line @next/next/no-img-element -- remote signed Supabase URL
-        <img src={imageUrl!} alt={`${name} option`} onError={onImageError} className="h-full w-full object-contain" />
+        <img src={imageUrl!} alt={`${name} option`} onError={onImageError} className="h-full w-full object-cover object-top" />
       ) : null}
 
       {failed ? (
         <div className="text-warm-grey p-sm flex h-full w-full items-center justify-center text-center">
-          <p className="font-body text-caption">This one didn’t paint — the others are fine to choose.</p>
+          <p className="font-body text-caption">This one didn’t paint. The others are fine to choose.</p>
         </div>
       ) : null}
 
