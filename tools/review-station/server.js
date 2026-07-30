@@ -28,7 +28,11 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PDFDocument } from "pdf-lib";
 import { pdf as pdfToImages } from "pdf-to-img";
-import { mergeBookBytes, verifyAndReship } from "./reship.js";
+import { mergeBookBytes, verifyAndReship, isShippingArtifact } from "./reship.js";
+import {
+  listRerollSubjects, buildMintRequest, generateOptions,
+  lockPickedOption, snapshotCharacter, revertCharacter,
+} from "./character-reroll.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
@@ -121,6 +125,11 @@ const PAGES_DIR = path.join(BOOK_DIR, "pages");
 const HISTORY_DIR = path.join(BOOK_DIR, "_history");
 const STATE_PATH = path.join(BOOK_DIR, "review-state.json");
 const META_PATH = path.join(BOOK_DIR, "meta.json");
+const SHEETS_DIR = path.join(BOOK_DIR, "character-sheets");
+// Option thumbnails for the operator sheet-re-roll. TRANSIENT — under BOOK_DIR, so in
+// --order mode it lives in the swept session temp dir (orphan-swept like _raster), and it
+// is deleted per-subject on pick. NEVER a shipping artifact (isShippingArtifact rejects it).
+const CANDIDATES_DIR = path.join(BOOK_DIR, "_candidates");
 
 if (!fs.existsSync(STORY_PATH)) {
   console.error(`FAIL: no story.json in ${BOOK_DIR}`);
@@ -501,6 +510,72 @@ function computeDirtyPages() {
     });
 }
 
+// Character-sheet files re-rolled since materialise (mtime > baseline), passed to the
+// reship so a re-rolled sheet is persisted to review/ (decision 4). Guarded twice: only
+// whitelisted shapes (isShippingArtifact) are ever considered here, and uploadReviewArtifact
+// re-checks before any write. --order only (a --dir book is durable; nothing to push).
+function computeDirtySheets() {
+  if (!SESSION || !fs.existsSync(SHEETS_DIR)) return [];
+  const out = [];
+  for (const f of fs.readdirSync(SHEETS_DIR)) {
+    const rel = `character-sheets/${f}`;
+    if (!isShippingArtifact(rel)) continue; // e.g. a wardrobe variant or stray file — skip
+    if (fs.statSync(path.join(SHEETS_DIR, f)).mtimeMs > SESSION.materializedAt) out.push(rel);
+  }
+  return out;
+}
+
+// ---- Operator sheet-re-roll (character-picker operator lever) ---------------
+const readMetaSafe = () => { try { return JSON.parse(fs.readFileSync(META_PATH, "utf8")); } catch { return null; } };
+
+// The re-rollable subjects, each with its candidate options on disk + whether a snapshot
+// exists to revert to. Merged into /api/state so the UI has it in one fetch.
+function buildCharactersModel() {
+  const subs = listRerollSubjects(readStory(), readMetaSafe(), SHEETS_DIR);
+  return subs.map((s) => {
+    const candDir = path.join(CANDIDATES_DIR, s.subjectId);
+    const candidates = fs.existsSync(candDir)
+      ? fs.readdirSync(candDir).filter((f) => /^opt-\d+\.png$/.test(f)).sort().map((f) => f.replace(/\.png$/, ""))
+      : [];
+    const snapBase = path.join(HISTORY_DIR, `char-${s.subjectId}`);
+    const canRevert = fs.existsSync(snapBase) && fs.readdirSync(snapBase).length > 0;
+    return {
+      subjectId: s.subjectId, name: s.name, role: s.role, subjectType: s.subjectType,
+      viewCount: s.viewCount, affectedPages: s.affectedPages,
+      photoCount: s.photoStoragePaths.length, candidates, canRevert,
+    };
+  });
+}
+
+// Resolve a subject's reference photos to LOCAL files. Local paths (a --dir book) are used
+// in place; storage paths (a materialised --order book — photos are NOT in review/) are
+// downloaded on demand into the transient candidates dir. Missing/erased photos are
+// reported so the caller degrades rather than minting a likeness-free option.
+async function resolveSubjectPhotos(subject) {
+  const outDir = path.join(CANDIDATES_DIR, subject.subjectId, "_photos");
+  fs.mkdirSync(outDir, { recursive: true });
+  const locals = [];
+  const unavailable = [];
+  let downloadPhoto = null;
+  const paths = subject.photoStoragePaths ?? [];
+  for (let i = 0; i < paths.length; i++) {
+    const p = paths[i];
+    const abs = path.isAbsolute(p) ? p : path.join(PROJECT_ROOT, p);
+    if (fs.existsSync(p)) { locals.push(p); continue; }
+    if (fs.existsSync(abs)) { locals.push(abs); continue; }
+    try {
+      if (!downloadPhoto) ({ downloadPhoto } = await import("../../worker/src/preview.js"));
+      const buf = await downloadPhoto(p);
+      const local = path.join(outDir, `photo-${i + 1}.png`);
+      fs.writeFileSync(local, buf);
+      locals.push(local);
+    } catch (e) {
+      unavailable.push({ path: p, error: e.message });
+    }
+  }
+  return { locals, unavailable };
+}
+
 // ---- HTTP helpers ----------------------------------------------------------
 function sendJSON(res, code, obj) {
   res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store" });
@@ -546,7 +621,15 @@ const server = http.createServer(async (req, res) => {
     }
     // State
     if (req.method === "GET" && pathname === "/api/state") {
-      return sendJSON(res, 200, buildViewModel());
+      return sendJSON(res, 200, { ...buildViewModel(), characters: buildCharactersModel() });
+    }
+    // Candidate option thumbnail (operator re-roll). Path is whitelisted by shape
+    // (subjectId = protagonist|companion-N, optId = opt-N), so it can't traverse out of
+    // the transient _candidates dir.
+    if (req.method === "GET" && pathname.startsWith("/candidate/")) {
+      const m = /^\/candidate\/(protagonist|companion-\d+)\/(opt-\d+)$/.exec(pathname);
+      if (!m) { res.writeHead(404); return res.end("bad candidate path"); }
+      return sendPng(res, path.join(CANDIDATES_DIR, m[1], `${m[2]}.png`));
     }
     // Live page image — RASTERISED from the page PDF (reviewed == shipped), not a
     // separate screenshot. Cached; ~470ms/page cold, instant warm.
@@ -676,6 +759,84 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, { ok: true, ...out });
     }
 
+    // ---- Operator sheet-re-roll (character-picker operator lever) -----------
+    // Generate N book-faithful likeness options for a CHARACTER (~$0.04 × N). Downloads +
+    // ranks the subject's reference photos, then mints via the shared generatePickerOption.
+    if (req.method === "POST" && pathname === "/api/character/options") {
+      const { subjectId, n } = await readBody(req);
+      const story = readStory();
+      const meta = readMetaSafe();
+      const subject = listRerollSubjects(story, meta, SHEETS_DIR).find((s) => s.subjectId === subjectId);
+      if (!subject) return sendJSON(res, 400, { ok: false, error: `unknown subject ${subjectId}` });
+      const { locals, unavailable } = await resolveSubjectPhotos(subject);
+      if (!locals.length) {
+        return sendJSON(res, 422, {
+          ok: false,
+          error: `no reference photos available for ${subject.name} — cannot do a photo-anchored re-roll (a text-only mint would drop likeness).`,
+          unavailable,
+        });
+      }
+      // Good-face selection — identical ranking to the customer picker (preview.js mintPickerOption).
+      const { selectBestPhotos } = await import("../../worker/src/run-pipeline.js");
+      const selInput = { child: { subject_type: subject.subjectType, name: subject.name, photo_paths: locals }, secondaries: [] };
+      await selectBestPhotos(selInput);
+      const selected = selInput.child.photo_paths;
+
+      const req0 = buildMintRequest(subject, story, meta);
+      const nn = Math.max(1, Math.min(4, Number(n) || 3));
+      const { generatePickerOption } = await import("../../src/picker-mint.js");
+      let options;
+      try {
+        options = await generateOptions(req0, selected, {
+          n: nn, outDir: path.join(CANDIDATES_DIR, subjectId), mint: generatePickerOption,
+        });
+      } catch (e) {
+        return sendJSON(res, 500, { ok: false, error: `option mint failed: ${e.message}` });
+      }
+      bumpCost(GEMINI_USD_PER_ROLL * nn);
+      return sendJSON(res, 200, { ok: true, subjectId, options: options.map((o) => o.optId), photosUsed: selected.length });
+    }
+
+    // Pick an option → LOCK it as the sheet + re-render the pages the character appears on.
+    // Snapshots the current sheet + affected pages FIRST (reversible). One generate-book
+    // --only-pages call re-chains views 2-3 off the new view-0 AND re-renders the pages.
+    if (req.method === "POST" && pathname === "/api/character/pick") {
+      const { subjectId, optId } = await readBody(req);
+      if (!/^opt-\d+$/.test(String(optId ?? ""))) return sendJSON(res, 400, { ok: false, error: "bad optId" });
+      const story = readStory();
+      const meta = readMetaSafe();
+      const subject = listRerollSubjects(story, meta, SHEETS_DIR).find((s) => s.subjectId === subjectId);
+      if (!subject) return sendJSON(res, 400, { ok: false, error: `unknown subject ${subjectId}` });
+      const srcFile = path.join(CANDIDATES_DIR, subjectId, `${optId}.png`);
+      if (!fs.existsSync(srcFile)) return sendJSON(res, 400, { ok: false, error: `option ${optId} not found` });
+
+      // Reversible: snapshot the CURRENT sheet + affected page PDFs before overwriting.
+      snapshotCharacter({ bookDir: BOOK_DIR, subjectId, prefix: subject.prefix, affectedPages: subject.affectedPages, id: nextId() });
+      const lock = lockPickedOption({ sheetsDir: SHEETS_DIR, subjectId, prefix: subject.prefix, viewCount: subject.viewCount, srcFile });
+
+      // Re-render exactly the character's pages; Section A re-chains the missing views off
+      // the locked view-0, Section B renders the pages off the new sheet.
+      const { code, log } = await runGenerateBook(["--only-pages", subject.affectedPages.join(",")]);
+      if (code === 0) {
+        // One re-roll event; cost ≈ chained views + re-rendered pages.
+        bumpCost(GEMINI_USD_PER_ROLL * (subject.affectedPages.length + Math.max(0, subject.viewCount - 1)), "rerolls");
+        for (const pg of subject.affectedPages) setImageHashCurrent(pg); // status → pending
+        fs.rmSync(path.join(CANDIDATES_DIR, subjectId), { recursive: true, force: true }); // candidates never persist
+      }
+      return sendJSON(res, code === 0 ? 200 : 500, { ok: code === 0, code, subjectId, affectedPages: subject.affectedPages, locked: lock, log });
+    }
+
+    // Revert the last character re-roll ($0): restore the snapshotted sheet + pages, re-stitch.
+    if (req.method === "POST" && pathname === "/api/character/revert") {
+      const { subjectId } = await readBody(req);
+      let result;
+      try { result = revertCharacter({ bookDir: BOOK_DIR, subjectId }); }
+      catch (e) { return sendJSON(res, 400, { ok: false, error: e.message }); }
+      try { await stitchBook(); } catch { /* book.pdf refresh best-effort */ }
+      for (const pg of result.pages) setImageHashCurrent(pg); // restored pages need re-approval
+      return sendJSON(res, 200, { ok: true, subjectId, restored: result.restored, pages: result.pages });
+    }
+
     // Verify & re-ship (PROD --order mode ONLY): persist the fix + REPLACE the customer's
     // book.pdf, but only after all four completeness checks pass. orderId is the SESSION's
     // — never read from the request — so writes can only ever target this order.
@@ -688,12 +849,14 @@ const server = http.createServer(async (req, res) => {
       const { getClient } = await import("../../worker/src/db.js");
       const client = getClient();
       const dirtyPages = computeDirtyPages();
+      const dirtySheets = computeDirtySheets(); // re-rolled character sheet(s), if any
       const storyDirty = fs.existsSync(STORY_PATH) && fs.statSync(STORY_PATH).mtimeMs > SESSION.materializedAt;
       const result = await verifyAndReship({
         orderId: SESSION.orderId, // NOT from the request body
         bookDir: BOOK_DIR,
         client,
         dirtyPages,
+        dirtySheets,
         storyDirty,
       });
       // 200 on success; 422 when a completeness check aborted the replace (nothing written).

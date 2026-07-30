@@ -50,6 +50,15 @@ export function isShippingArtifact(rel) {
   if (/^pages\/page-\d{2}\.png$/.test(p)) return true; // raw, never -rendered.png
   if (/^front-matter\/[^/]+\.pdf$/.test(p)) return true;
   if (p === "story.json" || p === "meta.json") return true;
+  // Re-rolled character SHEET (operator sheet-re-roll, decision 4). A sheet is ALREADY a
+  // retained review artifact (review-artifacts.js retains character-sheets/*), so this
+  // updates an existing artifact class — NOT a new portrait. Scoped EXACTLY to the view
+  // PNGs (`<prefix>-NN.png`, prefix = sheet | companion-N) + the sheet meta
+  // (`<subjectId>-meta.json`). It can NEVER match a `-rendered.png` portrait (those live
+  // under pages/, and the shapes here demand a 2-digit view index or a -meta.json suffix),
+  // nor _raster/ / _candidates/ / _history/ (not under character-sheets/).
+  if (/^character-sheets\/(sheet|companion-\d+)-\d{2}\.png$/.test(p)) return true;
+  if (/^character-sheets\/(protagonist|companion-\d+)-meta\.json$/.test(p)) return true;
   return false;
 }
 
@@ -173,20 +182,25 @@ export async function uploadReviewArtifact(client, orderId, rel, buf) {
  * @returns {Promise<{ ok, checks, uploaded, pushed?, bookKey?, bookPages? }>}
  *   ok=false with uploaded=false when a check fails — NOTHING was written.
  */
-export async function verifyAndReship({ orderId, bookDir, client, dirtyPages = [], storyDirty = false }) {
+export async function verifyAndReship({ orderId, bookDir, client, dirtyPages = [], dirtySheets = [], storyDirty = false }) {
   const story = JSON.parse(fs.readFileSync(path.join(bookDir, "story.json"), "utf8"));
   const merge = await mergeBookBytes(bookDir, story);
   const { ok, checks } = await runCompletenessChecks({ bookDir, story, mergedBytes: merge.bytes, merge, client, orderId });
   if (!ok) return { ok: false, checks, uploaded: false }; // ABORT — no writes
 
   // Persist the dirty pages' whitelisted artifacts (so the fix survives session close), then
-  // story.json if the text changed. Every path passes through the guarded upload.
+  // any re-rolled character-sheet files, then story.json if the text changed. Every path
+  // passes through the guarded upload — a non-whitelisted rel throws before any write.
   const pushed = [];
   for (const page of dirtyPages) {
     for (const rel of shippingArtifactsForPage(page)) {
       const local = path.join(bookDir, rel);
       if (fs.existsSync(local)) pushed.push(await uploadReviewArtifact(client, orderId, rel, fs.readFileSync(local)));
     }
+  }
+  for (const rel of dirtySheets) {
+    const local = path.join(bookDir, rel);
+    if (fs.existsSync(local)) pushed.push(await uploadReviewArtifact(client, orderId, rel, fs.readFileSync(local)));
   }
   if (storyDirty) {
     pushed.push(await uploadReviewArtifact(client, orderId, "story.json", fs.readFileSync(path.join(bookDir, "story.json"))));

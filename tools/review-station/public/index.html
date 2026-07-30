@@ -97,6 +97,20 @@
               background:var(--warnbg); padding:8px; }
   .ph small { display:block; font-size:11px; color:var(--muted); margin-top:4px; line-height:1.25; }
   @media(max-width:820px){ .card{ grid-template-columns:1fr; } .inputs .cols{ grid-template-columns:1fr; } }
+  /* Character likeness re-roll */
+  .charcard { border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin:10px 0; background:var(--card); }
+  .charcard .chd { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .charcard .cnm { font-weight:600; font-size:15px; }
+  .charcard .crole { font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:1px 8px; }
+  .charcard .cmeta { font-size:12px; color:var(--muted); margin-left:auto; }
+  .charcard .rr-actions { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  .opts { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-top:12px; }
+  .opt { border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#0000000a; display:flex; flex-direction:column; }
+  .opt img { width:100%; aspect-ratio:1/1; object-fit:cover; object-position:top; display:block; background:#fff; }
+  .opt button { border:0; border-top:1px solid var(--line); padding:8px; cursor:pointer; background:var(--okbg); color:var(--ok); font-weight:600; }
+  .opt button:hover { filter:brightness(1.05); }
+  .charhint { font-size:12px; color:var(--muted); margin-top:6px; }
+  .charwarn { font-size:12px; color:var(--warn); margin-top:6px; }
 </style>
 </head>
 <body>
@@ -112,6 +126,10 @@
   <details class="inputs" id="inputsPanel" open>
     <summary>Customer inputs <span class="tally" id="inputsSummary"></span></summary>
     <div id="inputsBody"></div>
+  </details>
+  <details class="inputs" id="charsPanel" open>
+    <summary>Character likeness re-roll <span class="tally" id="charsSummary"></span></summary>
+    <div id="charsBody"></div>
   </details>
   <div id="pages" style="display:flex;flex-direction:column;gap:22px"></div>
 </main>
@@ -194,9 +212,77 @@ function renderInputs(inputs) {
     </div>`;
 }
 
+// ---- Character likeness re-roll (operator lever) ---------------------------
+// Generate N book-faithful options for a character, pick the best → it locks as the
+// character's sheet and re-renders exactly the pages that character appears on.
+const N_OPTIONS = 3;
+const USD_PER_OPTION = 0.04;
+
+function renderCharacters(characters) {
+  const body = $("charsBody");
+  const sum = $("charsSummary");
+  if (!characters || !characters.length) { sum.textContent = ""; body.innerHTML = ""; return; }
+  sum.textContent = `· ${characters.length} character${characters.length === 1 ? "" : "s"}`;
+  body.innerHTML = characters.map((c) => {
+    const noPhoto = c.photoCount === 0;
+    const pagesLabel = c.affectedPages.length ? `pages ${c.affectedPages.join(", ")}` : "no pages";
+    const opts = (c.candidates || []).length
+      ? `<div class="opts">${c.candidates.map((o) => `
+          <div class="opt">
+            <img src="/candidate/${c.subjectId}/${o}" alt="${esc(c.name)} ${o}">
+            <button onclick="pickOption('${c.subjectId}','${o}')">✓ Pick this likeness</button>
+          </div>`).join("")}</div>
+        <div class="charhint">Picking locks this face and re-renders ${pagesLabel} (${c.affectedPages.length} page${c.affectedPages.length === 1 ? "" : "s"}).</div>`
+      : "";
+    const genLabel = (c.candidates || []).length ? "↻ Regenerate options" : `Generate ${N_OPTIONS} options`;
+    const cost = `$${(N_OPTIONS * USD_PER_OPTION).toFixed(2)}`;
+    return `
+      <div class="charcard" id="char-${c.subjectId}">
+        <div class="chd">
+          <span class="cnm">${esc(c.name)}</span>
+          <span class="crole">${c.role === "protagonist" ? "protagonist" : "companion"}${c.subjectType === "non_human" ? " · pet" : ""}</span>
+          <span class="cmeta">appears on ${pagesLabel} · ${c.photoCount} ref photo${c.photoCount === 1 ? "" : "s"}</span>
+        </div>
+        <div class="rr-actions">
+          <button class="sm primary" id="gen-${c.subjectId}" onclick="genOptions('${c.subjectId}')" ${noPhoto ? "disabled" : ""}>
+            ${genLabel} (${cost})
+          </button>
+          ${c.canRevert ? `<button class="sm" onclick="revertChar('${c.subjectId}')">Revert last re-roll ($0)</button>` : ""}
+          <span class="log" id="charlog-${c.subjectId}" style="display:none"></span>
+        </div>
+        ${noPhoto ? `<div class="charwarn">No reference photo available — a photo-anchored re-roll isn't possible for this character.</div>` : ""}
+        ${opts}
+      </div>`;
+  }).join("");
+}
+
+async function genOptions(subjectId) {
+  const btn = $("gen-" + subjectId), log = $("charlog-" + subjectId);
+  busy(btn, "minting options…"); log.style.display = "inline"; log.textContent = `minting ${N_OPTIONS} options…`;
+  const r = await api("/api/character/options", { subjectId, n: N_OPTIONS });
+  log.textContent = r.ok ? `✓ ${r.options.length} options (anchored on ${r.photosUsed} photo(s))` : `✗ ${r.error || "failed"}`;
+  unbusy(btn); await refresh();
+}
+async function pickOption(subjectId, optId) {
+  const log = $("charlog-" + subjectId);
+  log.style.display = "inline"; log.textContent = `locking ${optId} + re-rendering pages…`;
+  const r = await api("/api/character/pick", { subjectId, optId });
+  log.textContent = r.ok ? `✓ locked; re-rendered pages ${r.affectedPages.join(", ")} (now pending re-approval)` : `✗ ${(r.log || r.error || "failed").slice(-400)}`;
+  await refresh();
+}
+async function revertChar(subjectId) {
+  if (!confirm("Revert the last likeness re-roll for this character? Restores the previous sheet and pages.")) return;
+  const log = $("charlog-" + subjectId);
+  log.style.display = "inline"; log.textContent = "reverting…";
+  const r = await api("/api/character/revert", { subjectId });
+  log.textContent = r.ok ? `✓ reverted pages ${r.pages.join(", ")}` : `✗ ${r.error || "failed"}`;
+  await refresh();
+}
+
 function render() {
   const { pages, summary, title, envLoaded, inputs } = STATE;
   renderInputs(inputs);
+  renderCharacters(STATE.characters);
   $("title").textContent = title;
   $("approvedN").textContent = summary.approved;
   $("totalN").textContent = summary.total;
