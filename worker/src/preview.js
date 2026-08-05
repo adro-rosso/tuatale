@@ -106,7 +106,7 @@ async function mintPickerOption(event, deps) {
   let faceQuality = null;
   if (inputs.subject_type !== "non_human") {
     try {
-      const { photoFaceQuality } = await import("../../src/face-detect.js");
+      const { photoFaceQuality } = await import("./face-detect.js");
       faceQuality = (await photoFaceQuality(fs.readFileSync(selected[0]))).faceH;
     } catch (e) { console.warn(`picker(${previewId}): faceH probe failed (non-fatal): ${e.message}`); }
   }
