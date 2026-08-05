@@ -8,14 +8,17 @@ import { GoogleGenAI, Modality, ApiError } from "@google/genai";
 import { Agent, setGlobalDispatcher } from "undici";
 import { callWithRetry as sharedCallWithRetry } from "./wall-ceiling.js";
 
-// Model verified May 2026 against ai.google.dev/gemini-api/docs/image-generation.
-// 'gemini-3.1-flash-image-preview' is Google's recommended image-gen model.
-// It accepts MORE than 4 reference images (the old "up to 4" was a legacy
-// assumption; 6 validated 2026-07-01 via scripts/_refceiling-probe.mjs — the
-// allocator now hands each subject up to 2 refs, so N=3 sends 6 and N=4 sends 8).
-// To swap models (e.g. fall back to the GA 'gemini-2.5-flash-image'),
-// change just this constant — no other code in the project knows the name.
-export const MODEL = "gemini-3.1-flash-image-preview";
+// GA 'gemini-2.5-flash-image' adopted 2026-08-05 after a controlled same-window probe:
+// GA read 6/6 healthy at ~10s vs the preview model's 2/6 at ~15s (5th straight flapping
+// read), is cheaper ($0.039 vs $0.067/image), and — Adro-judged — renders art at parity
+// incl. a controllable full-body composition (see the CHARACTER_SHEET_PROMPTS[0] fix).
+// It accepts MORE than 4 reference images (6 validated 2026-07-01 via
+// scripts/_refceiling-probe.mjs — the allocator hands each subject up to 2 refs, so N=3
+// sends 6 and N=4 sends 8).
+//
+// ENV-OVERRIDABLE so a rollback to the preview model (or any future model) is a Fly-secret
+// flip — set GEMINI_IMAGE_MODEL and restart, NO redeploy. No other code knows the name.
+export const MODEL = process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image";
 
 // NOTE: src/index.js MUST `import "dotenv/config"` before importing this file,
 // otherwise process.env.GEMINI_API_KEY will be undefined when this line runs.
