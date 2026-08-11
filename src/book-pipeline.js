@@ -51,7 +51,11 @@ import { maskName } from "./text-utils.js";
 // ---- Constants (verbatim from generate-book.js) ----------------------------
 export const GEMINI_IMAGE_USD_PER_CALL = 0.04;
 export const CHARACTER_SHEET_PROMPTS = [
-  "front-facing portrait, neutral expression, plain cream background",
+  // "full-body view, standing, feet visible" (was "portrait") — the view text no longer
+  // contradicts composition_rules' "full body". The GA model weighted the old "portrait"
+  // cue and produced a bust; preview weighted "full body". Chained views 1-2 match view-0,
+  // so only view-0 needs the fix (2026-08-05, GA swap).
+  "front-facing full-body view, standing, feet visible, neutral expression, plain cream background",
   "three-quarter view, slight smile, plain cream background",
   "side profile, neutral expression, plain cream background",
 ];
