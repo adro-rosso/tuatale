@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from 'react';
 import { requestPreviewBatch, getPreviewBatchStatus, persistChosenSheet, getChosenSheet } from '@/app/start/_actions/preview';
 import type { RequestPreviewBatchInput, PreviewBatchOption, ChosenSheet } from '@/lib/preview/types';
 import { PickerTile } from './PickerTile';
+import { PreviewProgress } from './PreviewProgress';
 import { buttonClasses } from '@/components/ui/Button';
 
 const POLL_MS = 1500;
@@ -165,6 +166,18 @@ export function CharacterPicker(props: Props) {
               />
             ))}
           </div>
+          {(() => {
+            // ONE shared progress bar for the whole batch (not one per tile). Real
+            // completion (settled / total) drives it; hidden once every tile has landed.
+            const total = options.length || 3;
+            const settled = options.filter((o) => o.status === 'done' || o.status === 'failed').length;
+            const allSettled = options.length > 0 && settled === total;
+            return allSettled ? null : (
+              <div className="mx-auto max-w-[280px] pt-xs">
+                <PreviewProgress done={false} photo completed={settled} total={total} />
+              </div>
+            );
+          })()}
           {mode === 'options' ? (
             <div className="space-y-xs flex flex-col items-center text-center">
               <p className="font-body text-warm-grey text-caption">Like several? Pick your favourite, and we’ll use it throughout the book.</p>

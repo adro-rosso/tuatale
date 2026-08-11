@@ -86,10 +86,11 @@ export function PhotoUploader({ paths, onChange, max = 5 }: Props) {
     <div>
       <div className="gap-sm grid grid-cols-3 sm:grid-cols-5">
         {paths.map((path) => (
-          <div key={path} className="border-warm-grey-light relative aspect-square overflow-hidden rounded-lg border">
+          <div key={path} className="border-warm-grey-light bg-cream-deep relative aspect-square overflow-hidden rounded-lg border">
             {previews[path] ? (
+              // object-contain (not cover) so the customer sees the WHOLE uploaded photo, uncropped.
               // eslint-disable-next-line @next/next/no-img-element -- local object-url thumbnail
-              <img src={previews[path]} alt="Companion photo" className="h-full w-full object-cover" />
+              <img src={previews[path]} alt="Companion photo" className="h-full w-full object-contain" />
             ) : (
               <div className="bg-cream-deep font-body text-warm-grey text-caption flex h-full w-full items-center justify-center">
                 Saved

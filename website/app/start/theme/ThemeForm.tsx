@@ -27,6 +27,12 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
   const [state, formAction, isPending] = useActionState(submitThemeStep, initialState);
   const [selectedId, setSelectedId] = useState(initial.theme_template_id ?? '');
   const [text, setText] = useState(initial.theme);
+  // Preserve the customer's OWN writing separately, so tapping a preset (or re-tapping
+  // "Write your own") never silently discards what they typed. Seeded from a saved
+  // custom story, or from a not-yet-templated draft.
+  const [customDraft, setCustomDraft] = useState(
+    initial.theme_template_id === CUSTOM_TEMPLATE_ID || !initial.theme_template_id ? initial.theme : '',
+  );
   // Story mood (pet + adult books). Pet default 'happy', adult default 'romantic'.
   const isPet = bookType === 'pet';
   const isAdult = bookType === 'adult';
@@ -37,11 +43,17 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
   function selectTemplate(t: ThemeTemplate) {
     if (t.id === CUSTOM_TEMPLATE_ID) {
       setSelectedId(CUSTOM_TEMPLATE_ID);
-      setText('');
+      setText(customDraft); // restore their own writing instead of wiping it
       return;
     }
     setSelectedId(t.id);
     setText(resolveStarter(t.starter, { childName, childGender }));
+  }
+
+  function onTextChange(value: string) {
+    setText(value);
+    // Remember edits made in "Write your own" mode so a later preset tap doesn't lose them.
+    if (selectedId === CUSTOM_TEMPLATE_ID) setCustomDraft(value);
   }
 
   // Each book type gets appropriate presets: pets get Everyday + Adventures (child
@@ -140,10 +152,10 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
         <textarea
           name="theme"
           rows={6}
-          maxLength={500}
+          maxLength={2000}
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="What's the story about? A page or two of detail is plenty."
+          onChange={(e) => onTextChange(e.target.value)}
+          placeholder="What's the story about? Give us as much or as little detail as you like — a few lines is plenty, and there's room to write a page or two if you want to."
           className={`${fieldControl} resize-y`}
         />
         {state.errors['theme'] && (

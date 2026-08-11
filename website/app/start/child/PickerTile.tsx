@@ -7,7 +7,6 @@
  * the picker is non-blocking). `selected` gives the chosen tile a warm ring.
  */
 import type { PreviewStatus } from '@/lib/preview/types';
-import { PreviewProgress } from './PreviewProgress';
 
 interface Props {
   status: PreviewStatus;
@@ -45,11 +44,9 @@ export function PickerTile({ status, imageUrl, bgColor, selected, name, onPick, 
       ) : null}
 
       {!done && !failed ? (
-        <div className="bg-cream/70 p-sm absolute inset-0 flex items-center justify-center" style={{ backgroundColor: 'rgba(253,251,239,.72)' }}>
-          <div className="w-3/4 max-w-[160px]">
-            <PreviewProgress done={false} photo />
-          </div>
-        </div>
+        // Calm skeleton only — the batch shows ONE shared progress bar (in CharacterPicker),
+        // so tiles no longer each render their own bar (was 3 identical bars at once).
+        <div className="absolute inset-0 animate-pulse" style={{ backgroundColor: 'rgba(253,251,239,.55)' }} aria-hidden />
       ) : null}
 
       {selected ? (

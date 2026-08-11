@@ -271,7 +271,7 @@ export const adultVibeSchema = z.enum(ADULT_VIBES).optional();
 export const anyVibeSchema = z.enum([...PET_VIBES, ...ADULT_VIBES]).optional();
 
 export const themeSchema = z.object({
-  theme: z.string().min(20, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
+  theme: z.string().min(20, COPY.TOO_SHORT).max(2000, COPY.AT_UPPER),
   theme_template_id: z.string().optional(),
   // Optional; set only for pet + adult books. Steers story tone (see anthropic.js).
   vibe: anyVibeSchema,

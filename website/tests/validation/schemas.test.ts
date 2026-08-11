@@ -221,7 +221,7 @@ describe('themeSchema', () => {
   });
 
   it('rejects too-long theme', () => {
-    const result = themeSchema.safeParse({ theme: 'x'.repeat(501) });
+    const result = themeSchema.safeParse({ theme: 'x'.repeat(2001) });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0]?.message).toBe(VALIDATION_COPY.AT_UPPER);
