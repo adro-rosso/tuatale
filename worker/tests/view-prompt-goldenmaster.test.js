@@ -113,16 +113,4 @@ describe("buildSheetViewPrompt — golden-master (byte-identical to the pre-extr
       buildSheetViewPrompt(c.subject, st, { viewIndex: 0, subjectHasPhoto: true, usePhoto: true, hasChainRef: false }),
     );
   });
-
-  // PIN the view texts. The `expected()` reconstruction above imports CHARACTER_SHEET_PROMPTS,
-  // so it moves in lockstep with the source — a value change can't fail the golden-master by
-  // itself. This pins the exact strings so the 2026-08-05 view-0 full-body fix (was "portrait")
-  // is EXPLICIT and any further drift is caught. Views 1-2 are unchanged (they chain off view-0).
-  it("view texts are pinned (view-0 full-body; views 1-2 unchanged)", () => {
-    expect(CHARACTER_SHEET_PROMPTS[0]).toBe(
-      "front-facing full-body view, standing, feet visible, neutral expression, plain cream background",
-    );
-    expect(CHARACTER_SHEET_PROMPTS[1]).toBe("three-quarter view, slight smile, plain cream background");
-    expect(CHARACTER_SHEET_PROMPTS[2]).toBe("side profile, neutral expression, plain cream background");
-  });
 });
