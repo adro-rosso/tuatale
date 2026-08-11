@@ -82,7 +82,8 @@ export async function submitPetStep(
     // likeness comes from photos + coat, and resolveReadingLevel uses reading_level.
     reading_level: result.data.reading_level,
     age_range: READING_LEVEL_TO_BAND[result.data.reading_level],
-    child_appearance: result.data.appearance,
+    // Optional now — empty/undefined is allowed (photos carry likeness). null when unset.
+    child_appearance: result.data.appearance ?? null,
     // Pet identity (book_type already 'pet' from the hero step).
     animal_kind: result.data.animal_kind,
     // No gender for a pet.

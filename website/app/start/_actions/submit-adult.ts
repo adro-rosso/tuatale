@@ -3,6 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { validateAdult } from '@/lib/validation/validate';
+import { ADULT_APPEARANCE_MIN_NO_PHOTO } from '@/lib/validation/schemas';
 import { updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import type { FieldErrors } from '@/lib/validation/validate';
@@ -66,6 +67,16 @@ export async function submitAdultStep(
   });
   if (!result.ok) {
     return { errors: result.errors, values: input };
+  }
+
+  // Appearance is conditional on the photo: with a photo the photo carries likeness so
+  // the description is optional; with NO photo the text is the only likeness source, so
+  // require 30+ chars. Photos live outside adultSchema, so enforce that rule here.
+  if (input.photos.length === 0 && (input.appearance ?? '').trim().length < ADULT_APPEARANCE_MIN_NO_PHOTO) {
+    return {
+      errors: { appearance: 'Add a short description (30+ characters), or add a photo above.' },
+      values: input,
+    };
   }
 
   // A photo is OPTIONAL for an adult book (text-only still renders). But IF one is

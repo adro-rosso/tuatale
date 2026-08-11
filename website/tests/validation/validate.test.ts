@@ -3,7 +3,7 @@
  * Zod issues into a field-path → first-error map.
  */
 import { describe, it, expect } from 'vitest';
-import { validateChild, validateAdult, validateSecondaries, validateTheme } from '@/lib/validation/validate';
+import { validateChild, validatePet, validateAdult, validateSecondaries, validateTheme } from '@/lib/validation/validate';
 import { VALIDATION_COPY, bookTypeSchema } from '@/lib/validation/schemas';
 
 describe('validateChild', () => {
@@ -124,8 +124,34 @@ describe('validateAdult', () => {
   it('requires gender (unlike a pet)', () => {
     expect(validateAdult({ ...ok, gender: '' }).ok).toBe(false);
   });
-  it('requires a 30+ char appearance', () => {
-    expect(validateAdult({ ...ok, appearance: 'short' }).ok).toBe(false);
+  it('accepts a short OR empty appearance at the schema level (Batch 2: the 30+ requirement is now photo-conditional and enforced in submit-adult, not the schema)', () => {
+    expect(validateAdult({ ...ok, appearance: 'short' }).ok).toBe(true);
+    expect(validateAdult({ ...ok, appearance: '' }).ok).toBe(true);
+  });
+  it('still rejects a 501-char appearance (max kept)', () => {
+    expect(validateAdult({ ...ok, appearance: 'x'.repeat(501) }).ok).toBe(false);
+  });
+});
+
+// ---- Pet appearance is OPTIONAL (Batch 2): photos carry likeness -------------
+describe('validatePet', () => {
+  const ok = {
+    name: 'Benji',
+    reading_level: 'standard',
+    animal_kind: 'Labradoodle',
+    appearance: 'a chocolate labradoodle with a tan beard and floppy ears',
+  };
+  it('accepts a complete pet', () => {
+    expect(validatePet(ok).ok).toBe(true);
+  });
+  it('accepts an EMPTY appearance — optional now (photos are the required likeness input)', () => {
+    expect(validatePet({ ...ok, appearance: '' }).ok).toBe(true);
+  });
+  it('accepts an OMITTED appearance field', () => {
+    expect(validatePet({ name: ok.name, reading_level: ok.reading_level, animal_kind: ok.animal_kind }).ok).toBe(true);
+  });
+  it('still rejects a 501-char appearance (max kept)', () => {
+    expect(validatePet({ ...ok, appearance: 'x'.repeat(501) }).ok).toBe(false);
   });
 });
 

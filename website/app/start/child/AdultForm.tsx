@@ -106,6 +106,9 @@ export function AdultForm({ initial, artStyle, draftId, pickerEnabled }: AdultFo
     (echoed?.[k] as string | undefined) ?? initial[k];
 
   const [age, setAge] = useState<string>(fieldValue('age'));
+  // Controlled so the value survives when the field moves between its "required" (no photo)
+  // and collapsed "optional" (photo present) render branches without losing typed text.
+  const [appearance, setAppearance] = useState<string>(fieldValue('appearance') ?? '');
   const [consent, setConsent] = useState<boolean>(echoed?.consent ?? initial.consent);
   const [photo, setPhoto] = useState<{ path: string; hash: string } | null>(
     (echoed?.photos ?? initial.photos)[0] ? { path: (echoed?.photos ?? initial.photos)[0]!, hash: '' } : null,
@@ -193,20 +196,52 @@ export function AdultForm({ initial, artStyle, draftId, pickerEnabled }: AdultFo
             </fieldset>
           </Field>
 
-          <Field label="Describe how they look" error={errors['appearance']}>
-            <textarea
-              name="appearance"
-              defaultValue={fieldValue('appearance')}
-              rows={4}
-              maxLength={500}
-              placeholder="Close-cropped dark hair going grey at the temples, a short beard, round tortoiseshell glasses, a solid build. Usually in a faded olive jacket."
-              className={`${SELECT_CLASS} resize-y`}
-            />
-            <p className="font-body text-warm-grey text-caption mt-xs">
-              Hair, build, glasses, the clothes they’d be caught in — the details that make it them.
-              30+ characters.
-            </p>
-          </Field>
+          {/* Appearance is conditional on the photo. WITH a photo → optional, collapsed
+              expandable (the photo carries likeness). WITHOUT a photo → required (30+), shown.
+              One controlled textarea in both branches so typed text survives the switch. */}
+          {(() => {
+            const ta = (
+              <textarea
+                name="appearance"
+                value={appearance}
+                onChange={(e) => setAppearance(e.target.value)}
+                rows={4}
+                maxLength={500}
+                placeholder="Close-cropped dark hair going grey at the temples, a short beard, round tortoiseshell glasses, a solid build. Usually in a faded olive jacket."
+                className={`${SELECT_CLASS} resize-y`}
+              />
+            );
+            return photo ? (
+              <details className="group" open={Boolean(appearance) || Boolean(errors['appearance'])}>
+                <summary className="gap-xs font-body text-iron-oxide text-body hover:text-near-black flex cursor-pointer list-none items-center font-semibold select-none [&::-webkit-details-marker]:hidden">
+                  <span className="inline-block w-[1em] text-center group-open:hidden">＋</span>
+                  <span className="hidden w-[1em] text-center group-open:inline">－</span>
+                  Add a description of how they look{' '}
+                  <span className="font-body text-warm-grey text-caption font-normal">(optional)</span>
+                </summary>
+                <div className="mt-sm space-y-xs">
+                  {ta}
+                  <p className="font-body text-warm-grey text-caption">
+                    Optional — your photo captures their likeness. Add hair, build, or the clothes
+                    they’d be caught in if you’d like.
+                  </p>
+                  {errors['appearance'] && (
+                    <p className="font-body text-iron-oxide text-caption" role="alert">
+                      {errors['appearance']}
+                    </p>
+                  )}
+                </div>
+              </details>
+            ) : (
+              <Field label="Describe how they look" error={errors['appearance']}>
+                {ta}
+                <p className="font-body text-warm-grey text-caption mt-xs">
+                  Hair, build, glasses, the clothes they’d be caught in — the details that make it
+                  them. 30+ characters (or add a photo below).
+                </p>
+              </Field>
+            );
+          })()}
         </div>
       </section>
 

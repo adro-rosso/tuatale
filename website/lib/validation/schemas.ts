@@ -221,8 +221,11 @@ export const petSchema = z.object({
   reading_level: z.enum(READING_LEVEL_VALUES).default('standard'),
   // Species/breed, free text (e.g. "golden retriever", "tabby cat", "rabbit").
   animal_kind: z.string().min(1, COPY.REQUIRED).max(ANIMAL_KIND_MAX, COPY.TOO_LONG),
-  // Coat/markings description — the likeness spine alongside the photos. 30+ chars.
-  appearance: z.string().min(30, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
+  // Coat/markings description — OPTIONAL. A pet book always requires ≥1 photo
+  // (submit-pet), and the photo is the likeness source, so the written description is
+  // an additive "add detail" field with no minimum; empty is allowed. Mirrors the
+  // child appearance pattern above.
+  appearance: z.string().max(500, COPY.AT_UPPER).optional(),
 });
 export type PetInput = z.infer<typeof petSchema>;
 
@@ -243,11 +246,15 @@ export const adultSchema = z.object({
     .min(ADULT_AGE_MIN, `Adult books are for ages ${ADULT_AGE_MIN} and up.`)
     .max(ADULT_AGE_MAX, COPY.TOO_LONG),
   gender: z.enum(GENDERS, { message: COPY.CHOOSE_ONE }),
-  // Free-text appearance, like a pet's coat — the likeness spine (30+ chars). The
-  // photo (Slice 2) refines it; text-only still renders a coherent adult.
-  appearance: z.string().min(30, COPY.TOO_SHORT).max(500, COPY.AT_UPPER),
+  // Free-text appearance. OPTIONAL at the schema level: when a PHOTO is present the
+  // photo carries likeness so the text is an additive "add detail" field; when NO photo
+  // is present it is REQUIRED (30+ chars) — that conditional-on-photo rule is enforced in
+  // submit-adult (photos live outside this schema). Max kept; no schema-level minimum.
+  appearance: z.string().max(500, COPY.AT_UPPER).optional(),
 });
 export type AdultInput = z.infer<typeof adultSchema>;
+// Minimum appearance length when an adult book has NO photo (submit-adult enforces this).
+export const ADULT_APPEARANCE_MIN_NO_PHOTO = 30;
 
 // Pet-book "vibe" — the story's emotional register (pet books only). These keys
 // MIRROR the VIBES table in src/anthropic.js (buildVibeRulesBlock); keep the two in

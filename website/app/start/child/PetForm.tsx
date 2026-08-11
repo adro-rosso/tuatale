@@ -153,19 +153,37 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
             />
           </Field>
 
-          <Field label="Describe their coat and markings" error={errors['appearance']}>
-            <textarea
-              name="appearance"
-              defaultValue={fieldValue('appearance')}
-              rows={4}
-              maxLength={500}
-              placeholder="A rich chocolate-brown wavy coat, a tan beard, floppy ears, and a curled tail."
-              className={`${SELECT_CLASS} resize-y`}
-            />
-            <p className="font-body text-warm-grey text-caption mt-xs">
-              Colour and any distinctive markings help us keep their true look. 30+ characters.
-            </p>
-          </Field>
+          {/* Coat & markings — OPTIONAL. The photos below carry the likeness, so this is
+              a collapsed "add detail" expandable (opens if a value or error already exists). */}
+          <details
+            className="group"
+            open={Boolean(fieldValue('appearance')) || Boolean(errors['appearance'])}
+          >
+            <summary className="gap-xs font-body text-iron-oxide text-body hover:text-near-black flex cursor-pointer list-none items-center font-semibold select-none [&::-webkit-details-marker]:hidden">
+              <span className="inline-block w-[1em] text-center group-open:hidden">＋</span>
+              <span className="hidden w-[1em] text-center group-open:inline">－</span>
+              Add a description of their coat &amp; markings{' '}
+              <span className="font-body text-warm-grey text-caption font-normal">(optional)</span>
+            </summary>
+            <div className="mt-sm space-y-xs">
+              <textarea
+                name="appearance"
+                defaultValue={fieldValue('appearance')}
+                rows={4}
+                maxLength={500}
+                placeholder="A rich chocolate-brown wavy coat, a tan beard, floppy ears, and a curled tail."
+                className={`${SELECT_CLASS} resize-y`}
+              />
+              <p className="font-body text-warm-grey text-caption">
+                Colour and any distinctive markings help us keep their true look — but your photos capture the rest.
+              </p>
+              {errors['appearance'] && (
+                <p className="font-body text-iron-oxide text-caption" role="alert">
+                  {errors['appearance']}
+                </p>
+              )}
+            </div>
+          </details>
         </div>
       </section>
 
