@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import { submitThemeStep, type SubmitThemeState } from '@/app/start/_actions/submit-theme';
+import { StoryAssist } from '@/app/start/theme/StoryAssist';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl } from '@/components/ui/form-styles';
@@ -56,6 +57,15 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
     if (selectedId === CUSTOM_TEMPLATE_ID) setCustomDraft(value);
   }
 
+  // Accept an AI-improved brief: fill the textarea, treat it as the customer's OWN writing
+  // (custom mode + customDraft) so it's fully editable and survives a later preset tap. Never
+  // an auto-overwrite — this only runs when they tap "Use this".
+  function onUseAssist(improved: string) {
+    setSelectedId(CUSTOM_TEMPLATE_ID);
+    setText(improved);
+    setCustomDraft(improved);
+  }
+
   // Each book type gets appropriate presets: pets get Everyday + Adventures (child
   // milestones are absurd for a pet); adults get Milestones + Everyday + Adventures;
   // child books keep Milestones + Adventures.
@@ -75,6 +85,12 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
           { label: 'Milestones', category: 'Milestones' },
           { label: 'Adventures', category: 'Adventures' },
         ];
+
+  // Title of the selected preset (if any) — passed to the AI assist as light context.
+  const selectedThemeLabel =
+    selectedId && selectedId !== CUSTOM_TEMPLATE_ID
+      ? (themeSet.find((t) => t.id === selectedId)?.title ?? null)
+      : null;
 
   return (
     <form action={formAction} className="space-y-lg">
@@ -163,6 +179,14 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
             {state.errors['theme']}
           </p>
         )}
+        <StoryAssist
+          text={text}
+          bookType={bookType}
+          heroName={childName}
+          themeLabel={selectedThemeLabel}
+          vibe={showVibe ? vibe : null}
+          onUse={onUseAssist}
+        />
         <Body size="caption">
           You can edit anything above. Pick a template to start, or write your own from scratch.
         </Body>
