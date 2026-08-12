@@ -75,7 +75,7 @@ describe('improveStory — happy path', () => {
     expect(opts.headers['x-api-key']).toBe('test-key');
     expect(opts.headers['anthropic-version']).toBe('2023-06-01');
     const body = JSON.parse(opts.body as string);
-    expect(body.model).toBe('claude-haiku-4-5');
+    expect(body.model).toBe('claude-haiku-4-5-20251001');
     expect(body.messages[0].content).toContain('a puppy who is scared of the vacuum');
   });
 

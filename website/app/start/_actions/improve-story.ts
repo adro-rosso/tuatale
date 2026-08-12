@@ -47,9 +47,10 @@ export interface ImproveStoryResult {
   reason?: ImproveStoryReason;
 }
 
-// Haiku 4.5 — the exact model string. Cheap + fast; a rewrite-and-suggest task doesn't
-// need a frontier model.
-const MODEL = 'claude-haiku-4-5';
+// Haiku 4.5 — the exact dated model ID (pinned rather than the `claude-haiku-4-5` alias,
+// so the model string is deterministic and never resolves differently). Cheap + fast; a
+// rewrite-and-suggest task doesn't need a frontier model.
+const MODEL = 'claude-haiku-4-5-20251001';
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 const MAX_OUTPUT_TOKENS = 1024;
@@ -156,7 +157,13 @@ function parseModelJson(raw: string): { improvedText: string; questions: string[
  */
 export async function improveStory(input: ImproveStoryInput): Promise<ImproveStoryResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return { ok: false, reason: 'no_key' };
+  if (!apiKey) {
+    // Diagnosable in `vercel logs`: the commonest cause is the key existing in one Vercel
+    // environment scope (e.g. Production) but not the one this deployment runs in (Preview).
+    // Never logs the key — it isn't present here to log.
+    console.error('[improveStory] ANTHROPIC_API_KEY absent in this environment — check the Vercel env scope (Production vs Preview vs Development).');
+    return { ok: false, reason: 'no_key' };
+  }
 
   // Abuse cap, keyed by the caller's own draft cookie (a shared bucket if somehow absent).
   let cookieId: string | null = null;
@@ -187,7 +194,11 @@ export async function improveStory(input: ImproveStoryInput): Promise<ImproveSto
     });
 
     if (!res.ok) {
-      console.error(`[improveStory] Anthropic returned ${res.status}`);
+      // Log the status + Anthropic's error body (error type/message) so a 401 (bad key),
+      // 404 (bad model), or 429 (rate limit) is distinguishable in `vercel logs`. Anthropic
+      // error bodies never echo the request's API key, so this is safe to log.
+      const errBody = await res.text().catch(() => '');
+      console.error(`[improveStory] Anthropic ${res.status}: ${errBody.slice(0, 300)}`);
       return { ok: false, reason: 'llm_error' };
     }
 
