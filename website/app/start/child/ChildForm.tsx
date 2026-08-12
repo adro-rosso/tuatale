@@ -29,6 +29,9 @@ interface ChildFormProps {
   /** Current draft id — required for the preview cost-control attribution
    *  (requestPreview blocks a null draftId). Threaded from the child page. */
   draftId: string | null;
+  /** CHILD_PHOTO_ENABLED (server-only, default false) — renders the child photo path
+   *  for PRIVATE testing only. Must be OFF in any public env. Threaded from the page. */
+  childPhotoEnabled?: boolean;
 }
 
 const initialState: SubmitChildState = { errors: {} };
@@ -47,7 +50,7 @@ function ageFromRange(range: string): number {
   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
 
-export function ChildForm({ initial, artStyle, draftId }: ChildFormProps) {
+export function ChildForm({ initial, artStyle, draftId, childPhotoEnabled = false }: ChildFormProps) {
   const [state, formAction, isPending] = useActionState(submitChildStep, initialState);
   const errors = state.errors;
   const fieldValue = (k: keyof ChildFormValues): string => state.values?.[k] ?? initial[k] ?? '';
@@ -176,6 +179,7 @@ export function ChildForm({ initial, artStyle, draftId }: ChildFormProps) {
                 background={background || undefined}
                 artStyle={artStyle}
                 draftId={draftId}
+                photoEnabled={childPhotoEnabled}
               />
             ) : (
               <div className="space-y-md">

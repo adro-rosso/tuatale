@@ -63,11 +63,15 @@ interface AxisDef {
   options: readonly string[];
 }
 
-// Launch posture: the photo path is test-wiring-only, gated behind the privacy /
-// safety / consent / moderation workstream (and the upload bucket is prod-gated).
-// Hidden for the min-safe ship → builder-only. Flip to true to restore it for
-// internal testing. (uploadPhoto + the photo state stay in the tree, just unrendered.)
-const PHOTO_ENABLED = false; // photo path stays OFF for prod (gated behind the privacy/safety workstream). Flip locally to test.
+// Launch posture: the child photo path is PRIVATE-TESTING-ONLY, gated behind the
+// privacy / safety / consent / moderation / legal workstream. It is controlled by the
+// SERVER-ONLY env flag CHILD_PHOTO_ENABLED (default OFF / fail-closed), read in the
+// child server page and passed down as `photoEnabled` — NEVER a NEXT_PUBLIC var.
+// ⚠️ CHILD_PHOTO_ENABLED MUST stay OFF in any public environment (incl. Production,
+// which is publicly URL-reachable) until that workstream is complete. It is enabled in
+// the SSO-walled Preview only, for the owner's own private testing. The matching server
+// gate lives in uploadPhoto (same flag). (uploadPhoto + the photo state stay in the
+// tree; the UI is just unrendered when photoEnabled is false.)
 
 interface BuilderProps {
   gender: string;
@@ -84,6 +88,9 @@ interface BuilderProps {
   /** Chosen art style — the preview mints in this style (cache-keyed per style). */
   artStyle: string;
   draftId?: string | null;
+  /** CHILD_PHOTO_ENABLED (server-only, default false). Renders the child photo path
+   *  for PRIVATE testing only — see the header note. Must be OFF in any public env. */
+  photoEnabled?: boolean;
 }
 
 export function CharacterBuilder({
@@ -98,6 +105,7 @@ export function CharacterBuilder({
   background,
   artStyle,
   draftId,
+  photoEnabled = false,
 }: BuilderProps) {
   const [open, setOpen] = useState<string | null>(null); // axis key
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -155,8 +163,8 @@ export function CharacterBuilder({
         @media (min-width:640px){ .cb-picker { position:absolute; top:calc(100% + 8px); left:0; right:0; bottom:auto; max-height:none; border-radius:14px } }
       `}</style>
 
-      {/* Photo path (hidden for launch — see PHOTO_ENABLED). */}
-      {PHOTO_ENABLED && (
+      {/* Child photo path — private-testing-only, gated by CHILD_PHOTO_ENABLED (see header). */}
+      {photoEnabled && (
         <div className="space-y-sm">
           <p className="px-sm py-xs rounded-md border border-[#e8c98a] bg-[#fdf3e0] font-body text-caption text-[#8a5a1a]">
             ⚠️ Test only. Real photo upload needs the privacy &amp; safety review first.
@@ -173,7 +181,7 @@ export function CharacterBuilder({
 
       {/* Pick their features. */}
       <div className="relative">
-        {PHOTO_ENABLED && (
+        {photoEnabled && (
           <div className="gap-sm mb-sm flex items-center">
             <span className="bg-warm-grey-light h-px flex-1" />
             <span className="font-body text-warm-grey text-caption tracking-wider uppercase">

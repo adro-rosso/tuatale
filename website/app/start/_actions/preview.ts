@@ -129,18 +129,22 @@ async function storePhotoForDraft(
  * Why a server-side gate and not just an unrendered UI: a Server Action is a POST
  * endpoint whose action id ships in the public client bundle. Not rendering the
  * button does NOT disable the endpoint — anyone could invoke it directly. Until the
- * banked privacy / consent / content-safety workstream lands
+ * banked privacy / consent / content-safety / legal workstream lands
  * ([[project_photo-likeness-probe]]), CHILD photos must be impossible to upload, so
  * this refuses before it reads the body or touches Storage.
  *
- * Opt-in is SERVER-ONLY and default-OFF: set CHILD_PHOTO_UPLOAD=on in .env.local for
- * local testing (deliberately NOT a NEXT_PUBLIC_* var, so it can never be flipped
- * from the browser and is absent → disabled in prod).
+ * ⚠️ CHILD_PHOTO_ENABLED MUST stay OFF in any PUBLIC environment. Production
+ * (tuatale.vercel.app) is publicly URL-reachable, so it must never be set there until
+ * that workstream is complete. This is a PRIVATE-TESTING flag: enabled in the SSO-walled
+ * Preview only, for the owner's own testing. Opt-in is SERVER-ONLY and default-OFF
+ * (deliberately NOT a NEXT_PUBLIC_* var, so it can never be flipped from the browser and
+ * is absent → disabled). This is the SAME flag that gates the child photo UI (the child
+ * page passes CHILD_PHOTO_ENABLED down as CharacterBuilder's `photoEnabled`).
  */
-const CHILD_PHOTO_UPLOAD_ENABLED = () => process.env.CHILD_PHOTO_UPLOAD === 'on';
+const CHILD_PHOTO_ENABLED = () => process.env.CHILD_PHOTO_ENABLED === 'on';
 
 export async function uploadPhoto(formData: FormData): Promise<{ photoPath: string; photoHash: string }> {
-  if (!CHILD_PHOTO_UPLOAD_ENABLED()) {
+  if (!CHILD_PHOTO_ENABLED()) {
     // Log the attempt: in prod nothing legitimately calls this, so an invocation is
     // either a stale client or someone probing the endpoint.
     console.error('[uploadPhoto] BLOCKED: child-photo upload is disabled (privacy/consent review pending)');

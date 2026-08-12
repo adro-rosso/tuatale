@@ -20,6 +20,12 @@ export default async function ChildStepPage() {
   // CHARACTER_PICKER_ENABLED (server-side, fail-closed). OFF → the forms fall back to today's
   // behavior (adult single-preview; pet/secondaries no picker), byte-identical.
   const pickerEnabled = process.env.CHARACTER_PICKER_ENABLED === 'on';
+  // CHILD_PHOTO_ENABLED (server-side, fail-closed, default OFF). Renders the CHILD photo path
+  // for PRIVATE testing only. ⚠️ MUST stay OFF in any public environment (incl. Production,
+  // which is publicly URL-reachable) until the child-photo privacy/safety/legal workstream is
+  // done — enabled in the SSO-walled Preview only. Never a NEXT_PUBLIC var. The matching
+  // server upload gate (uploadPhoto) reads the SAME flag.
+  const childPhotoEnabled = process.env.CHILD_PHOTO_ENABLED === 'on';
 
   const bookType = draft?.book_type ?? 'child';
 
@@ -65,6 +71,7 @@ export default async function ChildStepPage() {
     <ChildForm
       artStyle={artStyle}
       draftId={draft?.id ?? null}
+      childPhotoEnabled={childPhotoEnabled}
       initial={{
         name: draft?.child_name ?? '',
         age_range: draft?.age_range ?? '',

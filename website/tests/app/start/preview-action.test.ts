@@ -160,17 +160,17 @@ describe('getPreviewStatus', () => {
 });
 
 describe('uploadPhoto — CHILD-photo gate (security)', () => {
-  const ORIGINAL = process.env.CHILD_PHOTO_UPLOAD;
+  const ORIGINAL = process.env.CHILD_PHOTO_ENABLED;
   afterEach(() => {
-    if (ORIGINAL === undefined) delete process.env.CHILD_PHOTO_UPLOAD;
-    else process.env.CHILD_PHOTO_UPLOAD = ORIGINAL;
+    if (ORIGINAL === undefined) delete process.env.CHILD_PHOTO_ENABLED;
+    else process.env.CHILD_PHOTO_ENABLED = ORIGINAL;
   });
 
   // The load-bearing test. A Server Action is a POST endpoint whose id ships in the
   // client bundle, so "the UI doesn't render it" is NOT a gate — this must refuse
   // server-side until the privacy/consent/content-safety review lands.
   it('BLOCKED by default: refuses without touching Storage (no env flag set)', async () => {
-    delete process.env.CHILD_PHOTO_UPLOAD;
+    delete process.env.CHILD_PHOTO_ENABLED;
     const upload = vi.fn().mockResolvedValue({ error: null });
     (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ upload }) } });
     const fd = new FormData();
@@ -181,7 +181,7 @@ describe('uploadPhoto — CHILD-photo gate (security)', () => {
   });
 
   it('BLOCKED for any value other than the explicit opt-in', async () => {
-    process.env.CHILD_PHOTO_UPLOAD = 'true'; // not the magic 'on'
+    process.env.CHILD_PHOTO_ENABLED = 'true'; // not the magic 'on'
     const upload = vi.fn().mockResolvedValue({ error: null });
     (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ upload }) } });
     const fd = new FormData();
@@ -192,7 +192,7 @@ describe('uploadPhoto — CHILD-photo gate (security)', () => {
   });
 
   it('when explicitly enabled (local testing): uploads under the OWNING draft prefix', async () => {
-    process.env.CHILD_PHOTO_UPLOAD = 'on';
+    process.env.CHILD_PHOTO_ENABLED = 'on';
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
     const r = await uploadPhoto(pngForm());
@@ -316,7 +316,7 @@ describe('uploadAdultPhoto — gate', () => {
 
   it('child uploadPhoto STAYS hard-denied regardless of the adult flag', async () => {
     process.env.ADULT_PHOTO_UPLOAD = 'on'; // adult on
-    delete process.env.CHILD_PHOTO_UPLOAD; // child still off
+    delete process.env.CHILD_PHOTO_ENABLED; // child still off
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
     await expect(uploadPhoto(pngForm())).rejects.toThrow(/not available|disabled/i);
