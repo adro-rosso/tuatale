@@ -274,42 +274,58 @@ export async function requestPreview(input: RequestPreviewInput): Promise<Previe
   }
 
   // Miss + within budget: create the queued row + dispatch the worker.
-  const job = await createPreviewJob({
-    draftId: input.draftId ?? null,
-    inputHash,
-    inputs: {
-      age: input.age,
-      gender: input.gender,
-      features: input.features,
-      freeText: input.freeText,
-      background: input.background,
-      style: input.style,
-      hasPhoto: Boolean(input.photoPath),
-    },
-  });
+  // SOFT-FAIL: a missing INNGEST_EVENT_KEY (e.g. an env-scope gap) or any Inngest/DB
+  // error must NOT throw an unhandled error at the user — it degrades to a graceful
+  // "preview unavailable, keep going" (empty previewId → the client shows a busy/keep-
+  // going state and Continue is never blocked). Matters in Production too.
+  try {
+    const job = await createPreviewJob({
+      draftId: input.draftId ?? null,
+      inputHash,
+      inputs: {
+        age: input.age,
+        gender: input.gender,
+        features: input.features,
+        freeText: input.freeText,
+        background: input.background,
+        style: input.style,
+        hasPhoto: Boolean(input.photoPath),
+      },
+    });
 
-  await inngest.send({
-    name: 'preview/requested',
-    data: {
-      previewId: job.id,
-      age: input.age,
-      name: input.name,
-      features: input.features,
-      freeText: input.freeText,
-      background: input.background,
-      style: input.style,
-      photoPath: input.photoPath,
-      isAdult: input.isAdult ?? false,
-    },
-  });
+    await inngest.send({
+      name: 'preview/requested',
+      data: {
+        previewId: job.id,
+        age: input.age,
+        name: input.name,
+        features: input.features,
+        freeText: input.freeText,
+        background: input.background,
+        style: input.style,
+        photoPath: input.photoPath,
+        isAdult: input.isAdult ?? false,
+      },
+    });
 
-  return { previewId: job.id, status: 'queued', cached: false };
+    return { previewId: job.id, status: 'queued', cached: false };
+  } catch (err) {
+    console.error('[requestPreview] generation dispatch failed — preview unavailable:', err instanceof Error ? err.message : String(err));
+    return { previewId: '', status: 'failed', cached: false, blocked: 'unavailable' };
+  }
 }
 
 export async function getPreviewStatus(previewId: string): Promise<PreviewResult> {
-  const job = await getPreviewJob(previewId);
-  if (!job) return { previewId, status: 'failed', imageUrl: null, cached: false };
-  return { previewId, status: job.status, imageUrl: job.image_url, bgColor: job.bg_color ?? null, cached: false };
+  // SOFT-FAIL: a transient DB error while polling must not throw an unhandled server
+  // error — report 'failed' so the client's poll loop degrades gracefully.
+  try {
+    const job = await getPreviewJob(previewId);
+    if (!job) return { previewId, status: 'failed', imageUrl: null, cached: false };
+    return { previewId, status: job.status, imageUrl: job.image_url, bgColor: job.bg_color ?? null, cached: false };
+  } catch (err) {
+    console.error('[getPreviewStatus] poll failed:', err instanceof Error ? err.message : String(err));
+    return { previewId, status: 'failed', imageUrl: null, cached: false };
+  }
 }
 
 // ---- Character-picker: N book-faithful options per subject (Slice 2) -------------------
@@ -366,25 +382,38 @@ export async function requestPreviewBatch(input: RequestPreviewBatchInput): Prom
       isAdult: input.inputs.is_adult,
       variant: `${batchId}:${i}`,
     });
-    const job = await createPreviewJob({
-      draftId,
-      inputHash,
-      inputs: { role: input.role, subject_type: input.inputs.subject_type, style: input.artStyle, hasPhoto: true },
-      batchId,
-      variantIndex: i,
-    });
-    await inngest.send({
-      name: 'preview/requested',
-      data: {
-        previewId: job.id,
-        mode: 'picker',
-        role: input.role,
-        inputs: input.inputs,
-        artStyle: input.artStyle,
-        photo_paths: photoPaths,
-      },
-    });
-    options.push({ variant: i, previewId: job.id, status: 'queued' });
+    // SOFT-FAIL per option: a missing INNGEST_EVENT_KEY / Inngest / DB error marks THIS
+    // option failed rather than throwing — the picker renders whatever landed and never
+    // surfaces an unhandled error. If every option fails, the UI degrades to "try again".
+    try {
+      const job = await createPreviewJob({
+        draftId,
+        inputHash,
+        inputs: { role: input.role, subject_type: input.inputs.subject_type, style: input.artStyle, hasPhoto: true },
+        batchId,
+        variantIndex: i,
+      });
+      await inngest.send({
+        name: 'preview/requested',
+        data: {
+          previewId: job.id,
+          mode: 'picker',
+          role: input.role,
+          inputs: input.inputs,
+          artStyle: input.artStyle,
+          photo_paths: photoPaths,
+        },
+      });
+      options.push({ variant: i, previewId: job.id, status: 'queued' });
+    } catch (err) {
+      console.error(`[requestPreviewBatch] option ${i} dispatch failed — unavailable:`, err instanceof Error ? err.message : String(err));
+      options.push({ variant: i, previewId: '', status: 'failed' });
+    }
+  }
+  // Every option failed to dispatch → surface a blocked reason so the UI shows a clean
+  // "unavailable, try again" rather than polling doomed rows.
+  if (options.every((o) => o.status === 'failed')) {
+    return { batchId, options, blocked: 'unavailable' };
   }
   return { batchId, options };
 }
@@ -395,21 +424,28 @@ export async function requestPreviewBatch(input: RequestPreviewBatchInput): Prom
  * that succeeded and ignore the rest ("some failed → return the ones that landed").
  */
 export async function getPreviewBatchStatus(batchId: string): Promise<PreviewBatchResult> {
-  const rows = await getBatchRows(batchId);
-  // Escalation signal (A): the worker records best-photo faceH on each option row; surface
-  // the first non-null (same subject across the batch → same value).
-  const faceQuality = rows.map((r) => r.face_quality).find((v) => v != null) ?? null;
-  return {
-    batchId,
-    faceQuality,
-    options: rows.map((r) => ({
-      variant: r.variant_index ?? 0,
-      previewId: r.id,
-      status: r.status,
-      imageUrl: r.image_url,
-      bgColor: r.bg_color ?? null,
-    })),
-  };
+  // SOFT-FAIL: a transient DB error while polling the batch must not throw an unhandled
+  // server error — return an empty option set so the picker degrades gracefully.
+  try {
+    const rows = await getBatchRows(batchId);
+    // Escalation signal (A): the worker records best-photo faceH on each option row; surface
+    // the first non-null (same subject across the batch → same value).
+    const faceQuality = rows.map((r) => r.face_quality).find((v) => v != null) ?? null;
+    return {
+      batchId,
+      faceQuality,
+      options: rows.map((r) => ({
+        variant: r.variant_index ?? 0,
+        previewId: r.id,
+        status: r.status,
+        imageUrl: r.image_url,
+        bgColor: r.bg_color ?? null,
+      })),
+    };
+  } catch (err) {
+    console.error('[getPreviewBatchStatus] poll failed:', err instanceof Error ? err.message : String(err));
+    return { batchId, options: [] };
+  }
 }
 
 // ---- The pick: persist + resume (Slice 3) ----------------------------------------------

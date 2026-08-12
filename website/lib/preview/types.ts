@@ -48,7 +48,7 @@ export interface PreviewResult {
    * requests too fast / per hour. The client surfaces a friendly message and does
    * NOT poll (previewId is empty when blocked).
    */
-  blocked?: 'capped' | 'rate_limited';
+  blocked?: 'capped' | 'rate_limited' | 'unavailable';
 }
 
 export interface PreviewJobRow {
@@ -123,5 +123,5 @@ export interface PreviewBatchResult {
   /** Best-photo faceH across the batch (Slice 3 escalation). null = pet / not yet known. */
   faceQuality?: number | null;
   /** Set when the batch was refused up-front (no spend, no rows). */
-  blocked?: 'capped' | 'rate_limited' | 'no_photos' | 'disabled';
+  blocked?: 'capped' | 'rate_limited' | 'no_photos' | 'disabled' | 'unavailable';
 }

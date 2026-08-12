@@ -337,6 +337,61 @@ describe('requestPreview — isAdult flows to the worker', () => {
 
 
 // ---- requestPreviewBatch — N book-faithful options (character-picker Slice 2) ----
+describe('soft-fail: generation dispatch/poll NEVER throws an unhandled error', () => {
+  // Regression: a missing INNGEST_EVENT_KEY in an env scope made inngest.send throw,
+  // surfacing as an unhandled server error (Sentry) on POST /start/child. The generation
+  // path must degrade to a graceful "unavailable" instead — matters in Production too.
+  //
+  // NOTE: the top-level beforeEach uses vi.clearAllMocks() which resets call history but
+  // NOT implementations, so a mockRejectedValue set here would leak into later tests.
+  // Reset the rejected mocks explicitly.
+  afterEach(() => {
+    delete process.env.CHARACTER_PICKER_ENABLED;
+    (inngest.send as ReturnType<typeof vi.fn>).mockReset();
+    (getPreviewJob as ReturnType<typeof vi.fn>).mockReset();
+    (getBatchRows as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it('requestPreview: inngest.send rejects → { previewId:"", status:"failed", blocked:"unavailable" }, no throw', async () => {
+    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (createPreviewJob as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p-new', status: 'queued' });
+    (inngest.send as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('Failed to send event ... could not find an event key. Set INNGEST_EVENT_KEY'),
+    );
+    const r = await requestPreview({ age: 7, gender: 'girl', features: { hair_colour: 'brown' }, style: 'watercolour', draftId: 'draft-1' });
+    expect(r).toEqual({ previewId: '', status: 'failed', cached: false, blocked: 'unavailable' });
+  });
+
+  it('getPreviewStatus: a poll DB error → failed, no throw', async () => {
+    (getPreviewJob as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('db down'));
+    const r = await getPreviewStatus('p-1');
+    expect(r).toMatchObject({ previewId: 'p-1', status: 'failed' });
+  });
+
+  it('requestPreviewBatch: every option fails to dispatch → all failed + blocked:"unavailable", no throw', async () => {
+    process.env.CHARACTER_PICKER_ENABLED = 'on';
+    mockOwnDraft('draft-1');
+    (countBatchesForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(0);
+    (createPreviewJob as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'p', status: 'queued' });
+    (inngest.send as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('no event key'));
+    const r = await requestPreviewBatch({
+      role: 'protagonist',
+      inputs: { name: 'Benji', subject_type: 'non_human' },
+      artStyle: 'watercolour',
+      photoPaths: ['uploads/draft-1/a.png'],
+    });
+    expect(r.blocked).toBe('unavailable');
+    expect(r.options.length).toBeGreaterThan(0);
+    expect(r.options.every((o) => o.status === 'failed')).toBe(true);
+  });
+
+  it('getPreviewBatchStatus: a poll DB error → empty options, no throw', async () => {
+    (getBatchRows as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('db down'));
+    const r = await getPreviewBatchStatus('batch-1');
+    expect(r).toEqual({ batchId: 'batch-1', options: [] });
+  });
+});
+
 describe('requestPreviewBatch', () => {
   const cn = () => createPreviewJob as ReturnType<typeof vi.fn>;
   const batchInput = {
