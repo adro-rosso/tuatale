@@ -1,33 +1,24 @@
-import { Body } from '@/components/ui/Body';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { advanceStep } from '@/app/start/_actions/navigation';
+import { Fredoka } from 'next/font/google';
+import { CoverPreview } from './CoverPreview';
 
 /**
- * Step 4 — see a glimpse. Placeholder for Phase 2.D, which lands the
- * preview generation (one rendered page, email-gated, rate-limited).
+ * Step 4 — see a glimpse (Batch 4a Phase 1). Shows a PERSONALIZED COVER pre-purchase:
+ * the customer's chosen character + a derived title, in their art style. Website-only —
+ * it reuses the existing preview/picker generation + guards (no worker change) and is
+ * gated behind COVER_PREVIEW_ENABLED (server-only, default off). When the flag is off,
+ * no cover source exists, or a render fails, CoverPreview falls back to the original
+ * pass-through copy — Continue is never blocked.
  *
- * The Continue button advances the draft to /start/review. Phase 2.C
- * ships this as a pass-through so the wizard flow is end-to-end
- * navigable without preview machinery in place.
+ * Fredoka (the printed cover's title font) is loaded scoped here and threaded to the
+ * client component via its CSS-variable class, so the web title matches the book cover.
  */
+const fredoka = Fredoka({
+  subsets: ['latin'],
+  weight: ['600', '700'],
+  variable: '--font-fredoka',
+  display: 'swap',
+});
+
 export default function PreviewStepPage() {
-  const advance = advanceStep.bind(null, 'preview');
-
-  return (
-    <div className="space-y-lg mx-auto max-w-[40rem]">
-      <Card variant="paper" className="p-xl text-center">
-        <Body className="text-warm-grey">
-          A glimpse of the finished book lands here in the next phase: one rendered page, free to
-          view, so you can see the style before paying. For now, continue straight through.
-        </Body>
-      </Card>
-
-      <form action={advance} className="flex justify-end">
-        <Button type="submit" variant="primary">
-          Continue →
-        </Button>
-      </form>
-    </div>
-  );
+  return <CoverPreview fontClassName={fredoka.variable} />;
 }
