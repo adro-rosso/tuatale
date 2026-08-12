@@ -1,4 +1,4 @@
-import { Fredoka } from 'next/font/google';
+import localFont from 'next/font/local';
 import { CoverPreview } from './CoverPreview';
 
 /**
@@ -11,10 +11,17 @@ import { CoverPreview } from './CoverPreview';
  *
  * Fredoka (the printed cover's title font) is loaded scoped here and threaded to the
  * client component via its CSS-variable class, so the web title matches the book cover.
+ *
+ * SELF-HOSTED (next/font/local) rather than next/font/google: the bundled .woff2 is read
+ * from disk at build time, so there is NO Google Fonts network fetch — a Google Fonts
+ * hiccup can't fail the build (it did, transiently, on a preview redeploy). The file is a
+ * static weight-700 instance (the only weight the cover title uses) covering latin + the
+ * common latin-ext accents (é, ñ, ü, …) so accented names render in Fredoka too.
  */
-const fredoka = Fredoka({
-  subsets: ['latin'],
-  weight: ['600', '700'],
+const fredoka = localFont({
+  src: './fonts/fredoka.woff2',
+  weight: '700',
+  style: 'normal',
   variable: '--font-fredoka',
   display: 'swap',
 });
