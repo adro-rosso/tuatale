@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GeneratedPreview } from './GeneratedPreview';
 import { PhotoHero } from './PhotoHero';
-import { uploadPhoto } from '@/app/start/_actions/preview';
+import { uploadPhoto, removeChildPhoto } from '@/app/start/_actions/preview';
 import {
   HAIR_COLOURS,
   SKIN_TONES,
@@ -116,12 +116,33 @@ export function CharacterBuilder({
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
+  const [removing, setRemoving] = useState(false);
+
   // Free a previous thumbnail's object URL when the photo is replaced or removed.
   function revokePhotoUrl() {
     setPhoto((prev) => {
       if (prev?.url) URL.revokeObjectURL(prev.url);
       return prev;
     });
+  }
+
+  // Real erasure: unlink + DELETE the stored object (not just clear client state), so
+  // "remove any time" is honest. On failure keep the photo + surface it (the object may
+  // still exist). Mirrors AdultForm's remove handler.
+  async function onRemovePhoto() {
+    const current = photo;
+    if (!current) return;
+    setPhotoError(null);
+    setRemoving(true);
+    try {
+      await removeChildPhoto(current.path);
+      revokePhotoUrl();
+      setPhoto(null);
+    } catch {
+      setPhotoError('Couldn’t remove that photo. Please try again.');
+    } finally {
+      setRemoving(false);
+    }
   }
 
   async function onPhotoChosen(file: File) {
@@ -182,13 +203,10 @@ export function CharacterBuilder({
           <PhotoHero
             photo={photo}
             previewUrl={photo?.url ?? null}
-            uploading={uploading}
+            uploading={uploading || removing}
             error={photoError}
             onChoose={(f) => void onPhotoChosen(f)}
-            onRemove={() => {
-              revokePhotoUrl();
-              setPhoto(null);
-            }}
+            onRemove={() => void onRemovePhoto()}
           />
         </div>
       )}

@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server';
 import { reapExpiredDrafts } from '@/lib/retention/reap-drafts';
 import { reapReviewArtifacts } from '@/lib/retention/reap-review-artifacts';
+import { reapShippedOrderPhotos } from '@/lib/retention/reap-order-photos';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -42,17 +43,26 @@ export async function GET(req: Request): Promise<NextResponse> {
     const reviewReport = await reapReviewArtifacts({ dryRun });
     if (reviewReport.errors.length) console.error('[reap] review partial failure', reviewReport.errors);
 
+    // 3. Source photos of orders shipped > 30 days ago (tuatale-previews/uploads/…).
+    //    Runs AFTER the draft + review reaps in the same request → sequential, no self-race.
+    //    Errors collected the same way; idempotent + order-scoped, so it's re-run safe.
+    const orderPhotoReport = await reapShippedOrderPhotos({ dryRun });
+    if (orderPhotoReport.errors.length) console.error('[reap] order-photo partial failure', orderPhotoReport.errors);
+
     console.log(
       `[reap] ${dryRun ? 'DRY-RUN' : 'APPLIED'} drafts=${report.draftsReaped} ` +
         `photos=${report.photosDeleted.length} retained=${report.photosRetained.length} ` +
         `errors=${report.errors.length} | review: scanned=${reviewReport.scanned} ` +
         `cleared=${reviewReport.ordersCleared} objects=${reviewReport.objectsDeleted} ` +
-        `errors=${reviewReport.errors.length}`,
+        `errors=${reviewReport.errors.length} | orderPhotos: scanned=${orderPhotoReport.scanned} ` +
+        `erased=${orderPhotoReport.ordersErased} objects=${orderPhotoReport.photosDeleted.length} ` +
+        `errors=${orderPhotoReport.errors.length}`,
     );
     return NextResponse.json({
-      ok: report.errors.length === 0 && reviewReport.errors.length === 0,
+      ok: report.errors.length === 0 && reviewReport.errors.length === 0 && orderPhotoReport.errors.length === 0,
       ...report,
       review: reviewReport,
+      orderPhotos: orderPhotoReport,
     });
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error)?.message ?? 'reap failed' }, { status: 500 });

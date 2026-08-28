@@ -19,7 +19,7 @@ vi.mock('@/lib/supabase', () => ({ createServerClient: vi.fn() }));
 vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
 vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn(), updateDraftByCookieId: vi.fn() }));
 
-import { requestPreview, getPreviewStatus, requestPreviewBatch, getPreviewBatchStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto } from '@/app/start/_actions/preview';
+import { requestPreview, getPreviewStatus, requestPreviewBatch, getPreviewBatchStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto, removeChildPhoto, removePetPhoto } from '@/app/start/_actions/preview';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId } from '@/db/drafts';
 import { createServerClient } from '@/lib/supabase';
@@ -551,5 +551,45 @@ describe('removeAdultPhoto', () => {
   it('VERIFY: throws if the object is STILL listed after delete (failed erasure)', async () => {
     mockRemoveEnv({ objectStillListed: true });
     await expect(removeAdultPhoto('uploads/draft-1/gone.png')).rejects.toThrow(/could not remove/i);
+  });
+});
+
+// ---- removeChildPhoto / removePetPhoto — real erasure (was client-only before) --------
+// Child + pet remove now do the SAME unlink + DELETE + verify as adult (shared helper), so
+// "remove any time" is honest for every role.
+describe('removeChildPhoto / removePetPhoto — real erasure', () => {
+  function mockRole(role: 'child' | 'pet') {
+    (getDraftCookieFromRequest as ReturnType<typeof vi.fn>).mockResolvedValue('cookie-1');
+    (getDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'draft-1', photo_urls: { [role]: ['uploads/draft-1/keep.png', 'uploads/draft-1/gone.png'] },
+    });
+    const remove = vi.fn().mockResolvedValue({ error: null });
+    const list = vi.fn().mockResolvedValue({ data: [], error: null });
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ remove, list }) } });
+    (updateDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue({});
+    return { remove };
+  }
+
+  it('child: unlinks from photo_urls.child + deletes the object', async () => {
+    const { remove } = mockRole('child');
+    expect(await removeChildPhoto('uploads/draft-1/gone.png')).toEqual({ ok: true });
+    expect((updateDraftByCookieId as ReturnType<typeof vi.fn>).mock.calls[0]![1]).toMatchObject({
+      photo_urls: { child: ['uploads/draft-1/keep.png'] },
+    });
+    expect(remove).toHaveBeenCalledWith(['uploads/draft-1/gone.png']);
+  });
+
+  it('pet: unlinks from photo_urls.pet + deletes the object', async () => {
+    const { remove } = mockRole('pet');
+    expect(await removePetPhoto('uploads/draft-1/gone.png')).toEqual({ ok: true });
+    expect((updateDraftByCookieId as ReturnType<typeof vi.fn>).mock.calls[0]![1]).toMatchObject({
+      photo_urls: { pet: ['uploads/draft-1/keep.png'] },
+    });
+    expect(remove).toHaveBeenCalledWith(['uploads/draft-1/gone.png']);
+  });
+
+  it('OWNERSHIP: refuses a foreign draft prefix (child)', async () => {
+    mockRole('child');
+    await expect(removeChildPhoto('uploads/draft-2/x.png')).rejects.toThrow(/not your photo/i);
   });
 });

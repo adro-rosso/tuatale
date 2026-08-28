@@ -187,33 +187,42 @@ export async function uploadAdultPhoto(formData: FormData): Promise<{ photoPath:
 }
 
 /**
- * Make the "you can remove it any time before you order" promise TRUE at full scope:
- * (a) the UI has a Remove button that calls this; (b) it UNLINKS the path from the
+ * Make the "you can remove it any time before you order" promise TRUE at full scope,
+ * for ANY subject role (child / pet / adult):
+ * (a) a UI Remove button calls the role wrapper; (b) it UNLINKS the path from the
  * draft (no dangling reference — the ae04d56c failure mode); (c) it DELETES the stored
  * object, verified absent via list() (a delete that reports success but leaves the
  * object listed is a failed erasure — cf. the E4 erasure tool + the stale-read window
  * note: a signed URL issued before deletion can still serve from cache briefly, but
  * the object IS unlinked and deleted here — "remove" is honest).
  * Order: unlink FIRST, then delete, so a delete failure never orphans the row.
+ *
+ * Shared by all three roles so child/pet get the SAME real erasure adult already had
+ * (previously child + pet "remove" only cleared client state — the object survived).
  */
-export async function removeAdultPhoto(photoPath: string): Promise<{ ok: true }> {
+async function removeOwnPhoto(
+  photoPath: string,
+  role: 'child' | 'pet' | 'adult',
+  action: string,
+): Promise<{ ok: true }> {
   const cookieId = await getDraftCookieFromRequest();
-  if (!cookieId) throw new Error('removeAdultPhoto: no active session.');
+  if (!cookieId) throw new Error(`${action}: no active session.`);
   const draft = await getDraftByCookieId(cookieId);
-  if (!draft) throw new Error('removeAdultPhoto: no active session.');
+  if (!draft) throw new Error(`${action}: no active session.`);
 
   // Ownership: only a path under the caller's OWN upload prefix may be removed.
   const ownPrefix = `${draftUploadPrefix(draft.id)}/`;
   if (!photoPath.startsWith(ownPrefix) || photoPath.includes('..')) {
-    throw new Error('removeAdultPhoto: not your photo.');
+    throw new Error(`${action}: not your photo.`);
   }
 
   // (b) UNLINK from the draft first. Idempotent — filtering a not-present path is a no-op.
-  const current = (draft.photo_urls as { adult?: string[] } | null)?.adult ?? [];
+  const current = (draft.photo_urls as Record<string, string[] | undefined> | null)?.[role] ?? [];
   const remaining = current.filter((p) => p !== photoPath);
   const noneLeft = remaining.length === 0;
   await updateDraftByCookieId(cookieId, {
-    photo_urls: noneLeft ? {} : { adult: remaining },
+    photo_urls: noneLeft ? {} : { [role]: remaining },
+    // Consent + photo-mode belong to the photo set; clear them once the last photo is gone.
     ...(noneLeft ? { photo_consent_at: null, character_generation_mode: 'text_only' } : {}),
   } as unknown as DraftUpdate);
 
@@ -224,10 +233,28 @@ export async function removeAdultPhoto(photoPath: string): Promise<{ ok: true }>
   const name = photoPath.slice(photoPath.lastIndexOf('/') + 1);
   const { data } = await client.storage.from(PREVIEW_BUCKET).list(prefix, { search: name });
   if ((data ?? []).some((o) => o.name === name)) {
-    console.error(`[removeAdultPhoto] object still listed after delete: ${photoPath}`);
-    throw new Error('removeAdultPhoto: could not remove the photo. Please try again.');
+    console.error(`[${action}] object still listed after delete: ${photoPath}`);
+    throw new Error(`${action}: could not remove the photo. Please try again.`);
   }
   return { ok: true };
+}
+
+export async function removeAdultPhoto(photoPath: string): Promise<{ ok: true }> {
+  return removeOwnPhoto(photoPath, 'adult', 'removeAdultPhoto');
+}
+
+/**
+ * Real erasure for a CHILD reference photo (was client-only before — the object survived).
+ * Honours "remove any time" and feeds the retention model: with the path gone from
+ * draft.photo_urls, the E1 draft-expiry reap has nothing to orphan.
+ */
+export async function removeChildPhoto(photoPath: string): Promise<{ ok: true }> {
+  return removeOwnPhoto(photoPath, 'child', 'removeChildPhoto');
+}
+
+/** Real erasure for a PET reference photo (was client-only before — the object survived). */
+export async function removePetPhoto(photoPath: string): Promise<{ ok: true }> {
+  return removeOwnPhoto(photoPath, 'pet', 'removePetPhoto');
 }
 
 export async function requestPreview(input: RequestPreviewInput): Promise<PreviewResult> {

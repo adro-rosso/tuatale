@@ -2,7 +2,7 @@
 
 import { useActionState, useRef, useState } from 'react';
 import { submitPetStep, type SubmitPetState, type PetFormValues } from '@/app/start/_actions/submit-pet';
-import { uploadPetPhoto } from '@/app/start/_actions/preview';
+import { uploadPetPhoto, removePetPhoto } from '@/app/start/_actions/preview';
 import { CharacterPicker } from './CharacterPicker';
 import { READING_LEVEL_VALUES } from '@/lib/validation/schemas';
 import { Button } from '@/components/ui/Button';
@@ -127,7 +127,18 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
     }
   }
 
-  const removePhoto = (path: string) => setPhotos((prev) => prev.filter((p) => p.path !== path));
+  // Real erasure: DELETE the stored object (was client-only before → the object survived),
+  // then drop it from local state. On failure keep it + surface the error. Idempotent
+  // server-side, so an object already gone is a safe no-op.
+  async function removePhoto(path: string) {
+    setUploadError(null);
+    try {
+      await removePetPhoto(path);
+      setPhotos((prev) => prev.filter((p) => p.path !== path));
+    } catch {
+      setUploadError('Couldn’t remove that photo. Please try again.');
+    }
+  }
 
   return (
     <form action={formAction} className="space-y-xl">
@@ -243,7 +254,7 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
               )}
               <button
                 type="button"
-                onClick={() => removePhoto(p.path)}
+                onClick={() => void removePhoto(p.path)}
                 className="bg-near-black/70 absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full text-cream"
                 aria-label="Remove photo"
               >
