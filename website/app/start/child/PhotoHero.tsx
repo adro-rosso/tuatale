@@ -17,12 +17,14 @@ interface Props {
   /** Local object URL of the uploaded image, for the confirmation thumbnail. */
   previewUrl?: string | null;
   uploading: boolean;
+  /** Gate the choose button until the parent/guardian consent checkbox is ticked. */
+  disabled?: boolean;
   error: string | null;
   onChoose: (file: File) => void;
   onRemove: () => void;
 }
 
-export function PhotoHero({ photo, previewUrl, uploading, error, onChoose, onRemove }: Props) {
+export function PhotoHero({ photo, previewUrl, uploading, disabled = false, error, onChoose, onRemove }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -38,7 +40,7 @@ export function PhotoHero({ photo, previewUrl, uploading, error, onChoose, onRem
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || disabled}
           className={buttonClasses('primary', 'md')}
         >
           {uploading

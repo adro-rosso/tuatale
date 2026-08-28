@@ -191,14 +191,46 @@ describe('uploadPhoto — CHILD-photo gate (security)', () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
-  it('when explicitly enabled (local testing): uploads under the OWNING draft prefix', async () => {
+  // CONSENT is a hard precondition (fail-closed): the parent/guardian attestation must be
+  // present, and the SERVER stores the canonical text for the given version.
+  function childForm(consentVersion?: string): FormData {
+    const fd = pngForm([1, 2, 3], 'kid.png');
+    if (consentVersion) fd.append('consent_version', consentVersion);
+    return fd;
+  }
+
+  it('BLOCKED without consent even when the flag is on (no photo stored)', async () => {
     process.env.CHILD_PHOTO_ENABLED = 'on';
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
-    const r = await uploadPhoto(pngForm());
+    await expect(uploadPhoto(childForm(/* no consent */))).rejects.toThrow(/consent/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('BLOCKED with an unknown consent version', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    await expect(uploadPhoto(childForm('child-v999'))).rejects.toThrow(/consent/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('with consent: stores the photo, tracks it in photo_urls.child, records the versioned consent', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    const r = await uploadPhoto(childForm('child-v1'));
+
     expect(r.photoPath).toMatch(/^uploads\/draft-1\/[a-f0-9]{64}\.png$/);
-    expect(r.photoHash).toHaveLength(64);
     expect(upload).toHaveBeenCalledOnce();
+    // persisted: photo tracked + versioned consent record (canonical text) + photo_assisted mode
+    const patch = (updateDraftByCookieId as ReturnType<typeof vi.fn>).mock.calls[0]![1] as Record<string, unknown>;
+    expect((patch.photo_urls as { child: string[] }).child).toEqual([r.photoPath]);
+    expect(patch.character_generation_mode).toBe('photo_assisted');
+    const consent = patch.photo_consent as { version: string; text: string; at: string };
+    expect(consent.version).toBe('child-v1');
+    expect(consent.text).toMatch(/parent or legal guardian/i);
+    expect(consent.at).toBeTruthy();
   });
 });
 

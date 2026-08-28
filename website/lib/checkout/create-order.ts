@@ -198,6 +198,14 @@ export async function createOrderFromDraft(
   // imagePath to the stable orders/<id>/chosen/ path, or nulls it on copy failure (B).
   (payload as { chosen_sheet?: unknown }).chosen_sheet =
     (draft as { chosen_sheet?: unknown }).chosen_sheet ?? null;
+  // photo_consent (versioned child-photo consent record) — new column lagging the generated
+  // types. Included ONLY when present (child-photo drafts) so existing orders never reference
+  // the column: this keeps create-order safe to deploy BEFORE the migration is applied (prod
+  // orders have no photo_consent → key omitted → no dependency on the new column).
+  {
+    const consent = (draft as { photo_consent?: unknown }).photo_consent;
+    if (consent) (payload as { photo_consent?: unknown }).photo_consent = consent;
+  }
 
   return client ? createOrder(payload, client) : createOrder(payload);
 }

@@ -18,6 +18,7 @@ import { computeInputHash } from '@/lib/preview/hash';
 import { draftUploadPrefix } from '@/lib/preview/paths';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
+import { isConsentVersion, buildConsentRecord } from '@/lib/consent/registry';
 import {
   findCachedPreview,
   createPreviewJob,
@@ -152,7 +153,40 @@ export async function uploadPhoto(formData: FormData): Promise<{ photoPath: stri
       'Photo upload is not available. Child-photo upload is disabled pending our privacy and safety review.',
     );
   }
-  return storePhotoForDraft(formData, 'uploadPhoto');
+  // CONSENT (required, fail-closed): the client sends the version id; the SERVER stores the
+  // CANONICAL attestation text (tamper-proof). No/invalid consent → refuse BEFORE storing.
+  const consentVersion = String(formData.get('consent_version') ?? '');
+  if (!isConsentVersion(consentVersion)) {
+    console.error('[uploadPhoto] BLOCKED: missing/invalid child-photo consent');
+    throw new Error('Please confirm the parent/guardian consent checkbox before adding a photo.');
+  }
+
+  const { photoPath, photoHash } = await storePhotoForDraft(formData, 'uploadPhoto');
+
+  // Track the child photo server-side FROM THE MOMENT it is stored: persist it into
+  // draft.photo_urls.child + the versioned consent record. This is what makes the photo
+  // reap-able on draft expiry / removable / order-carried — a client-state-only path
+  // (the old behaviour) would ORPHAN in the bucket if the customer abandoned the draft.
+  // Child is a single reference photo, so this REPLACES any prior one and cleans it up.
+  const cookieId = await getDraftCookieFromRequest();
+  if (cookieId) {
+    const draft = await getDraftByCookieId(cookieId);
+    const priorChild = (draft?.photo_urls as { child?: string[] } | null)?.child ?? [];
+    const stale = priorChild.filter((p) => p !== photoPath);
+    if (stale.length) {
+      // Best-effort cleanup of the replaced photo's object (don't fail the new upload on it).
+      await createServerClient().storage.from(PREVIEW_BUCKET).remove(stale).catch(() => {});
+    }
+    await updateDraftByCookieId(cookieId, {
+      photo_urls: { child: [photoPath] },
+      photo_consent_at: new Date().toISOString(),
+      // Versioned consent record — lagging column, cast (generated types trail the migration).
+      photo_consent: buildConsentRecord(consentVersion, new Date().toISOString()),
+      character_generation_mode: 'photo_assisted',
+    } as unknown as DraftUpdate);
+  }
+
+  return { photoPath, photoHash };
 }
 
 /**
@@ -223,7 +257,8 @@ async function removeOwnPhoto(
   await updateDraftByCookieId(cookieId, {
     photo_urls: noneLeft ? {} : { [role]: remaining },
     // Consent + photo-mode belong to the photo set; clear them once the last photo is gone.
-    ...(noneLeft ? { photo_consent_at: null, character_generation_mode: 'text_only' } : {}),
+    // photo_consent is the versioned record (lagging column, cast); photo_consent_at the legacy ts.
+    ...(noneLeft ? { photo_consent_at: null, photo_consent: null, character_generation_mode: 'text_only' } : {}),
   } as unknown as DraftUpdate);
 
   // (c) DELETE the object, then verify it is gone from the listing.

@@ -19,6 +19,9 @@ import { useEffect, useRef, useState } from 'react';
 import { GeneratedPreview } from './GeneratedPreview';
 import { PhotoHero } from './PhotoHero';
 import { uploadPhoto, removeChildPhoto } from '@/app/start/_actions/preview';
+import { CONSENT, type ConsentVersion } from '@/lib/consent/registry';
+
+const CHILD_CONSENT_VERSION: ConsentVersion = 'child-v1';
 import {
   HAIR_COLOURS,
   SKIN_TONES,
@@ -117,6 +120,9 @@ export function CharacterBuilder({
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   const [removing, setRemoving] = useState(false);
+  // Parent/guardian consent — a hard precondition for a child photo. The upload is gated
+  // on it, and its version id is sent so the server stores the canonical attestation text.
+  const [consent, setConsent] = useState(false);
 
   // Free a previous thumbnail's object URL when the photo is replaced or removed.
   function revokePhotoUrl() {
@@ -146,12 +152,18 @@ export function CharacterBuilder({
   }
 
   async function onPhotoChosen(file: File) {
+    // Defensive: the button is disabled until consent, but never upload without it.
+    if (!consent) {
+      setPhotoError('Please confirm the parent/guardian consent checkbox first.');
+      return;
+    }
     setUploading(true);
     setPhotoError(null);
     try {
       const png = await toPngBlob(file);
       const fd = new FormData();
       fd.append('photo', png, 'photo.png');
+      fd.append('consent_version', CHILD_CONSENT_VERSION); // server stores the canonical text
       const { photoPath, photoHash } = await uploadPhoto(fd);
       revokePhotoUrl(); // replacing an earlier photo → free its thumbnail URL
       setPhoto({ path: photoPath, hash: photoHash, name: file.name, url: URL.createObjectURL(png) });
@@ -200,10 +212,31 @@ export function CharacterBuilder({
           <p className="px-sm py-xs rounded-md border border-[#e8c98a] bg-[#fdf3e0] font-body text-caption text-[#8a5a1a]">
             ⚠️ Test only. Real photo upload needs the privacy &amp; safety review first.
           </p>
+
+          {/* Parent/guardian consent — a hard precondition. Upload stays disabled until ticked;
+              the server stores the canonical attestation text for this version. */}
+          <label className="border-warm-grey-light bg-paper p-sm gap-sm flex items-start rounded-xl border">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              className="mt-1"
+            />
+            <span className="font-body text-near-black text-body">
+              {CONSENT[CHILD_CONSENT_VERSION].label}
+              {CONSENT[CHILD_CONSENT_VERSION].hint ? (
+                <span className="font-body text-warm-grey text-caption mt-xs block">
+                  {CONSENT[CHILD_CONSENT_VERSION].hint}
+                </span>
+              ) : null}
+            </span>
+          </label>
+
           <PhotoHero
             photo={photo}
             previewUrl={photo?.url ?? null}
             uploading={uploading || removing}
+            disabled={!consent}
             error={photoError}
             onChoose={(f) => void onPhotoChosen(f)}
             onRemove={() => void onRemovePhoto()}
