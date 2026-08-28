@@ -42,6 +42,9 @@ export default async function SecondariesStepPage() {
   const artStyle = (draft as { art_style?: string | null } | null)?.art_style ?? 'watercolour';
   // CHARACTER_PICKER_ENABLED (server-side, fail-closed). OFF → no per-card picker (today).
   const pickerEnabled = process.env.CHARACTER_PICKER_ENABLED === 'on';
+  // CHILD_PHOTO_ENABLED (server-side, fail-closed, default OFF). ON un-gates companion
+  // photos in CHILD books (behind the same consent + moderation). Off in public Production.
+  const childPhotoEnabled = process.env.CHILD_PHOTO_ENABLED === 'on';
 
   return (
     <div className="space-y-lg">
@@ -64,6 +67,7 @@ export default async function SecondariesStepPage() {
         protagonistName={name}
         artStyle={artStyle}
         pickerEnabled={pickerEnabled}
+        childPhotoEnabled={childPhotoEnabled}
       />
     </div>
   );

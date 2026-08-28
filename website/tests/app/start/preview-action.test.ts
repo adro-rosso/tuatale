@@ -20,7 +20,7 @@ vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
 vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn(), updateDraftByCookieId: vi.fn() }));
 vi.mock('@/lib/moderation/child-photo', () => ({ moderateChildPhoto: vi.fn() }));
 
-import { requestPreview, getPreviewStatus, requestPreviewBatch, getPreviewBatchStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto, removeChildPhoto, removePetPhoto } from '@/app/start/_actions/preview';
+import { requestPreview, getPreviewStatus, requestPreviewBatch, getPreviewBatchStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto, removeChildPhoto, removePetPhoto, uploadCompanionPhoto, removeCompanionPhoto } from '@/app/start/_actions/preview';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId } from '@/db/drafts';
 import { moderateChildPhoto } from '@/lib/moderation/child-photo';
@@ -635,5 +635,65 @@ describe('removeChildPhoto / removePetPhoto — real erasure', () => {
   it('OWNERSHIP: refuses a foreign draft prefix (child)', async () => {
     mockRole('child');
     await expect(removeChildPhoto('uploads/draft-2/x.png')).rejects.toThrow(/not your photo/i);
+  });
+});
+
+// ---- ④ companion un-gate: uploadCompanionPhoto / removeCompanionPhoto -------------------
+// Child-book companions can be children → SAME consent + moderation as the protagonist.
+describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', () => {
+  const ORIGINAL = process.env.CHILD_PHOTO_ENABLED;
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.CHILD_PHOTO_ENABLED;
+    else process.env.CHILD_PHOTO_ENABLED = ORIGINAL;
+  });
+  function companionForm(consentVersion?: string): FormData {
+    const fd = pngForm([1, 2, 3], 'gran.png');
+    if (consentVersion) fd.append('consent_version', consentVersion);
+    return fd;
+  }
+
+  it('BLOCKED when CHILD_PHOTO_ENABLED is off', async () => {
+    delete process.env.CHILD_PHOTO_ENABLED;
+    const { upload } = mockStorage();
+    await expect(uploadCompanionPhoto(companionForm('companion-v1'))).rejects.toThrow(/not available|disabled/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('BLOCKED without consent', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    await expect(uploadCompanionPhoto(companionForm(/* none */))).rejects.toThrow(/consent/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('REJECTED by moderation (fail-closed): not stored', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, reason: 'x' });
+    await expect(uploadCompanionPhoto(companionForm('companion-v1'))).rejects.toThrow(/can't use that photo/i);
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('with consent + moderation pass: stores + returns the path (no draft persistence)', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
+    const r = await uploadCompanionPhoto(companionForm('companion-v1'));
+    expect(r.photoPath).toMatch(/^uploads\/draft-1\/[a-f0-9]{64}\.png$/);
+    expect(upload).toHaveBeenCalledOnce();
+  });
+
+  it('removeCompanionPhoto: deletes the object; refuses a foreign prefix', async () => {
+    (getDraftCookieFromRequest as ReturnType<typeof vi.fn>).mockResolvedValue('cookie-1');
+    (getDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'draft-1' });
+    const remove = vi.fn().mockResolvedValue({ error: null });
+    const list = vi.fn().mockResolvedValue({ data: [], error: null });
+    (createServerClient as ReturnType<typeof vi.fn>).mockReturnValue({ storage: { from: () => ({ remove, list }) } });
+    expect(await removeCompanionPhoto('uploads/draft-1/gran.png')).toEqual({ ok: true });
+    expect(remove).toHaveBeenCalledWith(['uploads/draft-1/gran.png']);
+    await expect(removeCompanionPhoto('uploads/draft-2/x.png')).rejects.toThrow(/not your photo/i);
   });
 });

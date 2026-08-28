@@ -16,6 +16,9 @@
 import { useRef, useState } from 'react';
 import { uploadPetPhoto } from '@/app/start/_actions/preview';
 
+type UploadAction = (fd: FormData) => Promise<{ photoPath: string }>;
+type RemoveAction = (path: string) => Promise<{ ok: true }>;
+
 /** Downscale any chosen image to a ≤1024px PNG in the browser before upload. */
 async function toPngFile(file: File, max = 1024): Promise<File> {
   const url = URL.createObjectURL(file);
@@ -47,9 +50,26 @@ interface Props {
   paths: string[];
   onChange: (paths: string[]) => void;
   max?: number;
+  /** Upload action (default: pet upload, no child gate). Child books pass
+   *  uploadCompanionPhoto (CHILD_PHOTO_ENABLED + consent + moderation). */
+  upload?: UploadAction;
+  /** Consent version id sent with each upload (child-book companions → 'companion-v1'). */
+  consentVersion?: string;
+  /** Server-side erasure on remove (default: client-only). Child/companion pass the real delete. */
+  onRemovePath?: RemoveAction;
+  /** Disable adding until a precondition is met (e.g. the companion consent checkbox). */
+  disabled?: boolean;
 }
 
-export function PhotoUploader({ paths, onChange, max = 5 }: Props) {
+export function PhotoUploader({
+  paths,
+  onChange,
+  max = 5,
+  upload = uploadPetPhoto,
+  consentVersion,
+  onRemovePath,
+  disabled = false,
+}: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [uploading, setUploading] = useState(false);
@@ -66,7 +86,8 @@ export function PhotoUploader({ paths, onChange, max = 5 }: Props) {
         const png = await toPngFile(file);
         const fd = new FormData();
         fd.append('photo', png);
-        const { photoPath } = await uploadPetPhoto(fd);
+        if (consentVersion) fd.append('consent_version', consentVersion);
+        const { photoPath } = await upload(fd);
         const previewUrl = URL.createObjectURL(png);
         setPreviews((prev) => ({ ...prev, [photoPath]: previewUrl }));
         next = [...next, photoPath];
@@ -80,7 +101,20 @@ export function PhotoUploader({ paths, onChange, max = 5 }: Props) {
     }
   }
 
-  const remove = (path: string) => onChange(paths.filter((p) => p !== path));
+  // Remove: when a server-side erasure is provided (child/companion), DELETE the object
+  // first, then drop it locally; otherwise client-only (pet default, unchanged).
+  async function remove(path: string) {
+    setError(null);
+    if (onRemovePath) {
+      try {
+        await onRemovePath(path);
+      } catch {
+        setError('Couldn’t remove that photo. Please try again.');
+        return;
+      }
+    }
+    onChange(paths.filter((p) => p !== path));
+  }
 
   return (
     <div>
@@ -98,7 +132,7 @@ export function PhotoUploader({ paths, onChange, max = 5 }: Props) {
             )}
             <button
               type="button"
-              onClick={() => remove(path)}
+              onClick={() => void remove(path)}
               className="bg-near-black/70 absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full text-cream"
               aria-label="Remove photo"
             >
@@ -110,8 +144,8 @@ export function PhotoUploader({ paths, onChange, max = 5 }: Props) {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="border-warm-grey-light hover:border-iron-oxide font-body text-warm-grey text-caption flex aspect-square items-center justify-center rounded-lg border-2 border-dashed transition-colors"
+            disabled={uploading || disabled}
+            className="border-warm-grey-light hover:border-iron-oxide font-body text-warm-grey text-caption flex aspect-square items-center justify-center rounded-lg border-2 border-dashed transition-colors disabled:opacity-50"
           >
             {uploading ? 'Uploading…' : '+ Add'}
           </button>

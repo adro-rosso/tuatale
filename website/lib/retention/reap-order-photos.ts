@@ -22,10 +22,17 @@
  * run retries it. Idempotent: an already-erased order has no `uploads/` paths → a no-op.
  */
 import { createServerClient, type TuataleSupabaseClient } from '@/lib/supabase';
-import { collectPhotoPaths } from '@/lib/retention/reap-drafts';
+import { collectAllPhotoPaths } from '@/lib/retention/reap-drafts';
 
 const PREVIEW_BUCKET = 'tuatale-previews';
 const TTL_DAYS = 30;
+
+/** Empty each companion card's `photos` array (keeps names/relationships) so the erased
+ *  reference doesn't dangle in secondaries after the objects are deleted. */
+function stripSecondaryPhotos(secondaries: unknown): unknown {
+  if (!Array.isArray(secondaries)) return secondaries ?? [];
+  return secondaries.map((card) => (card && typeof card === 'object' ? { ...card, photos: [] } : card));
+}
 
 export type OrderPhotoReapReport = {
   dryRun: boolean;
@@ -70,7 +77,7 @@ export async function reapShippedOrderPhotos(
   for (const orderId of orderIds) {
     const { data: order, error: oErr } = await client
       .from('orders')
-      .select('id, photo_urls, converted_from_draft_id')
+      .select('id, photo_urls, secondaries, converted_from_draft_id')
       .eq('id', orderId)
       .single();
     if (oErr || !order) {
@@ -78,7 +85,8 @@ export async function reapShippedOrderPhotos(
       continue;
     }
 
-    const paths = collectPhotoPaths(order.photo_urls);
+    // Protagonist (photo_urls) + companion (secondaries) source photos.
+    const paths = collectAllPhotoPaths(order);
     if (!paths.length) continue; // already erased / never had source photos
     report.scanned += 1;
 
@@ -89,11 +97,14 @@ export async function reapShippedOrderPhotos(
         report.errors.push(`storage remove order ${orderId}: ${rmErr.message}`);
         continue;
       }
-      // Clear the references so getOrderPhotos reports absent and nothing dangles. Clear the
-      // order first (the operative reference), then the converted draft (same photos).
-      const { error: upErr } = await client.from('orders').update({ photo_urls: {} }).eq('id', orderId);
+      // Clear the references so getOrderPhotos reports absent and nothing dangles: the order's
+      // photo_urls AND its companion photo arrays. Then the converted draft (same photos).
+      const { error: upErr } = await client
+        .from('orders')
+        .update({ photo_urls: {}, secondaries: stripSecondaryPhotos(order.secondaries) as never })
+        .eq('id', orderId);
       if (upErr) {
-        report.errors.push(`clear order.photo_urls ${orderId}: ${upErr.message}`);
+        report.errors.push(`clear order references ${orderId}: ${upErr.message}`);
         continue;
       }
       if (order.converted_from_draft_id) {

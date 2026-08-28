@@ -307,6 +307,65 @@ export async function removePetPhoto(photoPath: string): Promise<{ ok: true }> {
   return removeOwnPhoto(photoPath, 'pet', 'removePetPhoto');
 }
 
+/**
+ * COMPANION photo upload for CHILD books (companion un-gate, slice ④). A child-book
+ * companion can itself be a child, so this carries the SAME child-photo safety as the
+ * protagonist path: CHILD_PHOTO_ENABLED gate + consent (companion-v1) + fail-closed
+ * moderation, BEFORE storing. (Pet-book companions keep uploadPetPhoto — no child gate.)
+ * Companion photos live in draft.secondaries (client → submit), not photo_urls, so this
+ * only stores + returns the path; the per-card consent record is written at submit.
+ */
+export async function uploadCompanionPhoto(formData: FormData): Promise<{ photoPath: string; photoHash: string }> {
+  if (!CHILD_PHOTO_ENABLED()) {
+    console.error('[uploadCompanionPhoto] BLOCKED: child-photo path disabled');
+    throw new Error(
+      'Photo upload is not available. Child-photo upload is disabled pending our privacy and safety review.',
+    );
+  }
+  const consentVersion = String(formData.get('consent_version') ?? '');
+  if (!isConsentVersion(consentVersion)) {
+    console.error('[uploadCompanionPhoto] BLOCKED: missing/invalid companion consent');
+    throw new Error('Please confirm the parent/guardian consent checkbox before adding a photo.');
+  }
+  const file = formData.get('photo');
+  if (!(file instanceof File)) throw new Error('uploadCompanionPhoto: no photo file');
+  if (file.size > MAX_PHOTO_BYTES) {
+    throw new Error(`uploadCompanionPhoto: photo is too large (max ${MAX_PHOTO_BYTES / 1024 / 1024}MB).`);
+  }
+  const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()));
+  if (!moderation.ok) {
+    console.error(`[uploadCompanionPhoto] photo rejected by moderation: ${moderation.reason}`);
+    throw new Error("Sorry, we can't use that photo. Please choose a clear, everyday photo.");
+  }
+  return storePhotoForDraft(formData, 'uploadCompanionPhoto');
+}
+
+/**
+ * Real erasure for a COMPANION photo (was client-only). Companion photos live in the
+ * secondaries array (client state), so there is no photo_urls role to unlink — this just
+ * deletes + verifies the object under the caller's own prefix.
+ */
+export async function removeCompanionPhoto(photoPath: string): Promise<{ ok: true }> {
+  const cookieId = await getDraftCookieFromRequest();
+  if (!cookieId) throw new Error('removeCompanionPhoto: no active session.');
+  const draft = await getDraftByCookieId(cookieId);
+  if (!draft) throw new Error('removeCompanionPhoto: no active session.');
+  const ownPrefix = `${draftUploadPrefix(draft.id)}/`;
+  if (!photoPath.startsWith(ownPrefix) || photoPath.includes('..')) {
+    throw new Error('removeCompanionPhoto: not your photo.');
+  }
+  const client = createServerClient();
+  await client.storage.from(PREVIEW_BUCKET).remove([photoPath]);
+  const prefix = photoPath.slice(0, photoPath.lastIndexOf('/'));
+  const name = photoPath.slice(photoPath.lastIndexOf('/') + 1);
+  const { data } = await client.storage.from(PREVIEW_BUCKET).list(prefix, { search: name });
+  if ((data ?? []).some((o) => o.name === name)) {
+    console.error(`[removeCompanionPhoto] object still listed after delete: ${photoPath}`);
+    throw new Error('removeCompanionPhoto: could not remove the photo. Please try again.');
+  }
+  return { ok: true };
+}
+
 export async function requestPreview(input: RequestPreviewInput): Promise<PreviewResult> {
   const inputHash = computeInputHash(input);
 

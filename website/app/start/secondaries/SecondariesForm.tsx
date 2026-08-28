@@ -8,6 +8,8 @@ import { fieldControl, sectionCard, segTrack, segItem } from '@/components/ui/fo
 import { GENDERS, SUBJECT_TYPES } from '@/lib/validation/schemas';
 import { PhotoUploader } from '@/app/start/child/PhotoUploader';
 import { CharacterPicker } from '@/app/start/child/CharacterPicker';
+import { uploadCompanionPhoto, removeCompanionPhoto } from '@/app/start/_actions/preview';
+import { CONSENT } from '@/lib/consent/registry';
 import type { FieldErrors } from '@/lib/validation/validate';
 
 interface SecondaryCardData {
@@ -43,6 +45,9 @@ interface SecondariesFormProps {
   artStyle: string;
   /** CHARACTER_PICKER_ENABLED (server-side). OFF → no per-card picker (today's behavior). */
   pickerEnabled: boolean;
+  /** CHILD_PHOTO_ENABLED (server-side, default off). ON un-gates companion photos in CHILD
+   *  books behind the same consent + moderation as the protagonist. */
+  childPhotoEnabled?: boolean;
 }
 
 // Companion photo-upload — PET BOOKS ONLY. Enabled 2026-07-17, once the
@@ -59,7 +64,7 @@ const SECONDARY_PHOTO_ENABLED = true;
 
 const MAX_CARDS = 3;
 
-export function SecondariesForm({ initialSecondaries, bookType, protagonistName, artStyle, pickerEnabled }: SecondariesFormProps) {
+export function SecondariesForm({ initialSecondaries, bookType, protagonistName, artStyle, pickerEnabled, childPhotoEnabled = false }: SecondariesFormProps) {
   const [cards, setCards] = useState<SecondaryCardData[]>(initialSecondaries);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [consent, setConsent] = useState(false);
@@ -67,6 +72,10 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
   const [isPending, startTransition] = useTransition();
 
   const isPet = bookType === 'pet';
+  // Child-book companion photos: un-gated only when CHILD_PHOTO_ENABLED; they carry the
+  // stricter companion-v1 consent + moderation (a child-book companion can be a child).
+  const isChildCompanionPhoto = childPhotoEnabled && !isPet;
+  const companionsPhotoEnabled = isPet || isChildCompanionPhoto;
   const anyPhotos = cards.some((c) => (c.photos?.length ?? 0) > 0);
 
   function updateCard(idx: number, patch: Partial<SecondaryCardData>) {
@@ -82,10 +91,10 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
   function handleSubmit() {
     setErrors({});
     setConsentError(null);
-    // Companion photos need explicit consent before we use them (pet books only —
-    // owner / other pets). Enforced here; the paths were already uploaded.
-    if (isPet && anyPhotos && !consent) {
-      setConsentError('Please confirm you’re happy for us to use these photos.');
+    // Companion photos need explicit consent before we use them. Enforced here; the paths
+    // were already uploaded (child-book companion uploads were also gated + moderated).
+    if (companionsPhotoEnabled && anyPhotos && !consent) {
+      setConsentError('Please confirm the consent checkbox before continuing.');
       return;
     }
     startTransition(async () => {
@@ -97,7 +106,10 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
       );
       const result = await submitSecondariesStep({
         secondaries: cleaned,
-        photoConsent: isPet && anyPhotos ? consent : undefined,
+        photoConsent: companionsPhotoEnabled && anyPhotos ? consent : undefined,
+        // Child-book companion photos record the versioned attestation per card (companions
+        // can be children). Pet books keep the timestamp-only path (undefined version).
+        photoConsentVersion: isChildCompanionPhoto && anyPhotos ? 'companion-v1' : undefined,
       });
       if (result?.errors) setErrors(result.errors);
     });
@@ -119,6 +131,9 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
               data={card}
               errors={errorsForCard(errors, idx)}
               isPet={isPet}
+              companionsPhotoEnabled={companionsPhotoEnabled}
+              isChildCompanionPhoto={isChildCompanionPhoto}
+              consentGiven={consent}
               protagonistName={protagonistName}
               artStyle={artStyle}
               pickerEnabled={pickerEnabled}
@@ -129,7 +144,11 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
         </div>
       )}
 
-      {isPet && anyPhotos && (
+      {/* Companion-photo consent. Pet: shown once photos exist (owner/other pets). Child:
+          shown as soon as a card exists, because it GATES the (child-book) companion uploads
+          via `disabled` — companions can be children, so it's the stricter companion-v1
+          attestation and the server stores its canonical text per card. */}
+      {((isPet && anyPhotos) || (isChildCompanionPhoto && cards.length > 0)) && (
         <label className="gap-sm border-warm-grey-light/70 bg-paper p-md flex cursor-pointer items-start rounded-xl border">
           <input
             type="checkbox"
@@ -138,8 +157,9 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
             className="accent-iron-oxide mt-1"
           />
           <span className="font-body text-near-black text-body">
-            I have the right to use these photos, and I&apos;m happy for Tuatale to use them to
-            illustrate this book.
+            {isChildCompanionPhoto
+              ? CONSENT['companion-v1'].label
+              : 'I have the right to use these photos, and I’m happy for Tuatale to use them to illustrate this book.'}
           </span>
         </label>
       )}
@@ -182,6 +202,12 @@ interface SecondaryCardProps {
   data: SecondaryCardData;
   errors: Record<string, string>;
   isPet: boolean;
+  /** Companion photos available (pet, or child-book with CHILD_PHOTO_ENABLED). */
+  companionsPhotoEnabled: boolean;
+  /** Child-book companion → route through the consented + moderated upload path. */
+  isChildCompanionPhoto: boolean;
+  /** Form-level companion consent — gates child-book companion uploads. */
+  consentGiven: boolean;
   protagonistName: string | null;
   artStyle: string;
   pickerEnabled: boolean;
@@ -189,7 +215,7 @@ interface SecondaryCardProps {
   onRemove: () => void;
 }
 
-function SecondaryCard({ idx, data, errors, isPet, protagonistName, artStyle, pickerEnabled, onChange, onRemove }: SecondaryCardProps) {
+function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChildCompanionPhoto, consentGiven, protagonistName, artStyle, pickerEnabled, onChange, onRemove }: SecondaryCardProps) {
   const isHuman = data.subject_type === 'human';
   const isNonHuman = data.subject_type === 'non_human';
   const uid = useId();
@@ -278,18 +304,28 @@ function SecondaryCard({ idx, data, errors, isPet, protagonistName, artStyle, pi
         />
       </CardField>
 
-      {/* Companion photos — PET BOOKS ONLY. The `isPet &&` guard keeps child-book
-          companion photos behind the parked child-photo workstream (their companions are
-          often children); it is load-bearing, not incidental. */}
-      {isPet && SECONDARY_PHOTO_ENABLED ? (
+      {/* Companion photos. Pet books: uploadPetPhoto (no child gate). Child books
+          (CHILD_PHOTO_ENABLED): routed through uploadCompanionPhoto — the SAME consent
+          (companion-v1, form-level checkbox gates via `disabled`) + moderation + real
+          erasure as the protagonist, because a child-book companion can be a child. */}
+      {companionsPhotoEnabled && SECONDARY_PHOTO_ENABLED ? (
         <div className="space-y-xs">
           <label className="font-body text-near-black text-body block font-medium">
             Photos <span className="text-warm-grey font-normal">(optional)</span>
           </label>
-          <PhotoUploader paths={data.photos} onChange={(photos) => onChange({ photos })} max={5} />
+          <PhotoUploader
+            paths={data.photos}
+            onChange={(photos) => onChange({ photos })}
+            max={5}
+            upload={isChildCompanionPhoto ? uploadCompanionPhoto : undefined}
+            consentVersion={isChildCompanionPhoto ? 'companion-v1' : undefined}
+            onRemovePath={isChildCompanionPhoto ? removeCompanionPhoto : undefined}
+            disabled={isChildCompanionPhoto && !consentGiven}
+          />
           <p className="font-body text-warm-grey text-caption">
-            A clear photo or two helps us capture their true likeness. For grown-ups and pets only,
-            please don&apos;t upload photos of children here.
+            {isChildCompanionPhoto
+              ? CONSENT['companion-v1'].hint ?? 'A clear photo or two helps us capture their true likeness.'
+              : 'A clear photo or two helps us capture their true likeness. For grown-ups and pets only, please don’t upload photos of children here.'}
           </p>
 
           {/* Per-card character picker (flag-gated). Non-blocking — never gates Continue. */}

@@ -79,20 +79,31 @@ export function collectPhotoPaths(photoUrls: unknown): string[] {
  * Built once up front: the check must see the whole surviving world, and re-querying
  * per path would both be slow and risk an inconsistent view mid-run.
  */
+/**
+ * ALL uploads/ photo paths a row references — the protagonist's (photo_urls) AND the
+ * companions' (secondaries[].photos). collectPhotoPaths walks nested arrays/objects, so it
+ * pulls companion paths out of the secondaries jsonb too. Load-bearing for retention:
+ * companion photos live ONLY in secondaries, so a reap that read photo_urls alone left them
+ * to orphan (pet + child companion photos alike).
+ */
+export function collectAllPhotoPaths(row: { photo_urls?: unknown; secondaries?: unknown }): string[] {
+  return [...new Set([...collectPhotoPaths(row.photo_urls), ...collectPhotoPaths(row.secondaries)])];
+}
+
 async function buildSurvivingReferences(
   reapedDraftIds: Set<string>,
   client: TuataleSupabaseClient,
 ): Promise<Set<string>> {
   const [{ data: drafts }, { data: orders }] = await Promise.all([
-    client.from('drafts').select('id, photo_urls'),
-    client.from('orders').select('id, photo_urls'),
+    client.from('drafts').select('id, photo_urls, secondaries'),
+    client.from('orders').select('id, photo_urls, secondaries'),
   ]);
   const refs = new Set<string>();
   for (const d of drafts ?? []) {
     if (reapedDraftIds.has(d.id)) continue;
-    collectPhotoPaths(d.photo_urls).forEach((p) => refs.add(p));
+    collectAllPhotoPaths(d).forEach((p) => refs.add(p));
   }
-  for (const o of orders ?? []) collectPhotoPaths(o.photo_urls).forEach((p) => refs.add(p));
+  for (const o of orders ?? []) collectAllPhotoPaths(o).forEach((p) => refs.add(p));
   return refs;
 }
 
@@ -111,7 +122,7 @@ export async function reapExpiredDrafts(
 
   const { data: expired, error } = await client
     .from('drafts')
-    .select('id, photo_urls')
+    .select('id, photo_urls, secondaries')
     .lt('expires_at', new Date().toISOString())
     .neq('status', 'converted');
   if (error) {
@@ -124,7 +135,8 @@ export async function reapExpiredDrafts(
   const surviving = await buildSurvivingReferences(reapedIds, client);
 
   for (const draft of expired) {
-    const paths = collectPhotoPaths(draft.photo_urls);
+    // Protagonist photos (photo_urls) + companion photos (secondaries) — see collectAllPhotoPaths.
+    const paths = collectAllPhotoPaths(draft);
     const deletable: string[] = [];
     for (const path of paths) {
       if (surviving.has(path)) {

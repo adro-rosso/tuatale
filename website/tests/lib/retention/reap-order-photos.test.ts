@@ -101,8 +101,33 @@ describe('reapShippedOrderPhotos', () => {
     const r = await reapShippedOrderPhotos({ dryRun: false }, client);
     expect(r.ordersErased).toBe(1);
     expect(removed).toEqual([['uploads/d/a.png', 'uploads/d/b.png']]);
-    expect(orderUpdates).toEqual([{ id: 'order-1', patch: { photo_urls: {} } }]);
+    expect(orderUpdates[0]!.id).toBe('order-1');
+    expect((orderUpdates[0]!.patch as { photo_urls: unknown }).photo_urls).toEqual({});
     expect(draftUpdates[0]).toMatchObject({ id: 'd', patch: { photo_urls: {}, photo_consent_at: null } });
+  });
+
+  it('COMPANION photos (in secondaries) are also deleted + stripped', async () => {
+    const orderWithCompanion = {
+      id: 'order-2',
+      photo_urls: { child: ['uploads/d/hero.png'] },
+      secondaries: [
+        { name: 'Gran', subject_type: 'human', photos: ['uploads/d/gran.png'] },
+        { name: 'Rex', subject_type: 'non_human', photos: ['uploads/d/rex.png'] },
+      ],
+      converted_from_draft_id: 'd2',
+    };
+    const { client, removed, orderUpdates } = fakeClient({
+      jobs: [{ order_id: 'order-2', shipped_at: '2020-01-01T00:00:00Z' }],
+      orders: { 'order-2': orderWithCompanion },
+    });
+    const r = await reapShippedOrderPhotos({ dryRun: false }, client);
+    expect(r.ordersErased).toBe(1);
+    // protagonist + both companion photos deleted
+    expect(removed[0]).toEqual(expect.arrayContaining(['uploads/d/hero.png', 'uploads/d/gran.png', 'uploads/d/rex.png']));
+    // secondaries stripped of photos, names kept
+    const strippedSecondaries = (orderUpdates[0]!.patch as { secondaries: Array<{ name: string; photos: string[] }> }).secondaries;
+    expect(strippedSecondaries.map((c) => c.name)).toEqual(['Gran', 'Rex']);
+    expect(strippedSecondaries.every((c) => c.photos.length === 0)).toBe(true);
   });
 
   it('IDEMPOTENT: an order whose photos were already erased is a no-op', async () => {
