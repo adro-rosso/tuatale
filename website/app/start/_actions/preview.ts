@@ -19,6 +19,7 @@ import { draftUploadPrefix } from '@/lib/preview/paths';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
 import { isConsentVersion, buildConsentRecord } from '@/lib/consent/registry';
+import { moderateChildPhoto } from '@/lib/moderation/child-photo';
 import {
   findCachedPreview,
   createPreviewJob,
@@ -159,6 +160,20 @@ export async function uploadPhoto(formData: FormData): Promise<{ photoPath: stri
   if (!isConsentVersion(consentVersion)) {
     console.error('[uploadPhoto] BLOCKED: missing/invalid child-photo consent');
     throw new Error('Please confirm the parent/guardian consent checkbox before adding a photo.');
+  }
+
+  // MODERATION (fail-closed): a child photo must pass a suitability check BEFORE it is
+  // stored — an unsuitable photo never lands in the bucket. Size-guard first so we never
+  // moderate (or buffer) an oversized blob; storePhotoForDraft re-validates + uploads.
+  const file = formData.get('photo');
+  if (!(file instanceof File)) throw new Error('uploadPhoto: no photo file');
+  if (file.size > MAX_PHOTO_BYTES) {
+    throw new Error(`uploadPhoto: photo is too large (max ${MAX_PHOTO_BYTES / 1024 / 1024}MB).`);
+  }
+  const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()));
+  if (!moderation.ok) {
+    console.error(`[uploadPhoto] photo rejected by moderation: ${moderation.reason}`);
+    throw new Error("Sorry, we can't use that photo. Please choose a clear, everyday photo of your child.");
   }
 
   const { photoPath, photoHash } = await storePhotoForDraft(formData, 'uploadPhoto');

@@ -18,10 +18,12 @@ vi.mock('@/lib/inngest/client', () => ({ inngest: { send: vi.fn() } }));
 vi.mock('@/lib/supabase', () => ({ createServerClient: vi.fn() }));
 vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
 vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn(), updateDraftByCookieId: vi.fn() }));
+vi.mock('@/lib/moderation/child-photo', () => ({ moderateChildPhoto: vi.fn() }));
 
 import { requestPreview, getPreviewStatus, requestPreviewBatch, getPreviewBatchStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto, removeChildPhoto, removePetPhoto } from '@/app/start/_actions/preview';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId } from '@/db/drafts';
+import { moderateChildPhoto } from '@/lib/moderation/child-photo';
 import { createServerClient } from '@/lib/supabase';
 import {
   findCachedPreview,
@@ -215,10 +217,20 @@ describe('uploadPhoto — CHILD-photo gate (security)', () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
-  it('with consent: stores the photo, tracks it in photo_urls.child, records the versioned consent', async () => {
+  it('REJECTED by moderation (fail-closed): not stored, kind error', async () => {
     process.env.CHILD_PHOTO_ENABLED = 'on';
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, reason: 'not a person' });
+    await expect(uploadPhoto(childForm('child-v1'))).rejects.toThrow(/can't use that photo/i);
+    expect(upload).not.toHaveBeenCalled(); // never stored
+  });
+
+  it('with consent + moderation pass: stores, tracks photo_urls.child, records versioned consent', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
     const r = await uploadPhoto(childForm('child-v1'));
 
     expect(r.photoPath).toMatch(/^uploads\/draft-1\/[a-f0-9]{64}\.png$/);
