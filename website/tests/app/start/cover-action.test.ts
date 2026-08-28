@@ -120,6 +120,37 @@ describe('getCoverPreview — child fresh render via the existing rails', () => 
   });
 });
 
+describe('getCoverPreview — re-render / "try another"', () => {
+  it('a reused chosen pick sets canRegenerate:false (their look — nothing to re-roll)', async () => {
+    chosen.mockResolvedValue({ subjectId: 'protagonist', imagePath: 'previews/abc.png', imageUrl: 'stale' });
+    stubSignedUrl('https://signed/fresh.png');
+    const r = await getCoverPreview();
+    expect(r.status).toBe('done');
+    expect(r.canRegenerate).toBe(false);
+  });
+
+  it('a child fresh-render sets canRegenerate:true', async () => {
+    reqPreview.mockResolvedValue({ status: 'done', imageUrl: 'https://gen.png', bgColor: null, cached: false, previewId: 'p' });
+    const r = await getCoverPreview();
+    expect(r.canRegenerate).toBe(true);
+  });
+
+  it('regenerate:true SKIPS the chosen-pick reuse and requests a fresh render WITH a cache-busting variant', async () => {
+    chosen.mockResolvedValue({ subjectId: 'protagonist', imagePath: 'previews/abc.png', imageUrl: 'stale' });
+    reqPreview.mockResolvedValue({ status: 'done', imageUrl: 'https://reroll.png', bgColor: null, cached: false, previewId: 'p' });
+
+    const r = await getCoverPreview({ regenerate: true });
+
+    expect(getChosenSheet).not.toHaveBeenCalled(); // reuse skipped on a re-roll
+    expect(requestPreview).toHaveBeenCalledOnce();
+    const input = reqPreview.mock.calls[0]![0] as { variant?: string };
+    expect(input.variant).toMatch(/^cover:/); // unique variant → fresh dice roll
+    expect(r.status).toBe('done');
+    expect(r.imageUrl).toBe('https://reroll.png');
+    expect(r.canRegenerate).toBe(true);
+  });
+});
+
 describe('getCoverPreview — pet/adult without a pick → no misrender', () => {
   it('pet with no chosen_sheet returns none and does NOT fresh-render (human path would misrender a pet)', async () => {
     getDraft.mockResolvedValue({ ...childDraft, book_type: 'pet', child_name: 'Benji', theme_template_id: null });

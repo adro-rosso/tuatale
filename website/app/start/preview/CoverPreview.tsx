@@ -6,8 +6,12 @@
  * character in a cover frame with a title overlay (band plate + Fredoka, mirroring the
  * printed cover). Continue is ALWAYS available — a disabled flag, no cover source, or a
  * render failure all fall back to the original pass-through copy, never blocking the step.
+ *
+ * "Try another" re-rolls a fresh stochastic render (child fresh-render covers only) reusing
+ * the same generation path + cost guards; it keeps the current cover visible while painting
+ * and, on failure, keeps the current cover — it never blanks the step or blocks Continue.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getCoverPreview } from '@/app/start/_actions/cover';
 import type { CoverPreviewResult } from '@/lib/cover/types';
 import { getPreviewStatus } from '@/app/start/_actions/preview';
@@ -32,80 +36,98 @@ export function CoverPreview({ fontClassName }: Props) {
   const [cover, setCover] = useState<CoverPreviewResult | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [bgColor, setBgColor] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState(false);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped on every load()/unmount so a stale in-flight poll (from a prior run or a
+  // superseded re-roll) can detect it's been cancelled and stop touching state.
+  const runIdRef = useRef(0);
+
+  const load = useCallback(async (regenerate: boolean) => {
+    const myRun = ++runIdRef.current;
+    const stale = () => runIdRef.current !== myRun;
+    if (pollRef.current) {
+      clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
+    // Only the re-roll (button) path needs a synchronous state reset; the initial mount
+    // already starts in 'loading' with no error, so it does NO synchronous setState here
+    // (that would be a cascading-render in the effect). Its first setState lands post-await.
+    if (regenerate) {
+      setRegenError(false);
+      setRegenerating(true);
+    }
+
+    // Show the new image (mount OR re-roll both land here).
+    const applyImage = (url: string, bg?: string | null) => {
+      setImageUrl(url);
+      setBgColor(bg ?? null);
+      setPhase('done');
+      setRegenerating(false);
+    };
+    // No cover this attempt. On a re-roll, KEEP the current cover (just flag the miss); on
+    // the initial load, fall back to the pass-through. Never blocks Continue either way.
+    const fail = () => {
+      setRegenerating(false);
+      if (regenerate) {
+        setRegenError(true);
+        setPhase('done');
+      } else {
+        setPhase('passthrough');
+      }
+    };
+
+    let res: CoverPreviewResult;
+    try {
+      res = await getCoverPreview(regenerate ? { regenerate: true } : undefined);
+    } catch {
+      if (!stale()) fail(); // getCoverPreview soft-fails, but guard anyway
+      return;
+    }
+    if (stale()) return;
+    setCover(res);
+
+    if (!res.enabled || res.status === 'none') return void fail();
+    if (res.status === 'done' && res.imageUrl) return void applyImage(res.imageUrl, res.bgColor);
+    if (!res.previewId) return void fail();
+
+    // Fresh render queued — poll the existing preview row until done/failed/timeout.
+    if (!regenerate) setPhase('painting');
+    const previewId = res.previewId;
+    const startedAt = Date.now();
+    const poll = async () => {
+      if (stale()) return;
+      if (Date.now() - startedAt > TIMEOUT_MS) return void fail();
+      try {
+        const s = await getPreviewStatus(previewId);
+        if (stale()) return;
+        if (s.status === 'done' && s.imageUrl) return void applyImage(s.imageUrl, s.bgColor);
+        if (s.status === 'failed') return void fail();
+      } catch {
+        /* transient poll error — keep trying until timeout */
+      }
+      pollRef.current = setTimeout(poll, POLL_MS);
+    };
+    pollRef.current = setTimeout(poll, POLL_MS);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const stop = () => {
-      if (pollRef.current) clearTimeout(pollRef.current);
-      pollRef.current = null;
-    };
-
-    (async () => {
-      let res: CoverPreviewResult;
-      try {
-        res = await getCoverPreview();
-      } catch {
-        if (!cancelled) setPhase('passthrough'); // getCoverPreview soft-fails, but guard anyway
-        return;
-      }
-      if (cancelled) return;
-      setCover(res);
-
-      if (!res.enabled || res.status === 'none') {
-        setPhase('passthrough');
-        return;
-      }
-      if (res.status === 'done' && res.imageUrl) {
-        setImageUrl(res.imageUrl);
-        setBgColor(res.bgColor ?? null);
-        setPhase('done');
-        return;
-      }
-      if (!res.previewId) {
-        setPhase('passthrough');
-        return;
-      }
-
-      // Fresh render queued — poll the existing preview row until done/failed/timeout.
-      setPhase('painting');
-      const previewId = res.previewId;
-      const startedAt = Date.now();
-      const poll = async () => {
-        if (cancelled) return;
-        if (Date.now() - startedAt > TIMEOUT_MS) {
-          setPhase('passthrough');
-          return;
-        }
-        try {
-          const s = await getPreviewStatus(previewId);
-          if (cancelled) return;
-          if (s.status === 'done' && s.imageUrl) {
-            setImageUrl(s.imageUrl);
-            setBgColor(s.bgColor ?? null);
-            setPhase('done');
-            return;
-          }
-          if (s.status === 'failed') {
-            setPhase('passthrough');
-            return;
-          }
-        } catch {
-          /* transient poll error — keep trying until timeout */
-        }
-        pollRef.current = setTimeout(poll, POLL_MS);
-      };
-      pollRef.current = setTimeout(poll, POLL_MS);
-    })();
-
+    // Fetch-on-mount kickoff. load()'s state updates land post-await (or only on the
+    // re-roll path), not synchronously in this effect — the rule over-flags the call.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load(false);
     return () => {
-      cancelled = true;
-      stop();
+      // Bump the run id so any in-flight poll's stale() check stops it setting state after
+      // unmount; also clear the scheduled poll. (Mutating the ref in cleanup is intentional.)
+      runIdRef.current++;
+      const timer = pollRef.current;
+      if (timer) clearTimeout(timer);
     };
-  }, []);
+  }, [load]);
 
   const advance = advanceStep.bind(null, 'preview');
   const lines = cover ? balanceTitleLines(cover.title) : [];
+  const showCover = phase === 'done' || phase === 'painting' || phase === 'loading';
 
   return (
     <div className={`space-y-lg mx-auto max-w-[40rem] ${fontClassName}`}>
@@ -167,12 +189,44 @@ export function CoverPreview({ fontClassName }: Props) {
                   </p>
                 </div>
               )}
+
+              {/* Re-roll overlay — keep the current cover visible while a new one paints. */}
+              {regenerating ? (
+                <div
+                  className="absolute inset-0 flex items-center justify-center"
+                  style={{ backgroundColor: 'rgba(253,251,239,.72)' }}
+                >
+                  <p className="font-body text-warm-grey text-caption">Painting a new cover…</p>
+                </div>
+              ) : null}
             </div>
           </div>
+
           {phase === 'done' ? (
-            <p className="font-body text-warm-grey text-caption text-center">
-              A glimpse of your cover. The finished book is crafted after you order.
-            </p>
+            <div className="space-y-xs text-center">
+              <p className="font-body text-warm-grey text-caption">
+                A glimpse of your cover. The finished book is crafted after you order.
+              </p>
+              {/* "Try another" — only for a fresh (stochastic) render; a reused pick has nothing
+                  to re-roll. Non-blocking; a failed re-roll keeps the current cover. */}
+              {cover?.canRegenerate && showCover ? (
+                <div className="space-y-xs">
+                  <button
+                    type="button"
+                    onClick={() => void load(true)}
+                    disabled={regenerating}
+                    className="font-body text-iron-oxide text-caption border-iron-oxide/40 px-md py-xs hover:bg-cream-deep inline-flex items-center gap-1 rounded-full border font-semibold transition-colors disabled:opacity-60"
+                  >
+                    {regenerating ? 'Painting…' : '↻ Try another cover'}
+                  </button>
+                  {regenError ? (
+                    <p className="font-body text-warm-grey text-caption" role="status">
+                      Couldn&apos;t paint a new one just now — keeping this cover. Try again in a moment.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
           ) : null}
         </div>
       )}

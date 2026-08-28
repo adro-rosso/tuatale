@@ -16,6 +16,7 @@
  * enabled:false → the page stays today's pass-through. NEVER throws — any failure returns
  * a 'none'/pass-through result so Continue is never blocked. No worker change; GA untouched.
  */
+import { randomUUID } from 'node:crypto';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId } from '@/db/drafts';
 import { createServerClient } from '@/lib/supabase';
@@ -23,6 +24,12 @@ import { requestPreview, getChosenSheet } from '@/app/start/_actions/preview';
 import { deriveCoverTitle } from '@/lib/cover/title';
 import type { RequestPreviewInput } from '@/lib/preview/types';
 import type { CoverPreviewResult } from '@/lib/cover/types';
+
+export interface CoverPreviewOptions {
+  /** "Try another" — force a fresh stochastic render (bypass the chosen-pick reuse + the
+   *  input-hash cache via a unique variant). Counts against the existing per-draft cap. */
+  regenerate?: boolean;
+}
 
 const PREVIEW_BUCKET = 'tuatale-previews';
 const COVER_URL_TTL_SECONDS = 60 * 60; // 1h — long enough for a cover-viewing session
@@ -44,10 +51,11 @@ function buildChildCoverInput(draft: Record<string, unknown>): RequestPreviewInp
   };
 }
 
-export async function getCoverPreview(): Promise<CoverPreviewResult> {
+export async function getCoverPreview(opts?: CoverPreviewOptions): Promise<CoverPreviewResult> {
   // Fail-closed gate — the REAL control (a Server Action id ships in the client bundle, so
   // "the page doesn't call it" is not a control). Off → byte-identical to no cover.
   if (process.env.COVER_PREVIEW_ENABLED !== 'on') return OFF;
+  const regenerate = opts?.regenerate === true;
 
   try {
     const cookieId = await getDraftCookieFromRequest();
@@ -62,29 +70,37 @@ export async function getCoverPreview(): Promise<CoverPreviewResult> {
     });
 
     // 1. Reuse the picker's chosen image ($0). Re-sign fresh from the stored path so an
-    //    expired pick-time signed URL never breaks the cover.
-    const chosen = await getChosenSheet('protagonist');
-    if (chosen && !chosen.degraded && (chosen.imagePath || chosen.imageUrl)) {
-      let url = chosen.imageUrl ?? null;
-      if (chosen.imagePath) {
-        const { data } = await createServerClient()
-          .storage.from(PREVIEW_BUCKET)
-          .createSignedUrl(chosen.imagePath, COVER_URL_TTL_SECONDS);
-        if (data?.signedUrl) url = data.signedUrl;
+    //    expired pick-time signed URL never breaks the cover. SKIPPED on a "try another" —
+    //    the chosen pick is a fixed image with nothing to re-roll; a re-roll wants a fresh mint.
+    if (!regenerate) {
+      const chosen = await getChosenSheet('protagonist');
+      if (chosen && !chosen.degraded && (chosen.imagePath || chosen.imageUrl)) {
+        let url = chosen.imageUrl ?? null;
+        if (chosen.imagePath) {
+          const { data } = await createServerClient()
+            .storage.from(PREVIEW_BUCKET)
+            .createSignedUrl(chosen.imagePath, COVER_URL_TTL_SECONDS);
+          if (data?.signedUrl) url = data.signedUrl;
+        }
+        // canRegenerate:false — it's their chosen look; re-roll belongs in the picker.
+        if (url) return { enabled: true, status: 'done', imageUrl: url, bgColor: null, title, subtitle, canRegenerate: false };
       }
-      if (url) return { enabled: true, status: 'done', imageUrl: url, bgColor: null, title, subtitle };
     }
 
     // 2. Child (structured, no photo) → fresh render via the existing preview rails.
     //    (Pet/adult are NOT fresh-rendered here: the single-preview path is built for a
     //    human subject and would misrender a pet — they rely on the picker's chosen image.)
     if ((draft.book_type as string) === 'child') {
-      const res = await requestPreview(buildChildCoverInput(draft));
+      const input = buildChildCoverInput(draft);
+      // "Try another" → a unique variant busts the input-hash cache for a genuine new dice
+      // roll (each re-roll a fresh render); the existing per-draft cap + rate-limit apply.
+      if (regenerate) input.variant = `cover:${randomUUID()}`;
+      const res = await requestPreview(input);
       if (res.status === 'done' && res.imageUrl) {
-        return { enabled: true, status: 'done', imageUrl: res.imageUrl, bgColor: res.bgColor ?? null, title, subtitle };
+        return { enabled: true, status: 'done', imageUrl: res.imageUrl, bgColor: res.bgColor ?? null, title, subtitle, canRegenerate: true };
       }
       if (res.previewId) {
-        return { enabled: true, status: res.status, previewId: res.previewId, title, subtitle };
+        return { enabled: true, status: res.status, previewId: res.previewId, title, subtitle, canRegenerate: true };
       }
       // Blocked (capped / rate-limited) → no cheap cover this visit → pass-through.
       return { enabled: true, status: 'none', title, subtitle };

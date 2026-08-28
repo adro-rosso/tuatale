@@ -19,4 +19,7 @@ export interface CoverPreviewResult {
   imageUrl?: string | null;
   bgColor?: string | null;
   previewId?: string;
+  /** True when this cover came from a fresh (stochastic) render the customer can re-roll
+   *  ("try another"). False for a reused picker pick (their chosen look — nothing to re-roll). */
+  canRegenerate?: boolean;
 }
