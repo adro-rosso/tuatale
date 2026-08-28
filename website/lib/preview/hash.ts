@@ -14,8 +14,9 @@ import type { PreviewInputs } from './types';
 // The preview cache-invalidation version. Bump ONLY when the render logic changes the
 // OUTPUT of an EXISTING audience — forcing those previews to re-mint at real Gemini
 // cost. NOT bumped for the adult rework (2026-07-21), and that is deliberate + proven:
-//   - CHILD previews only ever use the NON-PHOTO path (child photo upload is
-//     hard-denied), whose prompt is BYTE-IDENTICAL under the rework (isAdult defaults
+//   - A NON-PHOTO child preview's prompt is BYTE-IDENTICAL under the rework (a photo-
+//     anchored child preview, now possible under CHILD_PHOTO_ENABLED, keys distinctly via
+//     `photo: photoHash` below and shares no slot with it) (isAdult defaults
 //     false → same "a N-year-old child" label).
 //   - PET books generate NO previews at all (PetForm renders no preview component), so
 //     the PHOTO_COND rework — which only touches the photo path — can't reach them.

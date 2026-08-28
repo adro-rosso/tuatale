@@ -6,9 +6,11 @@
  * Resolves the cover IMAGE for the caller's own draft with NO new worker code:
  *   1. Reuse the picker's chosen character image ($0 — the common case once the picker
  *      is on): re-sign a fresh URL from its stored bucket path.
- *   2. Else, for a CHILD (structured, no photo) → fire the existing requestPreview
- *      (same guards / input-hash cache / poll rails). A cache hit is $0; a fresh mint is
- *      ~$0.04, bounded by the existing per-draft cap + rate-limit.
+ *   2. Else, for a CHILD → fire the existing requestPreview with the SAME inputs the
+ *      character step used — INCLUDING the uploaded photo (photoPath+photoHash) when one
+ *      exists, so the cover cache-hits that photo-anchored preview instead of minting a
+ *      generic structured character. A cache hit is $0; a fresh mint is ~$0.04, bounded by
+ *      the existing per-draft cap + rate-limit.
  *   3. Else (pet/adult with no pick) → NO cover source we can render cheaply without
  *      misrendering, so return 'none' and the page falls back to the pass-through.
  *
@@ -36,8 +38,29 @@ const COVER_URL_TTL_SECONDS = 60 * 60; // 1h — long enough for a cover-viewing
 
 const OFF: CoverPreviewResult = { enabled: false, status: 'none', title: '', subtitle: null };
 
-/** Build the child (structured, no-photo) requestPreview input from the draft columns. */
+/**
+ * The child reference photo, if one was uploaded (CHILD_PHOTO_ENABLED). uploadPhoto persists
+ * it at draft.photo_urls.child[0] as `uploads/<draftId>/<sha256>.png` — and the filename stem
+ * IS the content hash the preview cache keys on (computeInputHash → `photo: photoHash`). So
+ * deriving the hash here makes the cover's input hash MATCH the character step's photo-anchored
+ * preview → a $0 cache hit on the EXACT image the customer just saw. If the hash can't be
+ * derived we still pass photoPath (a correct photo-anchored mint, just not cache-aligned).
+ */
+function childPhoto(draft: Record<string, unknown>): { path: string; hash?: string } | null {
+  const child = (draft.photo_urls as { child?: string[] } | null)?.child;
+  const path = Array.isArray(child) ? child[0] : undefined;
+  if (!path) return null;
+  return { path, hash: path.match(/\/([a-f0-9]{64})\.png$/i)?.[1] };
+}
+
+/**
+ * Build the child requestPreview input from the draft columns. Anchors on the SAME source of
+ * truth the character step showed: when a photo was uploaded, include photoPath + photoHash so
+ * the cover renders that child's likeness (matching the ✨ preview) — NOT a generic structured
+ * character. No photo → the structured build, as before.
+ */
 function buildChildCoverInput(draft: Record<string, unknown>): RequestPreviewInput {
+  const photo = childPhoto(draft);
   return {
     draftId: String(draft.id),
     name: (draft.child_name as string | null) ?? undefined,
@@ -48,6 +71,8 @@ function buildChildCoverInput(draft: Record<string, unknown>): RequestPreviewInp
     background: (draft.background as string | null) ?? undefined,
     style: draft.art_style as string,
     isAdult: false,
+    photoPath: photo?.path,
+    photoHash: photo?.hash,
   };
 }
 
@@ -87,7 +112,9 @@ export async function getCoverPreview(opts?: CoverPreviewOptions): Promise<Cover
       }
     }
 
-    // 2. Child (structured, no photo) → fresh render via the existing preview rails.
+    // 2. Child → fresh render via the existing preview rails, anchored on the photo when one
+    //    was uploaded (else the structured build). Same inputs as the character step, so a
+    //    cache hit returns the exact image the customer just saw.
     //    (Pet/adult are NOT fresh-rendered here: the single-preview path is built for a
     //    human subject and would misrender a pet — they rely on the picker's chosen image.)
     if ((draft.book_type as string) === 'child') {

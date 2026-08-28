@@ -105,6 +105,26 @@ describe('getCoverPreview — child fresh render via the existing rails', () => 
     });
   });
 
+  it('ANCHORS on the uploaded child photo: passes photoPath + derived photoHash (matches the character step → cache hit)', async () => {
+    const hash = 'a'.repeat(64);
+    const path = `uploads/draft-1/${hash}.png`;
+    getDraft.mockResolvedValue({ ...childDraft, photo_urls: { child: [path] } });
+    reqPreview.mockResolvedValue({ status: 'done', imageUrl: 'https://likeness.png', bgColor: null, cached: true, previewId: 'p' });
+
+    const r = await getCoverPreview();
+
+    expect(r.status).toBe('done');
+    // Same inputs the ✨ preview used → same input hash → the exact photo-anchored image.
+    expect(reqPreview.mock.calls[0]![0]).toMatchObject({ draftId: 'draft-1', photoPath: path, photoHash: hash });
+  });
+
+  it('no uploaded photo → structured build, no photoPath (unchanged path)', async () => {
+    reqPreview.mockResolvedValue({ status: 'done', imageUrl: 'https://gen.png', bgColor: null, cached: false, previewId: 'p' });
+    await getCoverPreview();
+    const input = reqPreview.mock.calls[0]![0] as { photoPath?: string };
+    expect(input.photoPath).toBeUndefined();
+  });
+
   it('returns queued+previewId to poll when the render is not yet done', async () => {
     reqPreview.mockResolvedValue({ status: 'queued', imageUrl: null, cached: false, previewId: 'p2' });
     const r = await getCoverPreview();
