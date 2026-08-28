@@ -110,10 +110,19 @@ export function CharacterBuilder({
   const [open, setOpen] = useState<string | null>(null); // axis key
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Photo state — shared by the hero CTA and the mint (the photo path is the hero).
-  const [photo, setPhoto] = useState<{ path: string; hash: string; name: string } | null>(null);
+  // Photo state — shared by the hero CTA and the mint (the photo path is the hero). `url`
+  // is a local object URL for the confirmation thumbnail (no network round-trip).
+  const [photo, setPhoto] = useState<{ path: string; hash: string; name: string; url: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+
+  // Free a previous thumbnail's object URL when the photo is replaced or removed.
+  function revokePhotoUrl() {
+    setPhoto((prev) => {
+      if (prev?.url) URL.revokeObjectURL(prev.url);
+      return prev;
+    });
+  }
 
   async function onPhotoChosen(file: File) {
     setUploading(true);
@@ -123,7 +132,8 @@ export function CharacterBuilder({
       const fd = new FormData();
       fd.append('photo', png, 'photo.png');
       const { photoPath, photoHash } = await uploadPhoto(fd);
-      setPhoto({ path: photoPath, hash: photoHash, name: file.name });
+      revokePhotoUrl(); // replacing an earlier photo → free its thumbnail URL
+      setPhoto({ path: photoPath, hash: photoHash, name: file.name, url: URL.createObjectURL(png) });
     } catch {
       setPhotoError('Couldn’t upload that photo. Try another.');
     } finally {
@@ -171,10 +181,14 @@ export function CharacterBuilder({
           </p>
           <PhotoHero
             photo={photo}
+            previewUrl={photo?.url ?? null}
             uploading={uploading}
             error={photoError}
             onChoose={(f) => void onPhotoChosen(f)}
-            onRemove={() => setPhoto(null)}
+            onRemove={() => {
+              revokePhotoUrl();
+              setPhoto(null);
+            }}
           />
         </div>
       )}

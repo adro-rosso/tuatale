@@ -14,13 +14,15 @@ import { buttonClasses } from '@/components/ui/Button';
 
 interface Props {
   photo: { path: string; hash: string; name: string } | null;
+  /** Local object URL of the uploaded image, for the confirmation thumbnail. */
+  previewUrl?: string | null;
   uploading: boolean;
   error: string | null;
   onChoose: (file: File) => void;
   onRemove: () => void;
 }
 
-export function PhotoHero({ photo, uploading, error, onChoose, onRemove }: Props) {
+export function PhotoHero({ photo, previewUrl, uploading, error, onChoose, onRemove }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -61,12 +63,26 @@ export function PhotoHero({ photo, uploading, error, onChoose, onRemove }: Props
         />
 
         {photo ? (
-          <p className="font-body text-near-black text-caption">
-            Using <span className="font-semibold">{photo.name}</span> ·{' '}
-            <button type="button" onClick={onRemove} className="text-iron-oxide underline">
-              remove
-            </button>
-          </p>
+          // Clear "uploaded" confirmation: a thumbnail of the photo + a success indicator,
+          // matching how the pet/companion PhotoUploader shows added photos.
+          <div className="border-iron-oxide/30 bg-cream-deep p-sm gap-sm mt-xs flex w-full max-w-[22rem] items-center rounded-xl border">
+            <div className="border-warm-grey-light bg-paper relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border">
+              {previewUrl ? (
+                // object-contain so the whole uploaded photo shows, uncropped (pet pattern).
+                // eslint-disable-next-line @next/next/no-img-element -- local object-url thumbnail
+                <img src={previewUrl} alt="Uploaded photo" className="h-full w-full object-contain" />
+              ) : (
+                <div className="text-warm-grey flex h-full w-full items-center justify-center text-2xl">📷</div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1 text-left">
+              <p className="font-body text-near-black text-caption font-semibold">✓ Photo added</p>
+              <p className="font-body text-warm-grey text-caption truncate">{photo.name}</p>
+              <button type="button" onClick={onRemove} className="font-body text-iron-oxide text-caption underline">
+                remove
+              </button>
+            </div>
+          </div>
         ) : null}
 
         {error ? (
