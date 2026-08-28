@@ -145,7 +145,19 @@ async function storePhotoForDraft(
  */
 const CHILD_PHOTO_ENABLED = () => process.env.CHILD_PHOTO_ENABLED === 'on';
 
-export async function uploadPhoto(formData: FormData): Promise<{ photoPath: string; photoHash: string }> {
+/**
+ * Result of a child / companion photo upload. A moderation rejection is RETURNED (not thrown)
+ * so the client can show specific, kind copy — a THROWN Server Action message is redacted to a
+ * generic digest in Preview/Prod builds and never reaches the client. Genuine technical
+ * failures (no file, too large, storage error, disabled, no consent) still throw → the client's
+ * catch shows the generic "didn't upload" copy. reason: 'unsafe' = content rejection;
+ * 'unavailable' = we couldn't complete the check (show "try again", don't accuse the photo).
+ */
+export type PhotoUploadResult =
+  | { ok: true; photoPath: string; photoHash: string }
+  | { ok: false; reason: 'unsafe' | 'unavailable' };
+
+export async function uploadPhoto(formData: FormData): Promise<PhotoUploadResult> {
   if (!CHILD_PHOTO_ENABLED()) {
     // Log the attempt: in prod nothing legitimately calls this, so an invocation is
     // either a stale client or someone probing the endpoint.
@@ -172,8 +184,10 @@ export async function uploadPhoto(formData: FormData): Promise<{ photoPath: stri
   }
   const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()));
   if (!moderation.ok) {
-    console.error(`[uploadPhoto] photo rejected by moderation: ${moderation.reason}`);
-    throw new Error("Sorry, we can't use that photo. Please choose a clear, everyday photo of your child.");
+    // RETURN (don't throw): a thrown message is redacted client-side; the client needs the
+    // category to choose "safety check" vs "couldn't check — try again" copy.
+    console.error(`[uploadPhoto] photo rejected by moderation (${moderation.category}): ${moderation.reason}`);
+    return { ok: false, reason: moderation.category };
   }
 
   const { photoPath, photoHash } = await storePhotoForDraft(formData, 'uploadPhoto');
@@ -201,7 +215,7 @@ export async function uploadPhoto(formData: FormData): Promise<{ photoPath: stri
     } as unknown as DraftUpdate);
   }
 
-  return { photoPath, photoHash };
+  return { ok: true, photoPath, photoHash };
 }
 
 /**
@@ -315,7 +329,7 @@ export async function removePetPhoto(photoPath: string): Promise<{ ok: true }> {
  * Companion photos live in draft.secondaries (client → submit), not photo_urls, so this
  * only stores + returns the path; the per-card consent record is written at submit.
  */
-export async function uploadCompanionPhoto(formData: FormData): Promise<{ photoPath: string; photoHash: string }> {
+export async function uploadCompanionPhoto(formData: FormData): Promise<PhotoUploadResult> {
   if (!CHILD_PHOTO_ENABLED()) {
     console.error('[uploadCompanionPhoto] BLOCKED: child-photo path disabled');
     throw new Error(
@@ -334,10 +348,11 @@ export async function uploadCompanionPhoto(formData: FormData): Promise<{ photoP
   }
   const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()));
   if (!moderation.ok) {
-    console.error(`[uploadCompanionPhoto] photo rejected by moderation: ${moderation.reason}`);
-    throw new Error("Sorry, we can't use that photo. Please choose a clear, everyday photo.");
+    console.error(`[uploadCompanionPhoto] photo rejected by moderation (${moderation.category}): ${moderation.reason}`);
+    return { ok: false, reason: moderation.category };
   }
-  return storePhotoForDraft(formData, 'uploadCompanionPhoto');
+  const { photoPath, photoHash } = await storePhotoForDraft(formData, 'uploadCompanionPhoto');
+  return { ok: true, photoPath, photoHash };
 }
 
 /**

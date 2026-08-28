@@ -164,10 +164,20 @@ export function CharacterBuilder({
       const fd = new FormData();
       fd.append('photo', png, 'photo.png');
       fd.append('consent_version', CHILD_CONSENT_VERSION); // server stores the canonical text
-      const { photoPath, photoHash } = await uploadPhoto(fd);
+      const res = await uploadPhoto(fd);
+      if (!res.ok) {
+        // Moderation returned a specific reason (a thrown message would be redacted client-side).
+        setPhotoError(
+          res.reason === 'unavailable'
+            ? 'We couldn’t check that photo just now. Please try again in a moment.'
+            : 'That photo didn’t pass our safety check. Please choose a clear, everyday photo of your child.',
+        );
+        return;
+      }
       revokePhotoUrl(); // replacing an earlier photo → free its thumbnail URL
-      setPhoto({ path: photoPath, hash: photoHash, name: file.name, url: URL.createObjectURL(png) });
+      setPhoto({ path: res.photoPath, hash: res.photoHash, name: file.name, url: URL.createObjectURL(png) });
     } catch {
+      // Technical failure (no file, too large, storage, disabled) — thrown + redacted → generic.
       setPhotoError('Couldn’t upload that photo. Try another.');
     } finally {
       setUploading(false);

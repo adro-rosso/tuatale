@@ -22,7 +22,7 @@ describe('moderateChildPhoto — fail-closed', () => {
     delete process.env.ANTHROPIC_API_KEY;
     const fetchMock = mockAnthropic('{}');
     vi.stubGlobal('fetch', fetchMock);
-    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, reason: 'unavailable' });
+    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unavailable', reason: 'unavailable' });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -35,9 +35,15 @@ describe('moderateChildPhoto — fail-closed', () => {
     expect(body.messages[0].content[0].type).toBe('image');
   });
 
-  it('suitable:false → reject with the reason', async () => {
+  it('suitable:false → reject as unsafe with the reason', async () => {
     vi.stubGlobal('fetch', mockAnthropic(JSON.stringify({ suitable: false, reason: 'not a person' })));
-    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, reason: 'not a person' });
+    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unsafe', reason: 'not a person' });
+  });
+
+  it('an ADULT photo is NOT rejected for age (safety-only gate)', async () => {
+    // The gate must accept adults (child-book companions are often parents/grandparents).
+    vi.stubGlobal('fetch', mockAnthropic(JSON.stringify({ suitable: true, reason: 'ordinary adult portrait' })));
+    expect(await moderateChildPhoto(bytes)).toEqual({ ok: true });
   });
 
   it('HTTP error → reject', async () => {
@@ -52,8 +58,8 @@ describe('moderateChildPhoto — fail-closed', () => {
     expect(await moderateChildPhoto(bytes)).toMatchObject({ ok: false });
   });
 
-  it('thrown fetch (network/timeout) → reject', async () => {
+  it('thrown fetch (network/timeout) → reject as unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('aborted')));
-    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, reason: 'unavailable' });
+    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unavailable', reason: 'unavailable' });
   });
 });

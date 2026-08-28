@@ -10,14 +10,24 @@
  * freshly-added ones (a returning draft shows a "Saved" placeholder, since the
  * object-URL preview doesn't survive a reload — same as the pet-hero form).
  *
- * Photos here drive an ADULT owner or ANOTHER PET — never a child (the child-photo
- * privacy gate is unaffected; callers only render this for pet books).
+ * By default (pet books) photos drive an owner or another pet — no child gate. For CHILD-book
+ * companions (slice ④, behind CHILD_PHOTO_ENABLED) the caller passes uploadCompanionPhoto +
+ * consentVersion, which routes through the same consent + safety moderation as the protagonist.
  */
 import { useRef, useState } from 'react';
 import { uploadPetPhoto } from '@/app/start/_actions/preview';
 
-type UploadAction = (fd: FormData) => Promise<{ photoPath: string }>;
+// A moderation rejection is RETURNED, not thrown (a thrown Server Action message is redacted
+// client-side), so the uploader can show specific copy. Pet uploads never moderate → always ok.
+type UploadResult = { ok: true; photoPath: string } | { ok: false; reason: 'unsafe' | 'unavailable' };
+type UploadAction = (fd: FormData) => Promise<UploadResult>;
 type RemoveAction = (path: string) => Promise<{ ok: true }>;
+
+/** Default (pet-as-hero / owner / another pet): no child gate, no moderation — always ok. */
+const petUpload: UploadAction = async (fd) => {
+  const { photoPath } = await uploadPetPhoto(fd);
+  return { ok: true, photoPath };
+};
 
 /** Downscale any chosen image to a ≤1024px PNG in the browser before upload. */
 async function toPngFile(file: File, max = 1024): Promise<File> {
@@ -65,7 +75,7 @@ export function PhotoUploader({
   paths,
   onChange,
   max = 5,
-  upload = uploadPetPhoto,
+  upload = petUpload,
   consentVersion,
   onRemovePath,
   disabled = false,
@@ -87,10 +97,19 @@ export function PhotoUploader({
         const fd = new FormData();
         fd.append('photo', png);
         if (consentVersion) fd.append('consent_version', consentVersion);
-        const { photoPath } = await upload(fd);
+        const res = await upload(fd);
+        if (!res.ok) {
+          // Moderation rejection (child-book companions) — specific, kind copy; stop here.
+          setError(
+            res.reason === 'unavailable'
+              ? 'We couldn’t check that photo just now. Please try again.'
+              : 'That photo didn’t pass our safety check. Please choose a clear, everyday photo.',
+          );
+          break;
+        }
         const previewUrl = URL.createObjectURL(png);
-        setPreviews((prev) => ({ ...prev, [photoPath]: previewUrl }));
-        next = [...next, photoPath];
+        setPreviews((prev) => ({ ...prev, [res.photoPath]: previewUrl }));
+        next = [...next, res.photoPath];
         onChange(next);
       }
     } catch {

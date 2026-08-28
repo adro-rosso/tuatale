@@ -217,13 +217,23 @@ describe('uploadPhoto — CHILD-photo gate (security)', () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
-  it('REJECTED by moderation (fail-closed): not stored, kind error', async () => {
+  it('REJECTED by moderation (fail-closed): not stored, RETURNS {ok:false} (not thrown)', async () => {
     process.env.CHILD_PHOTO_ENABLED = 'on';
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
-    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, reason: 'not a person' });
-    await expect(uploadPhoto(childForm('child-v1'))).rejects.toThrow(/can't use that photo/i);
+    // A thrown message is redacted client-side; a content rejection is RETURNED with category.
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unsafe', reason: 'not a person' });
+    expect(await uploadPhoto(childForm('child-v1'))).toEqual({ ok: false, reason: 'unsafe' });
     expect(upload).not.toHaveBeenCalled(); // never stored
+  });
+
+  it('service failure (fail-closed) RETURNS {ok:false, reason:"unavailable"} — "try again", not accused', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    const { upload } = mockStorage();
+    mockOwnDraft('draft-1');
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unavailable', reason: 'error' });
+    expect(await uploadPhoto(childForm('child-v1'))).toEqual({ ok: false, reason: 'unavailable' });
+    expect(upload).not.toHaveBeenCalled();
   });
 
   it('with consent + moderation pass: stores, tracks photo_urls.child, records versioned consent', async () => {
@@ -233,6 +243,8 @@ describe('uploadPhoto — CHILD-photo gate (security)', () => {
     (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
     const r = await uploadPhoto(childForm('child-v1'));
 
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('expected ok');
     expect(r.photoPath).toMatch(/^uploads\/draft-1\/[a-f0-9]{64}\.png$/);
     expect(upload).toHaveBeenCalledOnce();
     // persisted: photo tracked + versioned consent record (canonical text) + photo_assisted mode
@@ -667,12 +679,12 @@ describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', 
     expect(upload).not.toHaveBeenCalled();
   });
 
-  it('REJECTED by moderation (fail-closed): not stored', async () => {
+  it('REJECTED by moderation (fail-closed): not stored, RETURNS {ok:false} (not thrown)', async () => {
     process.env.CHILD_PHOTO_ENABLED = 'on';
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
-    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, reason: 'x' });
-    await expect(uploadCompanionPhoto(companionForm('companion-v1'))).rejects.toThrow(/can't use that photo/i);
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unsafe', reason: 'x' });
+    expect(await uploadCompanionPhoto(companionForm('companion-v1'))).toEqual({ ok: false, reason: 'unsafe' });
     expect(upload).not.toHaveBeenCalled();
   });
 
@@ -682,6 +694,8 @@ describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', 
     mockOwnDraft('draft-1');
     (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
     const r = await uploadCompanionPhoto(companionForm('companion-v1'));
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error('expected ok');
     expect(r.photoPath).toMatch(/^uploads\/draft-1\/[a-f0-9]{64}\.png$/);
     expect(upload).toHaveBeenCalledOnce();
   });
