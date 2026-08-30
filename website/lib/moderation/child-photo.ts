@@ -68,8 +68,12 @@ export interface ModerationOptions {
  * message); 'unavailable' = we couldn't complete the check (no key, HTTP/network error,
  * timeout, or an unparseable answer) — the photo may be perfectly fine, so show a "try again"
  * message, never accuse it. Either way the photo is REJECTED (fail-closed).
+ * `mode` records which prompt evaluated it ('person' vs 'non-human') so a rejection log line
+ * is unambiguous about the check that ran.
  */
-export type ModerationResult = { ok: true } | { ok: false; category: 'unsafe' | 'unavailable'; reason: string };
+export type ModerationResult =
+  | { ok: true }
+  | { ok: false; category: 'unsafe' | 'unavailable'; reason: string; mode: 'person' | 'non-human' };
 
 /** Extract the first {...} JSON object and validate the shape. */
 function parseVerdict(raw: string): { suitable: boolean; reason: string } | null {
@@ -95,11 +99,12 @@ function parseVerdict(raw: string): { suitable: boolean; reason: string } | null
  * companions) — same safety bar, no must-be-a-person requirement.
  */
 export async function moderateChildPhoto(pngBytes: Buffer, opts?: ModerationOptions): Promise<ModerationResult> {
+  const mode: 'person' | 'non-human' = opts?.allowNonHuman ? 'non-human' : 'person';
   const systemPrompt = opts?.allowNonHuman ? NONHUMAN_SYSTEM_PROMPT : PERSON_SYSTEM_PROMPT;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error('[moderateChildPhoto] no ANTHROPIC_API_KEY — rejecting (fail-closed)');
-    return { ok: false, category: 'unavailable', reason: 'unavailable' };
+    return { ok: false, category: 'unavailable', reason: 'unavailable', mode };
   }
 
   try {
@@ -128,8 +133,8 @@ export async function moderateChildPhoto(pngBytes: Buffer, opts?: ModerationOpti
     });
 
     if (!res.ok) {
-      console.error(`[moderateChildPhoto] Anthropic ${res.status} — rejecting (fail-closed)`);
-      return { ok: false, category: 'unavailable', reason: 'error' };
+      console.error(`[moderateChildPhoto] Anthropic ${res.status} — rejecting (fail-closed, mode=${mode})`);
+      return { ok: false, category: 'unavailable', reason: 'error', mode };
     }
 
     const data = (await res.json()) as { content?: Array<{ type: string; text?: string }> };
@@ -138,15 +143,15 @@ export async function moderateChildPhoto(pngBytes: Buffer, opts?: ModerationOpti
     if (!verdict) {
       // We couldn't determine a verdict — reject (fail-closed) but treat as "couldn't check",
       // not a content rejection: the photo may be fine and a retry often succeeds.
-      console.error('[moderateChildPhoto] unparseable verdict — rejecting (fail-closed)');
-      return { ok: false, category: 'unavailable', reason: 'inconclusive' };
+      console.error(`[moderateChildPhoto] unparseable verdict — rejecting (fail-closed, mode=${mode})`);
+      return { ok: false, category: 'unavailable', reason: 'inconclusive', mode };
     }
     return verdict.suitable
       ? { ok: true }
-      : { ok: false, category: 'unsafe', reason: verdict.reason || 'not suitable' };
+      : { ok: false, category: 'unsafe', reason: verdict.reason || 'not suitable', mode };
   } catch (err) {
     // Timeout / network / JSON — all reject as "couldn't check".
-    console.error('[moderateChildPhoto] failed — rejecting (fail-closed):', err instanceof Error ? err.message : String(err));
-    return { ok: false, category: 'unavailable', reason: 'unavailable' };
+    console.error(`[moderateChildPhoto] failed — rejecting (fail-closed, mode=${mode}):`, err instanceof Error ? err.message : String(err));
+    return { ok: false, category: 'unavailable', reason: 'unavailable', mode };
   }
 }

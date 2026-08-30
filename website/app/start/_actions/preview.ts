@@ -186,7 +186,7 @@ export async function uploadPhoto(formData: FormData): Promise<PhotoUploadResult
   if (!moderation.ok) {
     // RETURN (don't throw): a thrown message is redacted client-side; the client needs the
     // category to choose "safety check" vs "couldn't check — try again" copy.
-    console.error(`[uploadPhoto] photo rejected by moderation (${moderation.category}): ${moderation.reason}`);
+    console.error(`[uploadPhoto] photo rejected by moderation (mode=${moderation.mode}, ${moderation.category}): ${moderation.reason}`);
     return { ok: false, reason: moderation.category };
   }
 
@@ -354,7 +354,7 @@ export async function uploadCompanionPhoto(formData: FormData): Promise<PhotoUpl
   // (uploadPhoto) keeps the person check — its hero is the child.
   const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()), { allowNonHuman: true });
   if (!moderation.ok) {
-    console.error(`[uploadCompanionPhoto] photo rejected by moderation (${moderation.category}): ${moderation.reason}`);
+    console.error(`[uploadCompanionPhoto] photo rejected by moderation (mode=${moderation.mode}, ${moderation.category}): ${moderation.reason}`);
     return { ok: false, reason: moderation.category };
   }
   const { photoPath, photoHash } = await storePhotoForDraft(formData, 'uploadCompanionPhoto');

@@ -222,7 +222,7 @@ describe('uploadPhoto — CHILD-photo gate (security)', () => {
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
     // A thrown message is redacted client-side; a content rejection is RETURNED with category.
-    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unsafe', reason: 'not a person' });
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unsafe', reason: 'not a person', mode: 'person' });
     expect(await uploadPhoto(childForm('child-v1'))).toEqual({ ok: false, reason: 'unsafe' });
     expect(upload).not.toHaveBeenCalled(); // never stored
   });
@@ -231,7 +231,7 @@ describe('uploadPhoto — CHILD-photo gate (security)', () => {
     process.env.CHILD_PHOTO_ENABLED = 'on';
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
-    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unavailable', reason: 'error' });
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unavailable', reason: 'error', mode: 'person' });
     expect(await uploadPhoto(childForm('child-v1'))).toEqual({ ok: false, reason: 'unavailable' });
     expect(upload).not.toHaveBeenCalled();
   });
@@ -683,7 +683,7 @@ describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', 
     process.env.CHILD_PHOTO_ENABLED = 'on';
     const { upload } = mockStorage();
     mockOwnDraft('draft-1');
-    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unsafe', reason: 'x' });
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, category: 'unsafe', reason: 'x', mode: 'non-human' });
     expect(await uploadCompanionPhoto(companionForm('companion-v1'))).toEqual({ ok: false, reason: 'unsafe' });
     expect(upload).not.toHaveBeenCalled();
   });

@@ -22,7 +22,7 @@ describe('moderateChildPhoto — fail-closed', () => {
     delete process.env.ANTHROPIC_API_KEY;
     const fetchMock = mockAnthropic('{}');
     vi.stubGlobal('fetch', fetchMock);
-    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unavailable', reason: 'unavailable' });
+    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unavailable', reason: 'unavailable', mode: 'person' });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -37,7 +37,7 @@ describe('moderateChildPhoto — fail-closed', () => {
 
   it('suitable:false → reject as unsafe with the reason', async () => {
     vi.stubGlobal('fetch', mockAnthropic(JSON.stringify({ suitable: false, reason: 'not a person' })));
-    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unsafe', reason: 'not a person' });
+    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unsafe', reason: 'not a person', mode: 'person' });
   });
 
   it('an ADULT photo is NOT rejected for age (safety-only gate)', async () => {
@@ -68,7 +68,7 @@ describe('moderateChildPhoto — fail-closed', () => {
 
   it('allowNonHuman still rejects explicit/unsafe content (fail-closed unchanged)', async () => {
     vi.stubGlobal('fetch', mockAnthropic(JSON.stringify({ suitable: false, reason: 'explicit' })));
-    expect(await moderateChildPhoto(bytes, { allowNonHuman: true })).toEqual({ ok: false, category: 'unsafe', reason: 'explicit' });
+    expect(await moderateChildPhoto(bytes, { allowNonHuman: true })).toEqual({ ok: false, category: 'unsafe', reason: 'explicit', mode: 'non-human' });
   });
 
   it('HTTP error → reject', async () => {
@@ -85,6 +85,6 @@ describe('moderateChildPhoto — fail-closed', () => {
 
   it('thrown fetch (network/timeout) → reject as unavailable', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('aborted')));
-    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unavailable', reason: 'unavailable' });
+    expect(await moderateChildPhoto(bytes)).toEqual({ ok: false, category: 'unavailable', reason: 'unavailable', mode: 'person' });
   });
 });
