@@ -658,10 +658,9 @@ describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', 
     if (ORIGINAL === undefined) delete process.env.CHILD_PHOTO_ENABLED;
     else process.env.CHILD_PHOTO_ENABLED = ORIGINAL;
   });
-  function companionForm(consentVersion?: string, subjectType?: string): FormData {
+  function companionForm(consentVersion?: string): FormData {
     const fd = pngForm([1, 2, 3], 'gran.png');
     if (consentVersion) fd.append('consent_version', consentVersion);
-    if (subjectType) fd.append('subject_type', subjectType);
     return fd;
   }
 
@@ -701,22 +700,15 @@ describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', 
     expect(upload).toHaveBeenCalledOnce();
   });
 
-  it('NON-HUMAN companion → moderation drops the person requirement (allowNonHuman:true)', async () => {
+  it('ALWAYS uses the person-not-required safety check (allowNonHuman:true), no subject_type needed', async () => {
+    // Companions default to safety-only (consent attests guardianship); removes the
+    // pick-a-type-first UX trap that used to reject a pet as "not a person".
     process.env.CHILD_PHOTO_ENABLED = 'on';
     mockStorage();
     mockOwnDraft('draft-1');
     (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
-    await uploadCompanionPhoto(companionForm('companion-v1', 'non_human'));
+    await uploadCompanionPhoto(companionForm('companion-v1' /* no subject_type */));
     expect(moderateChildPhoto).toHaveBeenCalledWith(expect.any(Buffer), { allowNonHuman: true });
-  });
-
-  it('HUMAN / unspecified companion → person moderation (allowNonHuman:false)', async () => {
-    process.env.CHILD_PHOTO_ENABLED = 'on';
-    mockStorage();
-    mockOwnDraft('draft-1');
-    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
-    await uploadCompanionPhoto(companionForm('companion-v1', 'human'));
-    expect(moderateChildPhoto).toHaveBeenCalledWith(expect.any(Buffer), { allowNonHuman: false });
   });
 
   it('removeCompanionPhoto: deletes the object; refuses a foreign prefix', async () => {

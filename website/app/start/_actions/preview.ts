@@ -346,11 +346,13 @@ export async function uploadCompanionPhoto(formData: FormData): Promise<PhotoUpl
   if (file.size > MAX_PHOTO_BYTES) {
     throw new Error(`uploadCompanionPhoto: photo is too large (max ${MAX_PHOTO_BYTES / 1024 / 1024}MB).`);
   }
-  // A companion declared NON-HUMAN (a pet/animal/toy) keeps the safety check but drops the
-  // must-be-a-person requirement — same trust as the pet-hero path. A declared/blank human
-  // companion keeps the person check (the stricter default).
-  const allowNonHuman = String(formData.get('subject_type') ?? '') === 'non_human';
-  const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()), { allowNonHuman });
+  // Companions default to the person-NOT-required safety check: a child-book companion can be
+  // a person OR a pet/animal/toy, and the companion-v1 consent already attests guardianship for
+  // any child shown — so moderation need not enforce person-ness, only safety (explicit/violent/
+  // not-a-genuine-photo). This also removes the "pick a type before uploading" UX trap (a blank
+  // subject_type used to fall to the person prompt and reject a pet). The protagonist path
+  // (uploadPhoto) keeps the person check — its hero is the child.
+  const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()), { allowNonHuman: true });
   if (!moderation.ok) {
     console.error(`[uploadCompanionPhoto] photo rejected by moderation (${moderation.category}): ${moderation.reason}`);
     return { ok: false, reason: moderation.category };

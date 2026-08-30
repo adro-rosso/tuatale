@@ -319,8 +319,6 @@ function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChi
             max={5}
             upload={isChildCompanionPhoto ? uploadCompanionPhoto : undefined}
             consentVersion={isChildCompanionPhoto ? 'companion-v1' : undefined}
-            // Non-human companion (pet/animal/toy) → moderation drops the must-be-a-person check.
-            subjectType={isChildCompanionPhoto ? data.subject_type : undefined}
             onRemovePath={isChildCompanionPhoto ? removeCompanionPhoto : undefined}
             disabled={isChildCompanionPhoto && !consentGiven}
           />
