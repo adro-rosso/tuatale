@@ -65,6 +65,9 @@ interface Props {
   upload?: UploadAction;
   /** Consent version id sent with each upload (child-book companions → 'companion-v1'). */
   consentVersion?: string;
+  /** Declared subject type sent with each upload. 'non_human' → the safety check drops the
+   *  must-be-a-person requirement (pet/animal/toy companions). Ignored by the pet-hero path. */
+  subjectType?: string;
   /** Server-side erasure on remove (default: client-only). Child/companion pass the real delete. */
   onRemovePath?: RemoveAction;
   /** Disable adding until a precondition is met (e.g. the companion consent checkbox). */
@@ -77,6 +80,7 @@ export function PhotoUploader({
   max = 5,
   upload = petUpload,
   consentVersion,
+  subjectType,
   onRemovePath,
   disabled = false,
 }: Props) {
@@ -97,6 +101,7 @@ export function PhotoUploader({
         const fd = new FormData();
         fd.append('photo', png);
         if (consentVersion) fd.append('consent_version', consentVersion);
+        if (subjectType) fd.append('subject_type', subjectType);
         const res = await upload(fd);
         if (!res.ok) {
           // Moderation rejection (child-book companions) — specific, kind copy; stop here.

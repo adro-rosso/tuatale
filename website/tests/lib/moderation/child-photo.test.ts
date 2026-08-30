@@ -46,6 +46,31 @@ describe('moderateChildPhoto — fail-closed', () => {
     expect(await moderateChildPhoto(bytes)).toEqual({ ok: true });
   });
 
+  it('default (person) prompt requires a real person', async () => {
+    const fetchMock = mockAnthropic(JSON.stringify({ suitable: true, reason: 'ok' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await moderateChildPhoto(bytes);
+    const system = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body).system as string;
+    expect(system).toMatch(/real person/i);
+    expect(system).not.toMatch(/pet, an animal, or a favourite toy/i);
+  });
+
+  it('allowNonHuman → non-human prompt (drops must-be-a-person; a pet is accepted)', async () => {
+    const fetchMock = mockAnthropic(JSON.stringify({ suitable: true, reason: 'a dog' }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await moderateChildPhoto(bytes, { allowNonHuman: true })).toEqual({ ok: true });
+    const system = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body).system as string;
+    // Safety bar kept, person-requirement dropped.
+    expect(system).toMatch(/NON-HUMAN|pet, an animal, or a favourite toy/i);
+    expect(system).toMatch(/explicit|violent/i);
+    expect(system).not.toMatch(/no person in it/i);
+  });
+
+  it('allowNonHuman still rejects explicit/unsafe content (fail-closed unchanged)', async () => {
+    vi.stubGlobal('fetch', mockAnthropic(JSON.stringify({ suitable: false, reason: 'explicit' })));
+    expect(await moderateChildPhoto(bytes, { allowNonHuman: true })).toEqual({ ok: false, category: 'unsafe', reason: 'explicit' });
+  });
+
   it('HTTP error → reject', async () => {
     vi.stubGlobal('fetch', mockAnthropic('boom', false, 500));
     expect(await moderateChildPhoto(bytes)).toMatchObject({ ok: false });

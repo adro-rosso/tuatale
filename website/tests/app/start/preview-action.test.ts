@@ -658,9 +658,10 @@ describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', 
     if (ORIGINAL === undefined) delete process.env.CHILD_PHOTO_ENABLED;
     else process.env.CHILD_PHOTO_ENABLED = ORIGINAL;
   });
-  function companionForm(consentVersion?: string): FormData {
+  function companionForm(consentVersion?: string, subjectType?: string): FormData {
     const fd = pngForm([1, 2, 3], 'gran.png');
     if (consentVersion) fd.append('consent_version', consentVersion);
+    if (subjectType) fd.append('subject_type', subjectType);
     return fd;
   }
 
@@ -698,6 +699,24 @@ describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', 
     if (!r.ok) throw new Error('expected ok');
     expect(r.photoPath).toMatch(/^uploads\/draft-1\/[a-f0-9]{64}\.png$/);
     expect(upload).toHaveBeenCalledOnce();
+  });
+
+  it('NON-HUMAN companion → moderation drops the person requirement (allowNonHuman:true)', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    mockStorage();
+    mockOwnDraft('draft-1');
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
+    await uploadCompanionPhoto(companionForm('companion-v1', 'non_human'));
+    expect(moderateChildPhoto).toHaveBeenCalledWith(expect.any(Buffer), { allowNonHuman: true });
+  });
+
+  it('HUMAN / unspecified companion → person moderation (allowNonHuman:false)', async () => {
+    process.env.CHILD_PHOTO_ENABLED = 'on';
+    mockStorage();
+    mockOwnDraft('draft-1');
+    (moderateChildPhoto as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
+    await uploadCompanionPhoto(companionForm('companion-v1', 'human'));
+    expect(moderateChildPhoto).toHaveBeenCalledWith(expect.any(Buffer), { allowNonHuman: false });
   });
 
   it('removeCompanionPhoto: deletes the object; refuses a foreign prefix', async () => {

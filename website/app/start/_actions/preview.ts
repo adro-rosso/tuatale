@@ -346,7 +346,11 @@ export async function uploadCompanionPhoto(formData: FormData): Promise<PhotoUpl
   if (file.size > MAX_PHOTO_BYTES) {
     throw new Error(`uploadCompanionPhoto: photo is too large (max ${MAX_PHOTO_BYTES / 1024 / 1024}MB).`);
   }
-  const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()));
+  // A companion declared NON-HUMAN (a pet/animal/toy) keeps the safety check but drops the
+  // must-be-a-person requirement — same trust as the pet-hero path. A declared/blank human
+  // companion keeps the person check (the stricter default).
+  const allowNonHuman = String(formData.get('subject_type') ?? '') === 'non_human';
+  const moderation = await moderateChildPhoto(Buffer.from(await file.arrayBuffer()), { allowNonHuman });
   if (!moderation.ok) {
     console.error(`[uploadCompanionPhoto] photo rejected by moderation (${moderation.category}): ${moderation.reason}`);
     return { ok: false, reason: moderation.category };

@@ -26,7 +26,7 @@ const REQUEST_TIMEOUT_MS = 20_000;
 // photo for being an adult would wrongly block legitimate input. Age-appropriateness of the
 // PROTAGONIST is a product concern handled later by the child's stated age at the sheet
 // stage — never by this gate. Only explicit/violent content and non-photos are rejected.
-const SYSTEM_PROMPT = `You are a content-safety reviewer for a children's picture-book service. A customer uploads a photo of a real person — a child, a parent, a grandparent, or another family member — to have them illustrated as a storybook character. Your ONLY job is a SAFETY check. Do NOT judge the person's age, or whether they are the "right" person — accept an ordinary, appropriate photo of a real person of ANY age.
+const PERSON_SYSTEM_PROMPT = `You are a content-safety reviewer for a children's picture-book service. A customer uploads a photo of a real person — a child, a parent, a grandparent, or another family member — to have them illustrated as a storybook character. Your ONLY job is a SAFETY check. Do NOT judge the person's age, or whether they are the "right" person — accept an ordinary, appropriate photo of a real person of ANY age.
 
 SUITABLE (suitable: true) — an ordinary, appropriate photograph of one or more real people of ANY age (adults included): a normal portrait or snapshot, clothed, non-explicit, non-violent.
 
@@ -39,6 +39,29 @@ Do NOT reject a photo for being an adult, for the person's age, or for who they 
 
 Respond with ONLY a JSON object, nothing else:
 {"suitable": true|false, "reason": "<short reason>"}`;
+
+// NON-HUMAN companion (Adro's decision 2026-08-30): a child-book companion declared as an
+// animal or toy carries the SAME safety check but DROPS the must-be-a-real-person requirement
+// (same trust level as the pet-hero path, which is unmoderated). A photo of a pet/animal/toy
+// is expected here and must be accepted; only explicit/violent content and non-photos reject.
+const NONHUMAN_SYSTEM_PROMPT = `You are a content-safety reviewer for a children's picture-book service. A customer uploads a photo of a NON-HUMAN companion for a child's book — a pet, an animal, or a favourite toy — to have it illustrated as a storybook character. Your ONLY job is a SAFETY check. Do NOT require a person to be present — a pet, an animal, or a toy is exactly what is expected here, and is fine.
+
+SUITABLE (suitable: true) — an ordinary, appropriate photograph of a pet, an animal, a toy, or a person: non-explicit, non-violent.
+
+NOT SUITABLE (suitable: false) — ONLY these:
+- sexual, nude, or otherwise explicit content;
+- violence, gore, weapons used threateningly, animal cruelty, or other distressing/unsafe content;
+- the image is not a genuine photograph (a document, screenshot, meme, drawing/illustration, or logo).
+
+Do NOT reject a photo for showing an animal, a pet, or a toy instead of a person — that is expected. If you are unsure whether the content is unsafe, choose suitable: false.
+
+Respond with ONLY a JSON object, nothing else:
+{"suitable": true|false, "reason": "<short reason>"}`;
+
+/** Options for a companion photo. `allowNonHuman` drops the must-be-a-person requirement. */
+export interface ModerationOptions {
+  allowNonHuman?: boolean;
+}
 
 /**
  * `category` lets the caller pick copy: 'unsafe' = a real content rejection (show the safety
@@ -66,10 +89,13 @@ function parseVerdict(raw: string): { suitable: boolean; reason: string } | null
 }
 
 /**
- * Moderate a child reference photo (PNG bytes). Returns { ok:true } ONLY on an explicit,
- * parseable suitable:true; every other outcome (incl. errors) is { ok:false } — fail-closed.
+ * Moderate a companion/child reference photo (PNG bytes). Returns { ok:true } ONLY on an
+ * explicit, parseable suitable:true; every other outcome (incl. errors) is { ok:false } —
+ * fail-closed. `opts.allowNonHuman` switches to the non-human safety prompt (pet/animal/toy
+ * companions) — same safety bar, no must-be-a-person requirement.
  */
-export async function moderateChildPhoto(pngBytes: Buffer): Promise<ModerationResult> {
+export async function moderateChildPhoto(pngBytes: Buffer, opts?: ModerationOptions): Promise<ModerationResult> {
+  const systemPrompt = opts?.allowNonHuman ? NONHUMAN_SYSTEM_PROMPT : PERSON_SYSTEM_PROMPT;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     console.error('[moderateChildPhoto] no ANTHROPIC_API_KEY — rejecting (fail-closed)');
@@ -87,7 +113,7 @@ export async function moderateChildPhoto(pngBytes: Buffer): Promise<ModerationRe
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 200,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [
           {
             role: 'user',
