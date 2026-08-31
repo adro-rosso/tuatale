@@ -20,7 +20,7 @@ vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
 vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn(), updateDraftByCookieId: vi.fn() }));
 vi.mock('@/lib/moderation/child-photo', () => ({ moderateChildPhoto: vi.fn() }));
 
-import { requestPreview, getPreviewStatus, requestPreviewBatch, getPreviewBatchStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto, removeChildPhoto, removePetPhoto, uploadCompanionPhoto, removeCompanionPhoto } from '@/app/start/_actions/preview';
+import { requestPreview, requestCoverScene, getPreviewStatus, requestPreviewBatch, getPreviewBatchStatus, uploadPhoto, uploadPetPhoto, uploadAdultPhoto, removeAdultPhoto, removeChildPhoto, removePetPhoto, uploadCompanionPhoto, removeCompanionPhoto } from '@/app/start/_actions/preview';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId } from '@/db/drafts';
 import { moderateChildPhoto } from '@/lib/moderation/child-photo';
@@ -720,5 +720,70 @@ describe('uploadCompanionPhoto / removeCompanionPhoto (child-book companions)', 
     expect(await removeCompanionPhoto('uploads/draft-1/gran.png')).toEqual({ ok: true });
     expect(remove).toHaveBeenCalledWith(['uploads/draft-1/gran.png']);
     await expect(removeCompanionPhoto('uploads/draft-2/x.png')).rejects.toThrow(/not your photo/i);
+  });
+});
+
+// ---- Phase-2 cover scene (requestCoverScene) --------------------------------------------
+describe('requestCoverScene — anchor priority + guards', () => {
+  function coverDraft(over: Record<string, unknown> = {}) {
+    (getDraftCookieFromRequest as ReturnType<typeof vi.fn>).mockResolvedValue('cookie-1');
+    (getDraftByCookieId as ReturnType<typeof vi.fn>).mockResolvedValue({
+      id: 'draft-1', book_type: 'child', art_style: 'watercolour', theme_template_id: 'milestone_first_bike', child_age: 6, ...over,
+    });
+    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    (createPreviewJob as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'cov-1', status: 'queued', input_hash: 'h' });
+  }
+  const sentData = () => (inngest.send as ReturnType<typeof vi.fn>).mock.calls[0]![0].data;
+
+  it('SHEET anchor: a chosen pick → dispatch mode:cover with the sheet path', async () => {
+    coverDraft({ chosen_sheet: { subjectId: 'protagonist', imagePath: 'previews/pick.png' } });
+    const r = await requestCoverScene();
+    expect(r).toMatchObject({ previewId: 'cov-1', status: 'queued' });
+    expect(sentData()).toMatchObject({ mode: 'cover', anchorKind: 'sheet', anchorPath: 'previews/pick.png', style: 'watercolour', themeTemplateId: 'milestone_first_bike' });
+  });
+
+  it('PHOTO anchor: no pick, own child photo → dispatch mode:cover with the photo path', async () => {
+    coverDraft({ photo_urls: { child: ['uploads/draft-1/abc.png'] } });
+    await requestCoverScene();
+    expect(sentData()).toMatchObject({ mode: 'cover', anchorKind: 'photo', anchorPath: 'uploads/draft-1/abc.png' });
+  });
+
+  it('OWNERSHIP: a foreign photo prefix is ignored → anchorKind none (no cross-draft read)', async () => {
+    coverDraft({ photo_urls: { child: ['uploads/draft-2/x.png'] } });
+    await requestCoverScene();
+    expect(sentData()).toMatchObject({ mode: 'cover', anchorKind: 'none' });
+    expect(sentData().anchorPath).toBeUndefined();
+  });
+
+  it('STRUCTURED: no pick, no photo → anchorKind none, forwards features for compose', async () => {
+    coverDraft({ child_features: { hair_colour: 'brown' }, child_appearance: 'freckles' });
+    await requestCoverScene();
+    expect(sentData()).toMatchObject({ mode: 'cover', anchorKind: 'none', features: { hair_colour: 'brown' }, freeText: 'freckles' });
+  });
+
+  it('CACHE hit → returns the cached cover, no new job/dispatch', async () => {
+    coverDraft();
+    (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'c-old', status: 'done', image_url: 'https://c.png', bg_color: null });
+    const r = await requestCoverScene();
+    expect(r).toMatchObject({ status: 'done', imageUrl: 'https://c.png', cached: true });
+    expect(createPreviewJob).not.toHaveBeenCalled();
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('CAPPED → blocked, no dispatch', async () => {
+    coverDraft();
+    (countPreviewsForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(10);
+    const r = await requestCoverScene();
+    expect(r).toMatchObject({ status: 'failed', blocked: 'capped' });
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('regenerate → a fresh cover: variant busts the cache key (distinct hashes)', async () => {
+    coverDraft();
+    await requestCoverScene();
+    await requestCoverScene({ regenerate: true });
+    const h1 = (findCachedPreview as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    const h2 = (findCachedPreview as ReturnType<typeof vi.fn>).mock.calls[1]![0];
+    expect(h1).not.toBe(h2);
   });
 });

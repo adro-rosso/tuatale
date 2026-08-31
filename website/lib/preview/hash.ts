@@ -54,6 +54,10 @@ export function computeInputHash(inputs: PreviewInputs): string {
     // variant (`${batchId}:${index}`) gives each dice roll its own cache slot. Included
     // ONLY when present → the single-preview key is BYTE-IDENTICAL to before.
     ...(inputs.variant ? { variant: inputs.variant } : {}),
+    // Phase-2 cover scene: a distinct cache slot from the portrait preview for the SAME
+    // character (different output — a full scene). Value = `${style}:${theme}:${anchor}`.
+    // Included ONLY for a cover request, so the portrait key stays BYTE-IDENTICAL.
+    ...(inputs.cover ? { cover: inputs.cover } : {}),
   };
   return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
 }

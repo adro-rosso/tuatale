@@ -23,6 +23,9 @@ export interface PreviewInputs {
    *  is a distinct dice roll, so they must NOT collapse to one cache slot. Absent for the
    *  single-preview path → BYTE-IDENTICAL cache key. Value = `${batchId}:${index}`. */
   variant?: string;
+  /** Phase-2 cover scene: distinguishes a cover render from the portrait preview for the
+   *  same character. Absent for portrait/picker → BYTE-IDENTICAL key. */
+  cover?: string;
 }
 
 /** Full request — inputs + the non-cache-key extras. */

@@ -60,6 +60,60 @@ describe("runPreview", () => {
   });
 });
 
+describe("runPreview — cover scene (mode:'cover')", () => {
+  function coverDeps(over = {}) {
+    return {
+      generateImage: vi.fn().mockResolvedValue(Buffer.from("cover-png")),
+      markRunning: vi.fn().mockResolvedValue(),
+      markDone: vi.fn().mockResolvedValue(),
+      markFailed: vi.fn().mockResolvedValue(),
+      upload: vi.fn().mockResolvedValue("https://x/previews/cover.png"),
+      getPhoto: vi.fn().mockResolvedValue(Buffer.from("anchor")),
+      ...over,
+    };
+  }
+
+  it("photo anchor: downloads it, builds a cover prompt (canned concept + PHOTO_COND + 4:3), uploads, marks done", async () => {
+    const d = coverDeps();
+    const ev = { previewId: "c1", mode: "cover", style: "watercolour", themeTemplateId: "milestone_first_bike",
+      anchorPath: "uploads/draft-1/abc.png", anchorKind: "photo", bookType: "child", age: 6 };
+    const r = await runPreview(ev, d);
+    expect(d.markRunning).toHaveBeenCalledWith("c1");
+    expect(d.getPhoto).toHaveBeenCalledWith("uploads/draft-1/abc.png");
+    expect(d.generateImage).toHaveBeenCalledOnce();
+    const [prompt, refs, opts] = d.generateImage.mock.calls[0];
+    expect(prompt).toContain("Scene:");
+    expect(prompt).toContain("rides a bicycle"); // the canned concept for this theme
+    expect(prompt).toContain("PHOTOGRAPH"); // photo anchor → PHOTO_COND
+    expect(prompt).toContain("completely EMPTY"); // positive empty-panel instruction
+    expect(refs).toHaveLength(1);
+    expect(opts).toEqual({ aspectRatio: "4:3" });
+    expect(d.upload).toHaveBeenCalledWith({ previewId: "c1", pngBytes: expect.any(Buffer) });
+    expect(d.markDone).toHaveBeenCalledWith("c1", { imageUrl: "https://x/previews/cover.png", bgColor: null, faceQuality: undefined });
+    expect(r.status).toBe("done");
+  });
+
+  it("no anchor (structured): does NOT download a photo; composes appearance; refs empty", async () => {
+    const d = coverDeps();
+    const ev = { previewId: "c2", mode: "cover", style: "cutpaper", themeTemplateId: "adventure_stars",
+      anchorKind: "none", bookType: "child", age: 8, features: { hair_colour: "brown" }, freeText: "freckles" };
+    await runPreview(ev, d);
+    expect(d.getPhoto).not.toHaveBeenCalled();
+    const [prompt, refs] = d.generateImage.mock.calls[0];
+    expect(refs).toEqual([]);
+    expect(prompt).not.toContain("PHOTOGRAPH"); // no photo anchor
+    expect(prompt).toContain("cut-paper collage scene"); // style medium swapped for cutpaper
+  });
+
+  it("unknown theme → generic concept still yields a cover prompt", async () => {
+    const d = coverDeps();
+    await runPreview({ previewId: "c3", mode: "cover", style: "watercolour", themeTemplateId: "does_not_exist", anchorKind: "none", bookType: "child" }, d);
+    const [prompt] = d.generateImage.mock.calls[0];
+    expect(prompt).toContain("Scene:");
+    expect(d.markDone).toHaveBeenCalled();
+  });
+});
+
 describe("sampleBackgroundColor", () => {
   it("returns the corner colour as #rrggbb for a solid image", async () => {
     const png = await sharp({ create: { width: 20, height: 20, channels: 3, background: { r: 250, g: 249, b: 240 } } })

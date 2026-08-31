@@ -101,6 +101,26 @@ const CUTPAPER_MEDIUM = {
   climaxClause: "Bold layered cut-paper shapes with rich collage texture and strong graphic depth",
 };
 
+// Per-style COVER-SCENE medium sentence (Phase-2 cover preview, 2026-08-31). The live
+// cover-iter-1 scaffold hard-codes a WATERCOLOUR medium sentence; the pre-purchase cover
+// builder swaps that one sentence for the chosen style's, so a cutpaper/pencil book gets a
+// cover in its own medium. The watercolour value is the EXACT scaffold substring, so the
+// swap is a no-op for watercolour (and is what the .replace() targets). Kept SEPARATE from
+// the page MEDIUM_TOKEN_KEYS (which the post-purchase cover leaves untouched). Unknown style
+// → watercolour. flat_modern is preview-only (never a book style) so it needs no entry.
+export const COVER_SCENE_MEDIUM = {
+  watercolour:
+    "Full-bleed watercolor scene extending richly to all four edges — atmospheric, painterly, warm earthy palette.",
+  coloured_pencil:
+    "Full-bleed coloured-pencil scene extending richly to all four edges — soft layered pencil strokes and visible pencil grain, warm tender palette.",
+  painterly:
+    "Full-bleed oil-painted scene extending richly to all four edges — thick directional brushstrokes, rich saturated colour, and atmospheric depth.",
+  ink_wash:
+    "Full-bleed ink-and-wash scene extending richly to all four edges — clean confident dark ink linework over loose transparent colour washes, atmospheric.",
+  cutpaper:
+    "Full-bleed cut-paper collage scene extending to all four edges — layered torn-and-cut textured paper shapes with visible paper grain and hand-cut edges, flat bold matte colour fields with soft drop shadows between the layers.",
+};
+
 // Anti-vignette / edge-fill emphasis (W-E, 2026-07-06). WATERCOLOUR fills its
 // frame naturally via wet bleed; every OTHER medium (pencil, painterly, ink,
 // flat, cut-paper) tends to render a CONTAINED SPOT with bare paper around it, so

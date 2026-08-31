@@ -11,6 +11,10 @@ import path from "node:path";
 import { getClient } from "./db.js";
 import { generateCharacterPreview as realGenerateCharacterPreview } from "../../src/character-preview.js";
 import { generatePickerOption as realGeneratePickerOption } from "../../src/picker-mint.js";
+import { generateImage as realGenerateImage } from "../../src/gemini.js";
+import { composeAppearance } from "../../src/character-features.js";
+import { buildCoverScenePrompt } from "../../src/cover-scene.js";
+import { coverConceptForTheme } from "../../src/cover-concepts.js";
 import { sampleBackgroundColor } from "../../src/image-bg.js";
 
 export const PREVIEW_BUCKET = "tuatale-previews";
@@ -119,10 +123,40 @@ async function mintPickerOption(event, deps) {
 }
 
 /**
+ * Mint ONE pre-purchase COVER-SCENE image (mode:"cover"). Renders the character in a full,
+ * in-style cover composition (not a portrait), anchored on the SAME source Phase 1 uses:
+ * a rendered sheet (chosen pick) or the raw photo, downloaded and passed as the reference.
+ * The scene comes from a canned per-theme concept; the prompt reuses the live cover scaffold
+ * via buildCoverScenePrompt. One generateImage call (~1 render), same cost guards as any
+ * preview. Kept separate so the single-preview + picker paths stay byte-identical.
+ */
+async function mintCoverScene(event, deps) {
+  const getPhoto = deps.getPhoto ?? downloadPhoto;
+  const generateImage = deps.generateImage ?? realGenerateImage;
+  const { previewId, style, themeTemplateId, anchorPath, anchorKind, bookType, age, features, freeText, background } = event;
+  const coverConcept = coverConceptForTheme(themeTemplateId);
+  const refs = anchorPath ? [await getPhoto(anchorPath)] : [];
+  const subject =
+    bookType === "pet" ? "the pet (an animal)" : bookType === "adult" ? "an adult" : `a ${age ?? 6}-year-old child`;
+  // With an anchor the reference carries likeness; without one, fall back to the structured build.
+  const appearance = anchorPath
+    ? "match the reference image's likeness exactly (hair, face shape, colouring, facial hair)"
+    : composeAppearance(features, freeText, background) || "a friendly storybook character";
+  const { prompt, aspectRatio } = buildCoverScenePrompt({
+    subject,
+    appearance,
+    styleKey: style,
+    coverConcept,
+    anchorKind: anchorKind ?? (anchorPath ? "photo" : "none"),
+  });
+  return generateImage(prompt, refs, { aspectRatio }, { callKind: "cover_gen", subjectName: `cover-${previewId}` });
+}
+
+/**
  * Orchestrate one preview: mark running → mint → upload → mark done. On any
  * failure marks the row failed and rethrows (so Inngest's onFailure can log).
- * mode:"picker" mints a book-faithful option; otherwise the single-preview path
- * (BYTE-IDENTICAL to before). Deps injectable for unit tests.
+ * mode:"picker" mints a book-faithful option; mode:"cover" mints a cover scene;
+ * otherwise the single-preview path (BYTE-IDENTICAL to before). Deps injectable.
  */
 export async function runPreview(event, deps = {}) {
   const {
@@ -140,6 +174,8 @@ export async function runPreview(event, deps = {}) {
     let faceQuality; // picker-only escalation signal; undefined for single preview
     if (mode === "picker") {
       ({ png, faceQuality } = await mintPickerOption(event, deps));
+    } else if (mode === "cover") {
+      png = await mintCoverScene(event, deps);
     } else {
       const photoBuf = photoPath ? await getPhoto(photoPath) : undefined;
       png = await generateCharacterPreview(

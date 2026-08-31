@@ -472,6 +472,104 @@ export async function requestPreview(input: RequestPreviewInput): Promise<Previe
   }
 }
 
+/**
+ * Phase-2 pre-purchase COVER SCENE (mode:"cover"). Dispatches ONE worker render of the
+ * character in a full in-style cover composition, anchored on the SAME source Phase 1 uses —
+ * the picked sheet, else the uploaded child photo, else the structured build. The anchor is
+ * DERIVED SERVER-SIDE from the caller's own draft (never a client-supplied path), so there is
+ * no cross-draft read primitive. Reuses the preview cost guards (cap + rate-limit + cache).
+ * Returns a PreviewResult; getCoverPreview wraps it (or falls back to Phase 1 on a block).
+ */
+export async function requestCoverScene(opts?: { regenerate?: boolean }): Promise<PreviewResult> {
+  const regenerate = opts?.regenerate === true;
+  const cookieId = await getDraftCookieFromRequest();
+  if (!cookieId) return { previewId: '', status: 'failed', cached: false, blocked: 'unavailable' };
+  const draft = (await getDraftByCookieId(cookieId)) as Record<string, unknown> | null;
+  if (!draft) return { previewId: '', status: 'failed', cached: false, blocked: 'unavailable' };
+  const draftId = String(draft.id);
+
+  // Anchor (same priority as Phase 1): picked sheet → uploaded child photo → structured (none).
+  let anchorPath: string | undefined;
+  let anchorKind: 'sheet' | 'photo' | 'none' = 'none';
+  const chosen = await getChosenSheet('protagonist');
+  if (chosen && !chosen.degraded && chosen.imagePath) {
+    anchorPath = chosen.imagePath; // server-derived from the draft's own pick → trusted
+    anchorKind = 'sheet';
+  } else {
+    const childPhoto = (draft.photo_urls as { child?: string[] } | null)?.child?.[0];
+    if (childPhoto) {
+      // Ownership: a photo anchor must be the caller's OWN upload prefix.
+      const ownPrefix = `${draftUploadPrefix(draftId)}/`;
+      if (childPhoto.startsWith(ownPrefix) && !childPhoto.includes('..')) {
+        anchorPath = childPhoto;
+        anchorKind = 'photo';
+      }
+    }
+  }
+
+  const style = (draft.art_style as string | null) ?? 'watercolour';
+  const themeTemplateId = (draft.theme_template_id as string | null) ?? null;
+  const bookType = (draft.book_type as string | null) ?? 'child';
+  const age = (draft.child_age as number | null) ?? undefined;
+
+  // Cache key: a cover slot distinct from the portrait preview. `${style}:${theme}:${anchor}`.
+  // A re-roll ("try another") adds a unique variant so it never returns the same cached cover.
+  const coverMarker = `${style}:${themeTemplateId ?? 'none'}:${anchorPath ?? 'none'}`;
+  const variant = regenerate
+    ? `cover:${createHash('sha256').update(`${draftId}:${Date.now()}:${Math.random()}`).digest('hex').slice(0, 16)}`
+    : undefined;
+  // age fixed at 0 for the cover key — the scene is set by cover/style/anchor, not age
+  // (so changing the child's age never needlessly busts the cover cache).
+  const inputHash = computeInputHash({ age: 0, style, cover: coverMarker, variant });
+
+  const cached = await findCachedPreview(inputHash);
+  if (cached) {
+    return { previewId: cached.id, status: 'done', imageUrl: cached.image_url, bgColor: cached.bg_color ?? null, cached: true };
+  }
+
+  // Same S-E cost control as requestPreview: per-draft free cap + burst/hourly rate-limit.
+  if ((await countPreviewsForDraft(draftId)) >= FREE_PREVIEW_CAP) {
+    return { previewId: '', status: 'failed', cached: false, blocked: 'capped' };
+  }
+  const now = Date.now();
+  const [burst, hourly] = await Promise.all([
+    countPreviewsForDraftSince(draftId, new Date(now - RATE_BURST_MS).toISOString()),
+    countPreviewsForDraftSince(draftId, new Date(now - RATE_HOUR_MS).toISOString()),
+  ]);
+  if (burst >= 1 || hourly >= RATE_HOURLY_MAX) {
+    return { previewId: '', status: 'failed', cached: false, blocked: 'rate_limited' };
+  }
+
+  try {
+    const job = await createPreviewJob({
+      draftId,
+      inputHash,
+      inputs: { mode: 'cover', style, hasPhoto: anchorKind === 'photo', hasAnchor: anchorKind !== 'none' },
+    });
+    await inngest.send({
+      name: 'preview/requested',
+      data: {
+        previewId: job.id,
+        mode: 'cover',
+        style,
+        themeTemplateId,
+        anchorPath,
+        anchorKind,
+        bookType,
+        age,
+        // Structured fallback (no anchor) → the worker composes appearance from these.
+        features: (draft.child_features as Record<string, string> | null) ?? undefined,
+        freeText: (draft.child_appearance as string | null) ?? undefined,
+        background: (draft.background as string | null) ?? undefined,
+      },
+    });
+    return { previewId: job.id, status: 'queued', cached: false };
+  } catch (err) {
+    console.error('[requestCoverScene] dispatch failed — cover unavailable:', err instanceof Error ? err.message : String(err));
+    return { previewId: '', status: 'failed', cached: false, blocked: 'unavailable' };
+  }
+}
+
 export async function getPreviewStatus(previewId: string): Promise<PreviewResult> {
   // SOFT-FAIL: a transient DB error while polling must not throw an unhandled server
   // error — report 'failed' so the client's poll loop degrades gracefully.

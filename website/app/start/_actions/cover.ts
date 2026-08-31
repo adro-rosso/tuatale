@@ -22,7 +22,7 @@ import { randomUUID } from 'node:crypto';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId } from '@/db/drafts';
 import { createServerClient } from '@/lib/supabase';
-import { requestPreview, getChosenSheet } from '@/app/start/_actions/preview';
+import { requestPreview, requestCoverScene, getChosenSheet } from '@/app/start/_actions/preview';
 import { deriveCoverTitle } from '@/lib/cover/title';
 import type { RequestPreviewInput } from '@/lib/preview/types';
 import type { CoverPreviewResult } from '@/lib/cover/types';
@@ -93,6 +93,21 @@ export async function getCoverPreview(opts?: CoverPreviewOptions): Promise<Cover
       bookType: draft.book_type as string | null,
       themeTemplateId: draft.theme_template_id as string | null,
     });
+
+    // 0. Phase 2 — COVER_SCENE_ENABLED (server-only, fail-closed, default OFF): render the
+    //    character in a full in-style cover SCENE (not a portrait), anchored on the same
+    //    source Phase 1 uses. Child books only for now. On any block (capped/rate-limited/
+    //    unavailable) fall THROUGH to the Phase-1 portrait path below — never blocks Continue.
+    if (process.env.COVER_SCENE_ENABLED === 'on' && (draft.book_type as string) === 'child') {
+      const scene = await requestCoverScene({ regenerate });
+      if (scene.status === 'done' && scene.imageUrl) {
+        return { enabled: true, status: 'done', imageUrl: scene.imageUrl, bgColor: scene.bgColor ?? null, title, subtitle, canRegenerate: true };
+      }
+      if (scene.previewId) {
+        return { enabled: true, status: scene.status, previewId: scene.previewId, title, subtitle, canRegenerate: true };
+      }
+      // blocked → fall through to Phase 1.
+    }
 
     // 1. Reuse the picker's chosen image ($0). Re-sign fresh from the stored path so an
     //    expired pick-time signed URL never breaks the cover. SKIPPED on a "try another" —

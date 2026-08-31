@@ -4,24 +4,25 @@
  * ($0, no requestPreview), child fresh-render (calls requestPreview), and pet-without-pick
  * (no cover, no requestPreview → no misrender).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
 vi.mock('@/db/drafts', () => ({ getDraftByCookieId: vi.fn() }));
 vi.mock('@/lib/supabase', () => ({ createServerClient: vi.fn() }));
-vi.mock('@/app/start/_actions/preview', () => ({ getChosenSheet: vi.fn(), requestPreview: vi.fn() }));
+vi.mock('@/app/start/_actions/preview', () => ({ getChosenSheet: vi.fn(), requestPreview: vi.fn(), requestCoverScene: vi.fn() }));
 
 import { getCoverPreview } from '@/app/start/_actions/cover';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId } from '@/db/drafts';
 import { createServerClient } from '@/lib/supabase';
-import { getChosenSheet, requestPreview } from '@/app/start/_actions/preview';
+import { getChosenSheet, requestPreview, requestCoverScene } from '@/app/start/_actions/preview';
 
 const cookie = getDraftCookieFromRequest as ReturnType<typeof vi.fn>;
 const getDraft = getDraftByCookieId as ReturnType<typeof vi.fn>;
 const serverClient = createServerClient as ReturnType<typeof vi.fn>;
 const chosen = getChosenSheet as ReturnType<typeof vi.fn>;
 const reqPreview = requestPreview as ReturnType<typeof vi.fn>;
+const reqScene = requestCoverScene as ReturnType<typeof vi.fn>;
 
 const childDraft = {
   id: 'draft-1',
@@ -168,6 +169,54 @@ describe('getCoverPreview — re-render / "try another"', () => {
     expect(r.status).toBe('done');
     expect(r.imageUrl).toBe('https://reroll.png');
     expect(r.canRegenerate).toBe(true);
+  });
+});
+
+describe('getCoverPreview — Phase 2 cover scene (COVER_SCENE_ENABLED)', () => {
+  afterEach(() => delete process.env.COVER_SCENE_ENABLED);
+
+  it('ON + child + scene done → returns the scene image, canRegenerate:true, no Phase-1 calls', async () => {
+    process.env.COVER_SCENE_ENABLED = 'on';
+    reqScene.mockResolvedValue({ previewId: 's1', status: 'done', imageUrl: 'https://scene.png', bgColor: '#eee', cached: false });
+    const r = await getCoverPreview();
+    expect(r.status).toBe('done');
+    expect(r.imageUrl).toBe('https://scene.png');
+    expect(r.canRegenerate).toBe(true);
+    expect(getChosenSheet).not.toHaveBeenCalled(); // Phase-1 not reached
+    expect(requestPreview).not.toHaveBeenCalled();
+  });
+
+  it('ON + child + scene queued → returns previewId to poll', async () => {
+    process.env.COVER_SCENE_ENABLED = 'on';
+    reqScene.mockResolvedValue({ previewId: 's2', status: 'queued', cached: false });
+    const r = await getCoverPreview();
+    expect(r.status).toBe('queued');
+    expect(r.previewId).toBe('s2');
+    expect(r.canRegenerate).toBe(true);
+  });
+
+  it('ON + child + scene BLOCKED → falls through to the Phase-1 portrait path', async () => {
+    process.env.COVER_SCENE_ENABLED = 'on';
+    reqScene.mockResolvedValue({ previewId: '', status: 'failed', cached: false, blocked: 'capped' });
+    reqPreview.mockResolvedValue({ status: 'done', imageUrl: 'https://portrait.png', bgColor: null, cached: false, previewId: 'p' });
+    const r = await getCoverPreview();
+    expect(requestCoverScene).toHaveBeenCalledOnce();
+    expect(requestPreview).toHaveBeenCalledOnce(); // Phase-1 fallback ran
+    expect(r.imageUrl).toBe('https://portrait.png');
+  });
+
+  it('OFF → scene not attempted; Phase-1 runs', async () => {
+    reqPreview.mockResolvedValue({ status: 'done', imageUrl: 'https://portrait.png', bgColor: null, cached: false, previewId: 'p' });
+    await getCoverPreview();
+    expect(requestCoverScene).not.toHaveBeenCalled();
+  });
+
+  it('ON + pet → scene not attempted (child-only), pass-through', async () => {
+    process.env.COVER_SCENE_ENABLED = 'on';
+    getDraft.mockResolvedValue({ ...childDraft, book_type: 'pet', theme_template_id: null });
+    const r = await getCoverPreview();
+    expect(requestCoverScene).not.toHaveBeenCalled();
+    expect(r.status).toBe('none');
   });
 });
 
