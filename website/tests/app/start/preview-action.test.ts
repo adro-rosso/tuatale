@@ -761,6 +761,12 @@ describe('requestCoverScene — anchor priority + guards', () => {
     expect(sentData()).toMatchObject({ mode: 'cover', anchorKind: 'none', features: { hair_colour: 'brown' }, freeText: 'freckles' });
   });
 
+  it('PET photo anchor: role-aware → reads photo_urls.pet (not .child)', async () => {
+    coverDraft({ book_type: 'pet', photo_urls: { pet: ['uploads/draft-1/benji.png'] } });
+    await requestCoverScene();
+    expect(sentData()).toMatchObject({ mode: 'cover', bookType: 'pet', anchorKind: 'photo', anchorPath: 'uploads/draft-1/benji.png' });
+  });
+
   it('CACHE hit → returns the cached cover, no new job/dispatch', async () => {
     coverDraft();
     (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'c-old', status: 'done', image_url: 'https://c.png', bg_color: null });

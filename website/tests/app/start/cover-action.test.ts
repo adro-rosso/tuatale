@@ -195,28 +195,30 @@ describe('getCoverPreview — Phase 2 cover scene (COVER_SCENE_ENABLED)', () => 
     expect(r.canRegenerate).toBe(true);
   });
 
-  it('ON + child + scene BLOCKED → falls through to the Phase-1 portrait path', async () => {
+  it('ON + scene BLOCKED → pass-through; NEVER the Phase-1 raw-sheet passthrough', async () => {
     process.env.COVER_SCENE_ENABLED = 'on';
     reqScene.mockResolvedValue({ previewId: '', status: 'failed', cached: false, blocked: 'capped' });
-    reqPreview.mockResolvedValue({ status: 'done', imageUrl: 'https://portrait.png', bgColor: null, cached: false, previewId: 'p' });
     const r = await getCoverPreview();
     expect(requestCoverScene).toHaveBeenCalledOnce();
-    expect(requestPreview).toHaveBeenCalledOnce(); // Phase-1 fallback ran
-    expect(r.imageUrl).toBe('https://portrait.png');
+    expect(r.status).toBe('none'); // pass-through, not a raw image
+    expect(getChosenSheet).not.toHaveBeenCalled(); // the raw-sheet reuse must NOT run
+    expect(requestPreview).not.toHaveBeenCalled();
+  });
+
+  it('REGRESSION (pet+pick): scene ON → a PET draft gets a SCENE, never the raw picked sheet', async () => {
+    process.env.COVER_SCENE_ENABLED = 'on';
+    getDraft.mockResolvedValue({ ...childDraft, book_type: 'pet', child_name: 'Benji', theme_template_id: 'pet_brought_home' });
+    reqScene.mockResolvedValue({ previewId: 'ps1', status: 'done', imageUrl: 'https://pet-scene.png', bgColor: null, cached: false });
+    const r = await getCoverPreview();
+    expect(requestCoverScene).toHaveBeenCalledOnce(); // pet now runs the scene branch
+    expect(r.imageUrl).toBe('https://pet-scene.png');
+    expect(getChosenSheet).not.toHaveBeenCalled(); // NOT the raw chosen-sheet passthrough
   });
 
   it('OFF → scene not attempted; Phase-1 runs', async () => {
     reqPreview.mockResolvedValue({ status: 'done', imageUrl: 'https://portrait.png', bgColor: null, cached: false, previewId: 'p' });
     await getCoverPreview();
     expect(requestCoverScene).not.toHaveBeenCalled();
-  });
-
-  it('ON + pet → scene not attempted (child-only), pass-through', async () => {
-    process.env.COVER_SCENE_ENABLED = 'on';
-    getDraft.mockResolvedValue({ ...childDraft, book_type: 'pet', theme_template_id: null });
-    const r = await getCoverPreview();
-    expect(requestCoverScene).not.toHaveBeenCalled();
-    expect(r.status).toBe('none');
   });
 });
 

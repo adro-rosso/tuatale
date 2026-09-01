@@ -94,11 +94,14 @@ export async function getCoverPreview(opts?: CoverPreviewOptions): Promise<Cover
       themeTemplateId: draft.theme_template_id as string | null,
     });
 
-    // 0. Phase 2 — COVER_SCENE_ENABLED (server-only, fail-closed, default OFF): render the
-    //    character in a full in-style cover SCENE (not a portrait), anchored on the same
-    //    source Phase 1 uses. Child books only for now. On any block (capped/rate-limited/
-    //    unavailable) fall THROUGH to the Phase-1 portrait path below — never blocks Continue.
-    if (process.env.COVER_SCENE_ENABLED === 'on' && (draft.book_type as string) === 'child') {
+    // Phase 2 — COVER_SCENE_ENABLED (server-only, fail-closed, default OFF): render the
+    // character in a full in-style cover SCENE for ANY book type (child, pet, adult). The
+    // picked sheet / uploaded photo / structured build becomes the ANCHOR (resolved
+    // SERVER-SIDE by requestCoverScene) — a raw picked sheet is NEVER returned directly as
+    // the cover (its crop is wrong for the cover frame). This branch OWNS the cover when the
+    // flag is on: on any block (capped/rate-limited/unavailable) it goes to pass-through, and
+    // deliberately does NOT fall to the Phase-1 chosen-sheet passthrough below.
+    if (process.env.COVER_SCENE_ENABLED === 'on') {
       const scene = await requestCoverScene({ regenerate });
       if (scene.status === 'done' && scene.imageUrl) {
         return { enabled: true, status: 'done', imageUrl: scene.imageUrl, bgColor: scene.bgColor ?? null, title, subtitle, canRegenerate: true };
@@ -106,9 +109,11 @@ export async function getCoverPreview(opts?: CoverPreviewOptions): Promise<Cover
       if (scene.previewId) {
         return { enabled: true, status: scene.status, previewId: scene.previewId, title, subtitle, canRegenerate: true };
       }
-      // blocked → fall through to Phase 1.
+      // Blocked → pass-through. Never the raw picked sheet.
+      return { enabled: true, status: 'none', title, subtitle };
     }
 
+    // ---- Phase 1 (COVER_SCENE_ENABLED off) ---------------------------------------------
     // 1. Reuse the picker's chosen image ($0). Re-sign fresh from the stored path so an
     //    expired pick-time signed URL never breaks the cover. SKIPPED on a "try another" —
     //    the chosen pick is a fixed image with nothing to re-roll; a re-roll wants a fresh mint.

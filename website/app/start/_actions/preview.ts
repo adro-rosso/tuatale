@@ -487,8 +487,11 @@ export async function requestCoverScene(opts?: { regenerate?: boolean }): Promis
   const draft = (await getDraftByCookieId(cookieId)) as Record<string, unknown> | null;
   if (!draft) return { previewId: '', status: 'failed', cached: false, blocked: 'unavailable' };
   const draftId = String(draft.id);
+  const bookType = (draft.book_type as string | null) ?? 'child';
 
-  // Anchor (same priority as Phase 1): picked sheet → uploaded child photo → structured (none).
+  // Anchor (same priority as Phase 1): picked sheet → uploaded photo → structured (none).
+  // Works for ANY book type — the protagonist pick (pet/child/adult hero) is under
+  // chosen_sheet; the photo is role-keyed (photo_urls.{pet|adult|child}).
   let anchorPath: string | undefined;
   let anchorKind: 'sheet' | 'photo' | 'none' = 'none';
   const chosen = await getChosenSheet('protagonist');
@@ -496,12 +499,13 @@ export async function requestCoverScene(opts?: { regenerate?: boolean }): Promis
     anchorPath = chosen.imagePath; // server-derived from the draft's own pick → trusted
     anchorKind = 'sheet';
   } else {
-    const childPhoto = (draft.photo_urls as { child?: string[] } | null)?.child?.[0];
-    if (childPhoto) {
+    const roleKey = bookType === 'pet' ? 'pet' : bookType === 'adult' ? 'adult' : 'child';
+    const rolePhoto = (draft.photo_urls as Record<string, string[] | undefined> | null)?.[roleKey]?.[0];
+    if (rolePhoto) {
       // Ownership: a photo anchor must be the caller's OWN upload prefix.
       const ownPrefix = `${draftUploadPrefix(draftId)}/`;
-      if (childPhoto.startsWith(ownPrefix) && !childPhoto.includes('..')) {
-        anchorPath = childPhoto;
+      if (rolePhoto.startsWith(ownPrefix) && !rolePhoto.includes('..')) {
+        anchorPath = rolePhoto;
         anchorKind = 'photo';
       }
     }
@@ -509,7 +513,6 @@ export async function requestCoverScene(opts?: { regenerate?: boolean }): Promis
 
   const style = (draft.art_style as string | null) ?? 'watercolour';
   const themeTemplateId = (draft.theme_template_id as string | null) ?? null;
-  const bookType = (draft.book_type as string | null) ?? 'child';
   const age = (draft.child_age as number | null) ?? undefined;
 
   // Cache key: a cover slot distinct from the portrait preview. `${style}:${theme}:${anchor}`.
