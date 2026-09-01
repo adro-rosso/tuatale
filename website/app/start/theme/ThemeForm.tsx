@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import { submitThemeStep, type SubmitThemeState } from '@/app/start/_actions/submit-theme';
 import { StoryAssist } from '@/app/start/theme/StoryAssist';
+import { StoryProbe } from '@/app/start/theme/StoryProbe';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl } from '@/components/ui/form-styles';
@@ -18,13 +19,16 @@ interface ThemeFormProps {
   };
   childName: string | null;
   childGender: 'boy' | 'girl' | 'non_binary' | null;
+  childAge: number | null;
   /** 'pet' shows the story-mood (vibe) picker; the pet's name for the memorial label. */
   bookType: string;
+  /** STORY_PROBE_ENABLED — server-only, fail-closed. ON shows the "go deeper" question probe. */
+  storyProbeEnabled?: boolean;
 }
 
 const initialState: SubmitThemeState = { errors: {} };
 
-export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFormProps) {
+export function ThemeForm({ initial, childName, childGender, childAge, bookType, storyProbeEnabled = false }: ThemeFormProps) {
   const [state, formAction, isPending] = useActionState(submitThemeStep, initialState);
   const [selectedId, setSelectedId] = useState(initial.theme_template_id ?? '');
   const [text, setText] = useState(initial.theme);
@@ -64,6 +68,16 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
     setSelectedId(CUSTOM_TEMPLATE_ID);
     setText(improved);
     setCustomDraft(improved);
+  }
+
+  // Append the "go deeper" Q&A beneath the current text (never overwrites), treat it as the
+  // customer's OWN writing so it's editable + survives a later preset tap, and respect the
+  // 2000-char textarea/validation cap.
+  function onAppendDetails(block: string) {
+    const next = `${text}${block}`.slice(0, 2000);
+    setSelectedId(CUSTOM_TEMPLATE_ID);
+    setText(next);
+    setCustomDraft(next);
   }
 
   // Each book type gets appropriate presets: pets get Everyday + Adventures (child
@@ -187,6 +201,18 @@ export function ThemeForm({ initial, childName, childGender, bookType }: ThemeFo
           vibe={showVibe ? vibe : null}
           onUse={onUseAssist}
         />
+        {storyProbeEnabled && (
+          <StoryProbe
+            text={text}
+            bookType={bookType}
+            heroName={childName}
+            age={childAge}
+            gender={childGender}
+            themeLabel={selectedThemeLabel}
+            vibe={showVibe ? vibe : null}
+            onAppend={onAppendDetails}
+          />
+        )}
         <Body size="caption">
           You can edit anything above. Pick a template to start, or write your own from scratch.
         </Body>

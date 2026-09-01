@@ -24,6 +24,10 @@ export default async function ThemeStepPage() {
   // for future cross-validation.
   void isWizardStep;
 
+  // STORY_PROBE_ENABLED (server-only, fail-closed, default OFF): the "go deeper" question
+  // probe on the theme step. Off → the button never renders (and the action is inert too).
+  const storyProbeEnabled = process.env.STORY_PROBE_ENABLED === 'on';
+
   return (
     <ThemeForm
       initial={{
@@ -33,7 +37,9 @@ export default async function ThemeStepPage() {
       }}
       childName={draft?.child_name ?? null}
       childGender={asGender(draft?.child_gender)}
+      childAge={draft?.child_age ?? null}
       bookType={draft?.book_type ?? 'child'}
+      storyProbeEnabled={storyProbeEnabled}
     />
   );
 }
