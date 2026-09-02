@@ -87,7 +87,7 @@ export async function downloadPhoto(photoPath) {
 async function mintPickerOption(event, deps) {
   const getPhoto = deps.getPhoto ?? downloadPhoto;
   const generatePickerOption = deps.generatePickerOption ?? realGeneratePickerOption;
-  const { previewId, role, inputs, artStyle, photo_paths } = event;
+  const { previewId, role, inputs, artStyle, photo_paths, variantIndex } = event;
   const dir = path.join(os.tmpdir(), `picker-${previewId}`);
   fs.mkdirSync(dir, { recursive: true });
   const locals = [];
@@ -115,7 +115,9 @@ async function mintPickerOption(event, deps) {
     } catch (e) { console.warn(`picker(${previewId}): faceH probe failed (non-fatal): ${e.message}`); }
   }
   const png = await generatePickerOption(
-    { role, inputs: { ...inputs, photoPaths: selected }, artStyle },
+    // variantIndex drives the per-option pose/angle/framing differentiation (neutral
+    // expression + likeness anchoring untouched).
+    { role, inputs: { ...inputs, photoPaths: selected }, artStyle, variantIndex },
     selected,
     { callKind: "picker_mint", subjectName: `picker-${previewId}` },
   );

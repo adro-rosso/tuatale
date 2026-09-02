@@ -660,6 +660,9 @@ export async function requestPreviewBatch(input: RequestPreviewBatchInput): Prom
           inputs: input.inputs,
           artStyle: input.artStyle,
           photo_paths: photoPaths,
+          // Drives the worker's per-option pose/angle/framing differentiation so the N
+          // picker draws are visibly distinct (neutral expression + likeness untouched).
+          variantIndex: i,
         },
       });
       options.push({ variant: i, previewId: job.id, status: 'queued' });

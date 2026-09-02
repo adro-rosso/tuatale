@@ -4,7 +4,7 @@
 // the brand composition — NOT the loose cream-bg PHOTO_COND preview. (B) relaxes the
 // description SOURCE, never the faithfulness of the mint.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { buildPickerSubject, buildFaithfulStory } from "../../src/picker-mint.js";
+import { buildPickerSubject, buildFaithfulStory, pickerPoseVariant, PICKER_POSE_VARIANTS } from "../../src/picker-mint.js";
 import { buildSubjectViewZeroPrompt } from "../../src/book-pipeline.js";
 import { resolveStyle, COMPOSITION_RULES, NEGATIVE_PROMPT } from "../../src/art-styles.js";
 
@@ -62,5 +62,33 @@ describe("picker-mint — book-faithful (not the loose preview)", () => {
     expect(p).toContain("Nicki");
     expect(p).toContain("REFERENCE IS AUTHORITATIVE");
     expect(p).not.toContain("DRAW AN ORIGINAL");
+  });
+});
+
+describe("picker-mint — per-variant pose/angle/framing differentiation", () => {
+  it("no variantIndex → no pose clause (non-picker paths stay byte-identical)", () => {
+    expect(pickerPoseVariant(undefined)).toBeNull();
+    expect(pickerPoseVariant(null)).toBeNull();
+  });
+
+  it("variant 0/1/2 → three DISTINCT pose/angle/framing clauses", () => {
+    const v = [0, 1, 2].map(pickerPoseVariant);
+    expect(new Set(v).size).toBe(3); // all distinct
+    for (const clause of v) expect(clause).toMatch(/POSE, ANGLE & FRAMING/);
+  });
+
+  it("every variant keeps the EXPRESSION NEUTRAL (locked rule) and never touches likeness/reference", () => {
+    for (const clause of PICKER_POSE_VARIANTS) {
+      expect(clause.toLowerCase()).toContain("neutral"); // reinforces the neutral-base rule
+      // must NOT introduce expression variation or override the reference-authority wording
+      expect(clause).not.toMatch(/happy|sad|smil|grin|frown|excited|expression (?!.*neutral)/i);
+      expect(clause).not.toMatch(/REFERENCE IS AUTHORITATIVE|likeness|photo/i);
+    }
+  });
+
+  it("wraps out-of-range / negative indices safely", () => {
+    expect(pickerPoseVariant(3)).toBe(pickerPoseVariant(0));
+    expect(pickerPoseVariant(4)).toBe(pickerPoseVariant(1));
+    expect(pickerPoseVariant(-1)).toBe(pickerPoseVariant(2));
   });
 });

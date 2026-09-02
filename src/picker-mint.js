@@ -85,16 +85,43 @@ export function buildPickerSubject({ role, inputs, story }) {
   return buildSubjectListForSheetGen(s, meta, inputs.name, inputs.age).find((x) => x.isProtagonist);
 }
 
+// Per-variant POSE / ANGLE / FRAMING differentiation for the character picker (2026-09-01).
+// The N options otherwise differ only by stochastic noise, so options (pets especially) read
+// too alike. This appends a pose/angle/framing directive keyed by the variant index. HARD
+// CONSTRAINTS honoured here: (a) EXPRESSION STAYS NEUTRAL — the neutral-base-sheet rule is a
+// locked product decision (the photo defines features, not mood); every variant reinforces
+// neutral and none varies it; (b) LIKENESS IS UNTOUCHABLE — REFERENCE IS AUTHORITATIVE + the
+// photo-anchor path are set by buildSubjectViewZeroPrompt and are NOT touched here; this clause
+// only changes pose/angle/framing, never the identity/reference wording. The base view-0
+// prompt is left byte-identical, so the book render + single preview (which pass no
+// variantIndex) are unchanged (golden-master-guarded).
+export const PICKER_POSE_VARIANTS = [
+  "POSE, ANGLE & FRAMING: a calm front-facing, full-body view, squared to the camera and centred. Do not change the expression — keep it neutral.",
+  "POSE, ANGLE & FRAMING: a relaxed three-quarter turn, the subject angled slightly to one side in a natural full-body standing or sitting stance. Do not change the expression — keep it neutral.",
+  "POSE, ANGLE & FRAMING: a different natural pose from a slightly lower or higher angle — an animal sitting or lying alert with the head turned, a person with weight shifted — framed a touch closer, from the chest up, with the face clearly visible. Do not change the expression — keep it neutral.",
+];
+
+/** The pose/angle/framing clause for a picker variant, or null when no variantIndex is given
+ *  (the non-picker paths — book render + single preview — which must stay byte-identical). */
+export function pickerPoseVariant(variantIndex) {
+  if (variantIndex == null) return null;
+  return PICKER_POSE_VARIANTS[((variantIndex % PICKER_POSE_VARIANTS.length) + PICKER_POSE_VARIANTS.length) % PICKER_POSE_VARIANTS.length];
+}
+
 /**
  * Generate ONE book-faithful picker option (a view-0 PNG). `photoPaths` are LOCAL files
  * (downloaded + selectBestPhotos-filtered by the caller). callKind "picker_mint" gets the
- * preview resilience profile (fail-fast + hedge) in gemini.js.
+ * preview resilience profile (fail-fast + hedge) in gemini.js. `variantIndex` (optional)
+ * appends a pose/angle/framing clause so the N options are visibly distinct; omitting it
+ * yields the exact pre-variant prompt.
  */
-export async function generatePickerOption({ role, inputs, artStyle }, photoPaths, callContext = { callKind: "picker_mint" }) {
+export async function generatePickerOption({ role, inputs, artStyle, variantIndex }, photoPaths, callContext = { callKind: "picker_mint" }) {
   const story = buildFaithfulStory(artStyle);
   const subject = buildPickerSubject({ role, inputs, story });
   if (!subject) throw new Error(`picker: could not build subject for role=${role} name=${inputs?.name}`);
   const photoBufs = (photoPaths ?? []).map((p) => fs.readFileSync(p));
-  const prompt = buildSubjectViewZeroPrompt(subject, story);
+  const basePrompt = buildSubjectViewZeroPrompt(subject, story);
+  const poseClause = pickerPoseVariant(variantIndex);
+  const prompt = poseClause ? `${basePrompt}\n\n${poseClause}` : basePrompt;
   return generateImage(prompt, photoBufs, {}, callContext);
 }
