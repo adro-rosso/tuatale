@@ -46,8 +46,11 @@ COPY src/ ./src/
 COPY templates/ ./templates/
 COPY worker/src/ ./worker/src/
 
-# Sentry release tag (single project shared with the website; distinguished by
-# release). Passed at build time: --build-arg SENTRY_RELEASE=$(git rev-parse --short HEAD)
+# Deploy SHA — used BOTH as the Sentry release tag AND as /health's `version`, so a worker
+# deploy is verifiable (matches the website's /api/health). MUST be passed at build time:
+#   fly deploy --config worker/fly.toml --build-arg SENTRY_RELEASE=$(git rev-parse --short HEAD)
+# Do NOT set a SENTRY_RELEASE Fly *secret* — a runtime secret overrides this per-deploy value
+# and re-pins /health to a stale SHA (the bug this replaced).
 ARG SENTRY_RELEASE
 ENV SENTRY_RELEASE=${SENTRY_RELEASE}
 

@@ -221,7 +221,11 @@ export function createHealthServer(getState) {
       res.end(JSON.stringify({
         ok: !dead,
         state,
-        version: process.env.SENTRY_RELEASE ?? null,
+        // The deployed git SHA, baked at build time via --build-arg SENTRY_RELEASE (see the
+        // Dockerfile). `|| null` so an unset/empty value reads as null, not "". A fly deploy
+        // MUST pass the build-arg for this to reflect the real release; do not re-pin a
+        // SENTRY_RELEASE Fly secret, which would override the per-deploy value.
+        version: process.env.SENTRY_RELEASE || null,
         // B.1: surface the front-matter flag so its live state is verifiable in prod.
         frontMatter: process.env.FEATURES_FRONTMATTER === "on",
         // Same rationale: these two gate real behaviour (pet-hero protagonist path,
