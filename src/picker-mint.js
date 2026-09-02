@@ -95,10 +95,14 @@ export function buildPickerSubject({ role, inputs, story }) {
 // only changes pose/angle/framing, never the identity/reference wording. The base view-0
 // prompt is left byte-identical, so the book render + single preview (which pass no
 // variantIndex) are unchanged (golden-master-guarded).
+// Each clause forces a SINGLE illustration of ONE figure in ONE pose — the "no turnaround /
+// no multiple poses" guard is load-bearing: without it, angle/turn language ("three-quarter
+// turn") makes the model render a character model-sheet (a head + several body poses) instead
+// of one distinct option (caught by the local spike, 2026-09-01).
 export const PICKER_POSE_VARIANTS = [
-  "POSE, ANGLE & FRAMING: a calm front-facing, full-body view, squared to the camera and centred. Do not change the expression — keep it neutral.",
-  "POSE, ANGLE & FRAMING: a relaxed three-quarter turn, the subject angled slightly to one side in a natural full-body standing or sitting stance. Do not change the expression — keep it neutral.",
-  "POSE, ANGLE & FRAMING: a different natural pose from a slightly lower or higher angle — an animal sitting or lying alert with the head turned, a person with weight shifted — framed a touch closer, from the chest up, with the face clearly visible. Do not change the expression — keep it neutral.",
+  "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE figure in ONE pose — calm and front-facing, full-body, squared to the camera and centred. Do NOT draw multiple poses, panels, or a character turnaround. Do not change the expression — keep it neutral.",
+  "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE figure in ONE pose — standing at a gentle three-quarter angle, the body turned slightly to one side, shown full-body. Do NOT draw multiple poses, panels, or a character turnaround. Do not change the expression — keep it neutral.",
+  "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE figure in ONE pose — framed a little closer, from the chest up, at a slightly raised or lowered eye level, with the face clearly visible. Do NOT draw multiple poses, panels, or a character turnaround. Do not change the expression — keep it neutral.",
 ];
 
 /** The pose/angle/framing clause for a picker variant, or null when no variantIndex is given
