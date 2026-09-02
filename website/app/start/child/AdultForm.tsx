@@ -9,6 +9,7 @@ import { GENDERS, ADULT_AGE_MIN, ADULT_AGE_MAX } from '@/lib/validation/schemas'
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl, sectionCard, segTrack, segItem } from '@/components/ui/form-styles';
+import { FieldError, FormBlockedNotice, hasFieldErrors, useScrollToFirstError } from '@/components/ui/form-feedback';
 
 // Slice 2: the live subject preview. The customer's own person, rendered before paying,
 // so they can see the apparent age and SWAP the photo if the art reads wrong (the
@@ -81,14 +82,10 @@ function SectionHead({ title }: { title: string }) {
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-xs">
+    <div className="space-y-xs" data-error-field={error ? 'true' : undefined}>
       <label className="font-body text-near-black text-body block font-semibold">{label}</label>
       {children}
-      {error && (
-        <p className="font-body text-iron-oxide text-caption" role="alert">
-          {error}
-        </p>
-      )}
+      <FieldError>{error}</FieldError>
     </div>
   );
 }
@@ -102,6 +99,7 @@ export function AdultForm({ initial, artStyle, draftId, pickerEnabled }: AdultFo
   const [state, formAction, isPending] = useActionState(submitAdultStep, initialState);
   const echoed = state.values as AdultFormValues | undefined;
   const errors = state.errors;
+  useScrollToFirstError(errors);
   const fieldValue = (k: 'name' | 'age' | 'gender' | 'appearance') =>
     (echoed?.[k] as string | undefined) ?? initial[k];
 
@@ -219,17 +217,13 @@ export function AdultForm({ initial, artStyle, draftId, pickerEnabled }: AdultFo
                   Add a description of how they look{' '}
                   <span className="font-body text-warm-grey text-caption font-normal">(optional)</span>
                 </summary>
-                <div className="mt-sm space-y-xs">
+                <div className="mt-sm space-y-xs" data-error-field={errors['appearance'] ? 'true' : undefined}>
                   {ta}
                   <p className="font-body text-warm-grey text-caption">
                     Optional — your photo captures their likeness. Add hair, build, or the clothes
                     they’d be caught in if you’d like.
                   </p>
-                  {errors['appearance'] && (
-                    <p className="font-body text-iron-oxide text-caption" role="alert">
-                      {errors['appearance']}
-                    </p>
-                  )}
+                  <FieldError>{errors['appearance']}</FieldError>
                 </div>
               </details>
             ) : (
@@ -268,7 +262,7 @@ export function AdultForm({ initial, artStyle, draftId, pickerEnabled }: AdultFo
                 <span className="font-body text-warm-grey text-caption mt-xs block">{CONSENT_HINT}</span>
               </span>
             </label>
-            {errors['consent'] && <p className="font-body text-iron-oxide text-caption" role="alert">{errors['consent']}</p>}
+            <FieldError>{errors['consent']}</FieldError>
 
             <div className="gap-md flex items-center">
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
@@ -289,7 +283,7 @@ export function AdultForm({ initial, artStyle, draftId, pickerEnabled }: AdultFo
                 </>
               )}
             </div>
-            {photoError && <p className="font-body text-iron-oxide text-caption" role="alert">{photoError}</p>}
+            <FieldError>{photoError}</FieldError>
 
             {previewReady && pickerEnabled ? (
               <div className="pt-sm">
@@ -327,10 +321,13 @@ export function AdultForm({ initial, artStyle, draftId, pickerEnabled }: AdultFo
 
       <Body size="caption">They’re the hero; a partner, friend, or anyone else can join as a companion on the next step.</Body>
 
-      <div className="pt-md flex justify-end">
-        <Button type="submit" variant="primary" disabled={isPending || uploading}>
-          {isPending ? 'Saving…' : 'Continue →'}
-        </Button>
+      <div className="pt-md space-y-sm">
+        <FormBlockedNotice show={hasFieldErrors(errors)} />
+        <div className="flex justify-end">
+          <Button type="submit" variant="primary" disabled={isPending || uploading}>
+            {isPending ? 'Saving…' : 'Continue →'}
+          </Button>
+        </div>
       </div>
     </form>
   );

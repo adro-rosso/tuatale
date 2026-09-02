@@ -5,6 +5,7 @@ import { submitSecondariesStep } from '@/app/start/_actions/submit-secondaries';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl, sectionCard, segTrack, segItem } from '@/components/ui/form-styles';
+import { FieldError, FormBlockedNotice, hasFieldErrors, useScrollToFirstError } from '@/components/ui/form-feedback';
 import { GENDERS, SUBJECT_TYPES } from '@/lib/validation/schemas';
 import { PhotoUploader } from '@/app/start/child/PhotoUploader';
 import { CharacterPicker } from '@/app/start/child/CharacterPicker';
@@ -70,6 +71,7 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
   const [consent, setConsent] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  useScrollToFirstError(errors);
 
   const isPet = bookType === 'pet';
   // Child-book companion photos: un-gated only when CHILD_PHOTO_ENABLED; they carry the
@@ -163,11 +165,9 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
           </span>
         </label>
       )}
-      {consentError && (
-        <p className="font-body text-iron-oxide text-caption" role="alert">
-          {consentError}
-        </p>
-      )}
+      {consentError && <FieldError>{consentError}</FieldError>}
+
+      <FormBlockedNotice show={hasFieldErrors(errors)} message="Please fix the highlighted companion details above, then continue." />
 
       <div className="gap-md tablet:flex-row tablet:items-center tablet:justify-between flex flex-col">
         <Button
@@ -238,6 +238,7 @@ function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChi
           maxLength={50}
           onChange={(e) => onChange({ name: e.target.value })}
           className={fieldControl}
+          aria-invalid={Boolean(errors['name'])}
         />
       </CardField>
 
@@ -364,7 +365,6 @@ function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChi
       {isNonHuman && (
         <p className="font-body text-warm-grey text-caption">
           Use this for animals or toys with unusual markings or features you really want captured.
-          Adds $10.
         </p>
       )}
     </fieldset>
@@ -381,14 +381,10 @@ function CardField({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-xs">
+    <div className="space-y-xs" data-error-field={error ? 'true' : undefined}>
       <label className="font-body text-near-black text-body block font-medium">{label}</label>
       {children}
-      {error && (
-        <p className="font-body text-iron-oxide text-caption" role="alert">
-          {error}
-        </p>
-      )}
+      <FieldError>{error}</FieldError>
     </div>
   );
 }

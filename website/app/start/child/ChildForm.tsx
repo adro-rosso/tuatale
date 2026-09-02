@@ -8,6 +8,7 @@ import { CharacterCanvas } from './CharacterCanvas';
 import { CharacterBuilder } from './CharacterBuilder';
 import { Button } from '@/components/ui/Button';
 import { fieldControl, sectionCard, segTrack, segItem, segButton } from '@/components/ui/form-styles';
+import { FieldError, FormBlockedNotice, hasFieldErrors, useScrollToFirstError } from '@/components/ui/form-feedback';
 import {
   AGE_RANGES,
   GENDERS,
@@ -53,6 +54,8 @@ function ageFromRange(range: string): number {
 export function ChildForm({ initial, artStyle, draftId, childPhotoEnabled = false }: ChildFormProps) {
   const [state, formAction, isPending] = useActionState(submitChildStep, initialState);
   const errors = state.errors;
+  // Blocked-continue visibility: scroll to + focus the first offending field on a failed submit.
+  useScrollToFirstError(errors);
   const fieldValue = (k: keyof ChildFormValues): string => state.values?.[k] ?? initial[k] ?? '';
 
   // Gender drives the hair_style options (renderability gate: boys get the
@@ -108,12 +111,13 @@ export function ChildForm({ initial, artStyle, draftId, childPhotoEnabled = fals
               onChange={(e) => setName(e.target.value)}
               maxLength={50}
               className={SELECT_CLASS}
+              aria-invalid={Boolean(errors['name'])}
               autoComplete="off"
             />
           </Field>
 
           <Field label="How old are they?" error={errors['age_range']}>
-            <select name="age_range" defaultValue={fieldValue('age_range')} onChange={(e) => setAgeRange(e.target.value)} className={SELECT_CLASS}>
+            <select name="age_range" defaultValue={fieldValue('age_range')} onChange={(e) => setAgeRange(e.target.value)} className={SELECT_CLASS} aria-invalid={Boolean(errors['age_range'])}>
               <option value="">Pick an age range…</option>
               {AGE_RANGES.map((r) => (
                 <option key={r} value={r}>
@@ -235,10 +239,13 @@ export function ChildForm({ initial, artStyle, draftId, childPhotoEnabled = fals
         </div>
       </section>
 
-      <div className="pt-md flex justify-end">
-        <Button type="submit" variant="primary" disabled={isPending}>
-          {isPending ? 'Saving…' : 'Continue →'}
-        </Button>
+      <div className="pt-md space-y-sm">
+        <FormBlockedNotice show={hasFieldErrors(errors)} />
+        <div className="flex justify-end">
+          <Button type="submit" variant="primary" disabled={isPending}>
+            {isPending ? 'Saving…' : 'Continue →'}
+          </Button>
+        </div>
       </div>
     </form>
   );
@@ -353,14 +360,10 @@ interface FieldProps {
 
 function Field({ label, error, children }: FieldProps) {
   return (
-    <div className="space-y-xs">
+    <div className="space-y-xs" data-error-field={error ? 'true' : undefined}>
       <label className="font-body text-near-black text-body block font-semibold">{label}</label>
       {children}
-      {error && (
-        <p className="font-body text-iron-oxide text-caption" role="alert">
-          {error}
-        </p>
-      )}
+      <FieldError>{error}</FieldError>
     </div>
   );
 }

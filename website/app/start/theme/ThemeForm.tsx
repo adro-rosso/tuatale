@@ -7,6 +7,7 @@ import { StoryProbe } from '@/app/start/theme/StoryProbe';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl } from '@/components/ui/form-styles';
+import { FieldError, FormBlockedNotice, hasFieldErrors, useScrollToFirstError } from '@/components/ui/form-feedback';
 import { THEMES, PET_THEMES, ADULT_THEMES, CUSTOM_TEMPLATE_ID, resolveStarter, type ThemeTemplate } from '@/lib/themes';
 import { VIBE_OPTIONS, vibeLabel } from '@/lib/pet-vibes';
 import { ADULT_VIBE_OPTIONS } from '@/lib/adult-vibes';
@@ -30,6 +31,7 @@ const initialState: SubmitThemeState = { errors: {} };
 
 export function ThemeForm({ initial, childName, childGender, childAge, bookType, storyProbeEnabled = false }: ThemeFormProps) {
   const [state, formAction, isPending] = useActionState(submitThemeStep, initialState);
+  useScrollToFirstError(state.errors);
   const [selectedId, setSelectedId] = useState(initial.theme_template_id ?? '');
   const [text, setText] = useState(initial.theme);
   // Preserve the customer's OWN writing separately, so tapping a preset (or re-tapping
@@ -177,7 +179,7 @@ export function ThemeForm({ initial, childName, childGender, childAge, bookType,
         </button>
       </div>
 
-      <div className="space-y-xs">
+      <div className="space-y-xs" data-error-field={state.errors['theme'] ? 'true' : undefined}>
         <label className="font-body text-near-black text-body block font-semibold">Your story</label>
         <textarea
           name="theme"
@@ -187,12 +189,9 @@ export function ThemeForm({ initial, childName, childGender, childAge, bookType,
           onChange={(e) => onTextChange(e.target.value)}
           placeholder="What's the story about? Give us as much or as little detail as you like — a few lines is plenty, and there's room to write a page or two if you want to."
           className={`${fieldControl} resize-y`}
+          aria-invalid={Boolean(state.errors['theme'])}
         />
-        {state.errors['theme'] && (
-          <p className="font-body text-iron-oxide text-caption" role="alert">
-            {state.errors['theme']}
-          </p>
-        )}
+        <FieldError>{state.errors['theme']}</FieldError>
         <StoryAssist
           text={text}
           bookType={bookType}
@@ -218,10 +217,13 @@ export function ThemeForm({ initial, childName, childGender, childAge, bookType,
         </Body>
       </div>
 
-      <div className="pt-md flex justify-end">
-        <Button type="submit" variant="primary" disabled={isPending}>
-          {isPending ? 'Saving…' : 'Continue →'}
-        </Button>
+      <div className="pt-md space-y-sm">
+        <FormBlockedNotice show={hasFieldErrors(state.errors)} />
+        <div className="flex justify-end">
+          <Button type="submit" variant="primary" disabled={isPending}>
+            {isPending ? 'Saving…' : 'Continue →'}
+          </Button>
+        </div>
       </div>
     </form>
   );

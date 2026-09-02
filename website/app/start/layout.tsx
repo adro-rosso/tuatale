@@ -61,9 +61,12 @@ export default async function StartLayout({ children }: { children: ReactNode })
       childName={draft?.child_name ?? null}
       bookType={bookType}
       secondariesForPricing={secondariesForPricing}
-      // The payment step renders its own full order summary, so suppress the
-      // sidebar there to avoid showing the price twice.
-      showPrice={pathname !== '/start/payment'}
+      // Price appears ONLY at the end of the book-customisation flow: the review step
+      // shows the itemised total (sidebar), and payment renders its own full summary.
+      // Earlier steps (hero, style, child, secondaries, theme, preview) show NO price, so
+      // the customer focuses on the book, not the running cost. Site-wide pricing (landing)
+      // is unaffected — this defers price within the flow, it doesn't hide it from the site.
+      showPrice={pathname === '/start/review'}
     >
       {children}
     </WizardLayout>

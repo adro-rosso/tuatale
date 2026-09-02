@@ -8,9 +8,11 @@
  * utilities, which don't resolve under this project's @theme.
  */
 
-/** Text input / select / textarea. Paper fill, hairline border, calm focus ring. */
+/** Text input / select / textarea. Paper fill, hairline border, calm focus ring.
+ *  When the field carries `aria-invalid="true"`, it gains a warm rust border + soft tint so
+ *  the offending field is obvious without a hostile red wall (brand voice: visible, not angry). */
 export const fieldControl =
-  'font-body text-body text-near-black bg-paper border border-warm-grey-light rounded-xl px-md py-sm w-full transition-colors placeholder:text-warm-grey/60 focus:border-iron-oxide focus:outline-none focus:ring-2 focus:ring-iron-oxide/20';
+  'font-body text-body text-near-black bg-paper border border-warm-grey-light rounded-xl px-md py-sm w-full transition-colors placeholder:text-warm-grey/60 focus:border-iron-oxide focus:outline-none focus:ring-2 focus:ring-iron-oxide/20 aria-[invalid=true]:border-iron-oxide aria-[invalid=true]:bg-iron-oxide/[0.04] aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-iron-oxide/25';
 
 /** A section surface inside a step — paper card that lifts off the cream page. */
 export const sectionCard =

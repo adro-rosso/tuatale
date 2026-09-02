@@ -8,6 +8,7 @@ import { READING_LEVEL_VALUES } from '@/lib/validation/schemas';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
 import { fieldControl, sectionCard, segTrack, segButton } from '@/components/ui/form-styles';
+import { FieldError, FormBlockedNotice, hasFieldErrors, useScrollToFirstError } from '@/components/ui/form-feedback';
 
 interface PetFormProps {
   artStyle: string;
@@ -66,14 +67,10 @@ function SectionHead({ title, hint }: { title: string; hint?: string }) {
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-xs">
+    <div className="space-y-xs" data-error-field={error ? 'true' : undefined}>
       <label className="font-body text-near-black text-body block font-semibold">{label}</label>
       {children}
-      {error && (
-        <p className="font-body text-iron-oxide text-caption" role="alert">
-          {error}
-        </p>
-      )}
+      <FieldError>{error}</FieldError>
     </div>
   );
 }
@@ -88,6 +85,7 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
   const [state, formAction, isPending] = useActionState(submitPetStep, initialState);
   const echoed = state.values as PetFormValues | undefined;
   const errors = state.errors;
+  useScrollToFirstError(errors);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [photos, setPhotos] = useState<Array<{ path: string; previewUrl?: string }>>(
@@ -188,11 +186,7 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
               <p className="font-body text-warm-grey text-caption">
                 Colour and any distinctive markings help us keep their true look — but your photos capture the rest.
               </p>
-              {errors['appearance'] && (
-                <p className="font-body text-iron-oxide text-caption" role="alert">
-                  {errors['appearance']}
-                </p>
-              )}
+              <FieldError>{errors['appearance']}</FieldError>
             </div>
           </details>
         </div>
@@ -235,7 +229,7 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
       </section>
 
       {/* ---- Photos (required — the likeness comes from these) ---- */}
-      <section className={CARD}>
+      <section className={CARD} data-error-field={uploadError || errors['photos'] ? 'true' : undefined}>
         <SectionHead title="Photos of your pet" hint="the more the better" />
         <p className="font-body text-warm-grey text-body">
           Add a few clear photos of <strong>the same pet</strong> from different angles — a face-on shot, a full-body
@@ -276,11 +270,7 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
 
         <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => onFiles(e.target.files)} />
 
-        {(uploadError || errors['photos']) && (
-          <p className="font-body text-iron-oxide text-caption pt-sm" role="alert">
-            {uploadError ?? errors['photos']}
-          </p>
-        )}
+        <FieldError>{uploadError ?? errors['photos']}</FieldError>
 
         <label className="gap-sm pt-md flex cursor-pointer items-start">
           <input type="checkbox" name="consent" defaultChecked={echoed?.consent} className="mt-1" />
@@ -288,11 +278,7 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
             I have the right to use these photos, and I&apos;m happy for Tuatale to use them to illustrate this book.
           </span>
         </label>
-        {errors['consent'] && (
-          <p className="font-body text-iron-oxide text-caption" role="alert">
-            {errors['consent']}
-          </p>
-        )}
+        <FieldError>{errors['consent']}</FieldError>
 
         {photos.length > 0 && pickerEnabled && (
           <div className="pt-md border-warm-grey-light/50 mt-md border-t">
@@ -316,10 +302,13 @@ export function PetForm({ initial, artStyle, pickerEnabled }: PetFormProps) {
 
       <Body size="caption">Your pet is the hero; you (or anyone else) can join as a companion on the next step.</Body>
 
-      <div className="pt-md flex justify-end">
-        <Button type="submit" variant="primary" disabled={isPending || uploading}>
-          {isPending ? 'Saving…' : 'Continue →'}
-        </Button>
+      <div className="pt-md space-y-sm">
+        <FormBlockedNotice show={hasFieldErrors(errors)} />
+        <div className="flex justify-end">
+          <Button type="submit" variant="primary" disabled={isPending || uploading}>
+            {isPending ? 'Saving…' : 'Continue →'}
+          </Button>
+        </div>
       </div>
     </form>
   );
