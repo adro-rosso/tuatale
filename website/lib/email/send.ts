@@ -27,7 +27,10 @@ export type SendEmailResult =
   | { success: true; messageId: string }
   | { success: false; error: string };
 
-const DEFAULT_FROM = 'onboarding@resend.dev';
+// Real sender on the verified tuatale.com domain (Resend). EMAIL_FROM (Vercel env) overrides
+// this at send time; the default is the real domain so an unset env still sends from Tuatale,
+// not Resend's shared onboarding sandbox.
+const DEFAULT_FROM = 'Tuatale <hello@tuatale.com>';
 const FAKE_EMAIL_FLAG = 'E2E_TEST_MODE_FAKE_EMAIL_SEND';
 
 // Module-load defensive: if the test-mode flag somehow leaks into a

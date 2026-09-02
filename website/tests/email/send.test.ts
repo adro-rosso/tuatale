@@ -64,12 +64,12 @@ describe('sendEmail', () => {
     expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ from: 'hello@tuatale.com.au' }));
   });
 
-  it('falls back to onboarding@resend.dev when EMAIL_FROM is unset', async () => {
+  it('falls back to the Tuatale domain sender when EMAIL_FROM is unset', async () => {
     delete process.env.EMAIL_FROM;
     sendSpy.mockResolvedValue({ data: { id: 'msg_x' }, error: null });
     await sendEmail(validContent);
     expect(sendSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ from: 'onboarding@resend.dev' }),
+      expect.objectContaining({ from: 'Tuatale <hello@tuatale.com>' }),
     );
   });
 
@@ -78,7 +78,7 @@ describe('sendEmail', () => {
     sendSpy.mockResolvedValue({ data: { id: 'msg_x' }, error: null });
     await sendEmail(validContent);
     expect(sendSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ from: 'onboarding@resend.dev' }),
+      expect.objectContaining({ from: 'Tuatale <hello@tuatale.com>' }),
     );
   });
 
