@@ -99,17 +99,32 @@ export function buildPickerSubject({ role, inputs, story }) {
 // no multiple poses" guard is load-bearing: without it, angle/turn language ("three-quarter
 // turn") makes the model render a character model-sheet (a head + several body poses) instead
 // of one distinct option (caught by the local spike, 2026-09-01).
-export const PICKER_POSE_VARIANTS = [
+//
+// HUMAN options (the framing tweaks that already read well on a person).
+export const HUMAN_POSE_VARIANTS = [
   "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE figure in ONE pose — calm and front-facing, full-body, squared to the camera and centred. Do NOT draw multiple poses, panels, or a character turnaround. Do not change the expression — keep it neutral.",
   "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE figure in ONE pose — standing at a gentle three-quarter angle, the body turned slightly to one side, shown full-body. Do NOT draw multiple poses, panels, or a character turnaround. Do not change the expression — keep it neutral.",
   "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE figure in ONE pose — framed a little closer, from the chest up, at a slightly raised or lowered eye level, with the face clearly visible. Do NOT draw multiple poses, panels, or a character turnaround. Do not change the expression — keep it neutral.",
 ];
 
+// NON-HUMAN (pet/animal) options — framing tweaks read too subtle on an animal, so vary the
+// POSE itself in animal-legible ways (standing / sitting / head-turned). HARD CONSTRAINT: each
+// must stay a clean LOCKED-view-0 base reference (the pick anchors the whole book's sheet
+// chain) — FULL BODY, FACE clearly visible, neutral, and NEVER curled up / lying hidden /
+// cropped / obscured.
+export const PET_POSE_VARIANTS = [
+  "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE animal in ONE pose — STANDING squarely on all fours (or upright as natural for the species), the WHOLE BODY visible, facing the camera with the FACE CLEARLY VISIBLE. Do NOT curl up, lie down, hide or crop the body or face, and do NOT draw multiple poses or a turnaround. Keep it calm and neutral.",
+  "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE animal in ONE pose — SITTING upright and calm, the WHOLE BODY visible in the seated posture, facing the camera with the FACE CLEARLY VISIBLE. Do NOT curl up, lie down, hide or crop the body or face, and do NOT draw multiple poses or a turnaround. Keep it calm and neutral.",
+  "POSE, ANGLE & FRAMING: render a SINGLE illustration of ONE animal in ONE pose — STANDING or SITTING with the HEAD TURNED to look toward the camera at a gentle angle, the WHOLE BODY visible and the FACE CLEARLY VISIBLE. Do NOT curl up, lie down, hide or crop the body or face, and do NOT draw multiple poses or a turnaround. Keep it calm and neutral.",
+];
+
 /** The pose/angle/framing clause for a picker variant, or null when no variantIndex is given
- *  (the non-picker paths — book render + single preview — which must stay byte-identical). */
-export function pickerPoseVariant(variantIndex) {
+ *  (the non-picker paths — book render + single preview — which must stay byte-identical).
+ *  Non-human subjects get the animal-legible POSE set; everyone else keeps the human set. */
+export function pickerPoseVariant(variantIndex, subjectType) {
   if (variantIndex == null) return null;
-  return PICKER_POSE_VARIANTS[((variantIndex % PICKER_POSE_VARIANTS.length) + PICKER_POSE_VARIANTS.length) % PICKER_POSE_VARIANTS.length];
+  const set = subjectType === "non_human" ? PET_POSE_VARIANTS : HUMAN_POSE_VARIANTS;
+  return set[((variantIndex % set.length) + set.length) % set.length];
 }
 
 /**
@@ -125,7 +140,7 @@ export async function generatePickerOption({ role, inputs, artStyle, variantInde
   if (!subject) throw new Error(`picker: could not build subject for role=${role} name=${inputs?.name}`);
   const photoBufs = (photoPaths ?? []).map((p) => fs.readFileSync(p));
   const basePrompt = buildSubjectViewZeroPrompt(subject, story);
-  const poseClause = pickerPoseVariant(variantIndex);
+  const poseClause = pickerPoseVariant(variantIndex, inputs?.subject_type);
   const prompt = poseClause ? `${basePrompt}\n\n${poseClause}` : basePrompt;
   return generateImage(prompt, photoBufs, {}, callContext);
 }

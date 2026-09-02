@@ -4,7 +4,7 @@
 // the brand composition — NOT the loose cream-bg PHOTO_COND preview. (B) relaxes the
 // description SOURCE, never the faithfulness of the mint.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { buildPickerSubject, buildFaithfulStory, pickerPoseVariant, PICKER_POSE_VARIANTS } from "../../src/picker-mint.js";
+import { buildPickerSubject, buildFaithfulStory, pickerPoseVariant, HUMAN_POSE_VARIANTS, PET_POSE_VARIANTS } from "../../src/picker-mint.js";
 import { buildSubjectViewZeroPrompt } from "../../src/book-pipeline.js";
 import { resolveStyle, COMPOSITION_RULES, NEGATIVE_PROMPT } from "../../src/art-styles.js";
 
@@ -71,24 +71,41 @@ describe("picker-mint — per-variant pose/angle/framing differentiation", () =>
     expect(pickerPoseVariant(null)).toBeNull();
   });
 
-  it("variant 0/1/2 → three DISTINCT pose/angle/framing clauses", () => {
-    const v = [0, 1, 2].map(pickerPoseVariant);
-    expect(new Set(v).size).toBe(3); // all distinct
+  it("HUMAN (default) variant 0/1/2 → three DISTINCT clauses", () => {
+    const v = [pickerPoseVariant(0), pickerPoseVariant(1), pickerPoseVariant(2)];
+    expect(new Set(v).size).toBe(3);
     for (const clause of v) expect(clause).toMatch(/POSE, ANGLE & FRAMING/);
   });
 
-  it("every variant keeps the EXPRESSION NEUTRAL (locked rule) and never touches likeness/reference", () => {
-    for (const clause of PICKER_POSE_VARIANTS) {
-      expect(clause.toLowerCase()).toContain("neutral"); // reinforces the neutral-base rule
-      // must NOT introduce expression variation or override the reference-authority wording
-      expect(clause).not.toMatch(/happy|sad|smil|grin|frown|excited|expression (?!.*neutral)/i);
-      expect(clause).not.toMatch(/REFERENCE IS AUTHORITATIVE|likeness|photo/i);
+  it("NON-HUMAN → the animal-legible POSE set (standing / sitting / head-turned), NOT the human set", () => {
+    const pet = [0, 1, 2].map((i) => pickerPoseVariant(i, "non_human"));
+    expect(new Set(pet).size).toBe(3); // distinct
+    expect(pet).toEqual(PET_POSE_VARIANTS.slice(0, 3));
+    expect(pet[0]).not.toBe(pickerPoseVariant(0)); // differs from the human variant 0
+    expect(pet[0].toLowerCase()).toContain("standing");
+    expect(pet[1].toLowerCase()).toContain("sitting");
+    expect(pet[2].toLowerCase()).toMatch(/head turned|head-turned/);
+    // HARD CONSTRAINT: each pet variant stays a clean full-body, face-visible, non-obscured view-0
+    for (const clause of PET_POSE_VARIANTS) {
+      expect(clause.toLowerCase()).toContain("whole body");
+      expect(clause.toLowerCase()).toContain("face clearly visible");
+      expect(clause.toLowerCase()).toContain("do not curl up");
     }
   });
 
-  it("wraps out-of-range / negative indices safely", () => {
+  it("EVERY variant (human + pet) keeps expression NEUTRAL and never touches likeness/reference", () => {
+    for (const clause of [...HUMAN_POSE_VARIANTS, ...PET_POSE_VARIANTS]) {
+      expect(clause.toLowerCase()).toContain("neutral");
+      expect(clause).not.toMatch(/happy|sad|smil|grin|frown|excited|expression (?!.*neutral)/i);
+      expect(clause).not.toMatch(/REFERENCE IS AUTHORITATIVE|likeness|photo/i);
+      expect(clause).toMatch(/do NOT draw multiple poses/i); // the anti-turnaround guard is present
+    }
+  });
+
+  it("wraps out-of-range / negative indices safely (both sets)", () => {
     expect(pickerPoseVariant(3)).toBe(pickerPoseVariant(0));
-    expect(pickerPoseVariant(4)).toBe(pickerPoseVariant(1));
     expect(pickerPoseVariant(-1)).toBe(pickerPoseVariant(2));
+    expect(pickerPoseVariant(3, "non_human")).toBe(pickerPoseVariant(0, "non_human"));
+    expect(pickerPoseVariant(-1, "non_human")).toBe(pickerPoseVariant(2, "non_human"));
   });
 });
