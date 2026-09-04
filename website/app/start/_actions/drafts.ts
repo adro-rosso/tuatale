@@ -17,7 +17,14 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
-import { createDraft, getDraftById, touchDraftOpened, expireDraftNow } from '@/db/drafts';
+import { draftHasSubstance } from '@/lib/draft-substance';
+import {
+  createDraft,
+  getDraftByCookieId,
+  getDraftById,
+  touchDraftOpened,
+  expireDraftNow,
+} from '@/db/drafts';
 
 const WIZARD_STEPS = new Set(['child', 'secondaries', 'theme', 'style', 'preview', 'review', 'payment']);
 function stepPath(currentStep: string | null): string {
@@ -28,13 +35,24 @@ function multiDraftEnabled(): boolean {
   return process.env.MULTI_DRAFT_ENABLED === 'on';
 }
 
-/** Start a fresh book, PRESERVING the current one (parked under the same cookie). */
+/**
+ * Start a fresh book. The one being left is PARKED only if it shows real intention/effort
+ * (draftHasSubstance: past the character step OR a main photo uploaded); below that bar it's
+ * silently discarded — expired so the reaper erases the row + any photos — so a barely-touched
+ * draft never clutters "My books".
+ */
 export async function startNewBook(): Promise<void> {
   if (!multiDraftEnabled()) redirect('/start');
   const cookieId = await getDraftCookieFromRequest();
   // No cookie → let the proxy mint a first draft; nothing to preserve.
   if (!cookieId) redirect('/start');
-  // Same cookie_id → the old draft stays active + parked; the new one's default last_opened_at
+  // Discard the draft being left when it's below the substance bar; otherwise leave it active
+  // (parked). expireDraftNow rides the existing erasure (reaper unlinks photos) — no orphans.
+  const current = await getDraftByCookieId(cookieId);
+  if (current && !draftHasSubstance(current)) {
+    await expireDraftNow(current.id);
+  }
+  // Same cookie_id → any kept draft stays active + parked; the new one's default last_opened_at
   // makes it current. Fresh drafts always begin at the child step.
   await createDraft(cookieId);
   revalidatePath('/start', 'layout');

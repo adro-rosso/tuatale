@@ -21,6 +21,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/lib/draft-cookie', () => ({ getDraftCookieFromRequest: vi.fn() }));
 vi.mock('@/db/drafts', () => ({
   createDraft: vi.fn(),
+  getDraftByCookieId: vi.fn(),
   getDraftById: vi.fn(),
   touchDraftOpened: vi.fn(),
   expireDraftNow: vi.fn(),
@@ -28,7 +29,15 @@ vi.mock('@/db/drafts', () => ({
 
 import { startNewBook, switchToDraft, deleteDraft } from '@/app/start/_actions/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
-import { createDraft, getDraftById, touchDraftOpened, expireDraftNow } from '@/db/drafts';
+import {
+  createDraft,
+  getDraftByCookieId,
+  getDraftById,
+  touchDraftOpened,
+  expireDraftNow,
+} from '@/db/drafts';
+
+const byCookie = getDraftByCookieId as ReturnType<typeof vi.fn>;
 
 const cookie = getDraftCookieFromRequest as ReturnType<typeof vi.fn>;
 const redirectUrl = () => redirectSpy.mock.calls.at(-1)?.[0] as string | undefined;
@@ -45,6 +54,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.MULTI_DRAFT_ENABLED = 'on';
   cookie.mockResolvedValue('cookie-1');
+  byCookie.mockResolvedValue(null); // default: no current draft to park/discard
 });
 
 describe('multi-draft actions — flag gate', () => {
@@ -61,15 +71,41 @@ describe('multi-draft actions — flag gate', () => {
 });
 
 describe('startNewBook', () => {
-  it('creates a new draft on the SAME cookie (old parked) → /start/child', async () => {
+  it('no current draft → just creates a fresh one → /start/child', async () => {
     await run(startNewBook);
+    expect(createDraft).toHaveBeenCalledWith('cookie-1');
+    expect(expireDraftNow).not.toHaveBeenCalled();
+    expect(redirectUrl()).toBe('/start/child');
+  });
+
+  it('PARKS a substantial current draft (past character step) — no discard', async () => {
+    byCookie.mockResolvedValue({ id: 'd-old', current_step: 'theme', photo_urls: {} });
+    await run(startNewBook);
+    expect(expireDraftNow).not.toHaveBeenCalled(); // kept/parked
     expect(createDraft).toHaveBeenCalledWith('cookie-1');
     expect(redirectUrl()).toBe('/start/child');
   });
-  it('no cookie → bounce, nothing created', async () => {
+
+  it('PARKS a current draft that has a main photo even on the character step', async () => {
+    byCookie.mockResolvedValue({ id: 'd-old', current_step: 'child', photo_urls: { pet: ['uploads/p.png'] } });
+    await run(startNewBook);
+    expect(expireDraftNow).not.toHaveBeenCalled();
+    expect(createDraft).toHaveBeenCalledWith('cookie-1');
+  });
+
+  it('DISCARDS a barely-touched current draft (early step, no photos) before creating', async () => {
+    byCookie.mockResolvedValue({ id: 'd-old', current_step: 'child', photo_urls: {} });
+    await run(startNewBook);
+    expect(expireDraftNow).toHaveBeenCalledWith('d-old'); // silently discarded (reaper cleans up)
+    expect(createDraft).toHaveBeenCalledWith('cookie-1');
+    expect(redirectUrl()).toBe('/start/child');
+  });
+
+  it('no cookie → bounce, nothing created or discarded', async () => {
     cookie.mockResolvedValue(null);
     await run(startNewBook);
     expect(createDraft).not.toHaveBeenCalled();
+    expect(expireDraftNow).not.toHaveBeenCalled();
     expect(redirectUrl()).toBe('/start');
   });
 });

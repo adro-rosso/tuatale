@@ -11,6 +11,7 @@
  */
 import { createServerClient, type TuataleSupabaseClient } from '@/lib/supabase';
 import type { Tables, TablesInsert, TablesUpdate } from '@/types/database';
+import { draftHasSubstance } from '@/lib/draft-substance';
 import { DatabaseError } from './errors';
 
 // Convenience aliases for the official generated Tables<>/Inserts<>/Updates<>
@@ -74,8 +75,11 @@ export interface DraftSummary {
 }
 
 /**
- * List ALL active drafts for a browser cookie, most-recently-opened first — the switcher's
- * data. A cookie legitimately owns several (each "start another" parks the previous one).
+ * List the active drafts for a browser cookie worth showing in "My books", most-recently-opened
+ * first. A cookie legitimately owns several (each "start another" parks the previous one) — but
+ * only drafts that clear the substance bar (draftHasSubstance: past the character step OR a main
+ * photo uploaded) are listed, so barely-touched drafts don't clutter the switcher. photo_urls is
+ * selected only to evaluate the bar; it's dropped from the returned summary.
  */
 export async function listActiveDraftsByCookieId(
   cookieId: string,
@@ -83,14 +87,26 @@ export async function listActiveDraftsByCookieId(
 ): Promise<DraftSummary[]> {
   const { data, error } = await client
     .from('drafts')
-    .select('id, child_name, book_type, current_step, created_at, last_opened_at')
+    .select('id, child_name, book_type, current_step, created_at, last_opened_at, photo_urls')
     .eq('cookie_id', cookieId)
     .eq('status', 'active')
     .gt('expires_at', new Date().toISOString())
     .order('last_opened_at' as 'created_at', { ascending: false })
     .order('created_at', { ascending: false });
   if (error) throw new DatabaseError('drafts.listActiveByCookieId', error);
-  return (data ?? []) as unknown as DraftSummary[];
+  // last_opened_at + photo_urls trail the generated types → cast through unknown, then evaluate
+  // the substance bar and drop photo_urls (selected only to score the bar) from the summary.
+  const rows = (data ?? []) as unknown as Array<DraftSummary & { photo_urls: unknown }>;
+  return rows
+    .filter((d) => draftHasSubstance(d))
+    .map((d) => ({
+      id: d.id,
+      child_name: d.child_name,
+      book_type: d.book_type,
+      current_step: d.current_step,
+      created_at: d.created_at,
+      last_opened_at: d.last_opened_at,
+    }));
 }
 
 /**
