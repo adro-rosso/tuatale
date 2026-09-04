@@ -4,6 +4,8 @@ import { Wordmark } from '@/components/Wordmark';
 import { Container } from '@/components/ui/Container';
 import { WizardLayout } from '@/components/wizard/WizardLayout';
 import { getDraft } from '@/lib/draft-fetch';
+import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
+import { listActiveDraftsByCookieId, type DraftSummary } from '@/db/drafts';
 
 /**
  * Layout for the /start/* route group.
@@ -56,11 +58,23 @@ export default async function StartLayout({ children }: { children: ReactNode })
 
   const bookType = draft?.book_type ?? 'child';
 
+  // Multi-draft "My books" switcher (MULTI_DRAFT_ENABLED, server-only, default off). When on,
+  // list this browser's active drafts for the header menu. Off → no list, no switcher.
+  const multiDraftEnabled = process.env.MULTI_DRAFT_ENABLED === 'on';
+  let drafts: DraftSummary[] | undefined;
+  if (multiDraftEnabled) {
+    const cookieId = await getDraftCookieFromRequest();
+    drafts = cookieId ? await listActiveDraftsByCookieId(cookieId) : [];
+  }
+
   return (
     <WizardLayout
       childName={draft?.child_name ?? null}
       bookType={bookType}
       secondariesForPricing={secondariesForPricing}
+      multiDraftEnabled={multiDraftEnabled}
+      drafts={drafts}
+      currentDraftId={draft?.id ?? null}
       // Price appears ONLY at the end of the book-customisation flow: the review step
       // shows the itemised total (sidebar), and payment renders its own full summary.
       // Earlier steps (hero, style, child, secondaries, theme, preview) show NO price, so

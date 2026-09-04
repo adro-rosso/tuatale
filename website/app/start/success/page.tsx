@@ -118,6 +118,17 @@ function ConfirmationState({
         </div>
       </div>
 
+      {process.env.MULTI_DRAFT_ENABLED === 'on' ? (
+        <div className="pt-sm text-center">
+          <a
+            href="/start"
+            className="font-heading text-body bg-iron-oxide text-paper px-lg py-sm inline-block rounded-full not-italic"
+          >
+            Create another book
+          </a>
+        </div>
+      ) : null}
+
       <Body size="caption" className="text-warm-grey">
         Questions? Reply to your confirmation email or write to{' '}
         <a href="mailto:hello@tuatale.com" className="text-iron-oxide hover:underline">

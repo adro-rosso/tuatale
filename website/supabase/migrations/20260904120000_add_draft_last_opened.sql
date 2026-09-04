@@ -1,0 +1,12 @@
+-- Multi-draft / start-another: a cookie can already own many active drafts (no unique
+-- constraint on cookie_id); getDraftByCookieId just picks the most recent. This column lets
+-- a customer SWITCH which of their parked drafts is "current" without deleting the others.
+--
+-- last_opened_at is bumped whenever a draft is opened/switched-to. The resolver orders by
+-- last_opened_at DESC (created_at as a tiebreak), so a switched-to draft (last_opened_at =
+-- now()) becomes the current one; a brand-new draft is current on creation via the default.
+-- `default now()` so every new draft auto-populates it (no insert change) and existing rows
+-- backfill to the migration time — harmless, since pre-feature each cookie has a single active
+-- draft. Additive → safe to apply ahead of the feature code; inert until the flagged MULTI_DRAFT
+-- feature starts creating multiple drafts + switching.
+alter table public.drafts add column if not exists last_opened_at timestamptz default now();

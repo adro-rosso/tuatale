@@ -5,6 +5,7 @@ import { ProgressIndicator } from './ProgressIndicator';
 import { StepHeader } from './StepHeader';
 import { WizardNav } from './WizardNav';
 import { PricePanel } from './PricePanel';
+import type { DraftSummary } from '@/db/drafts';
 
 interface WizardLayoutProps {
   children: ReactNode;
@@ -16,6 +17,10 @@ interface WizardLayoutProps {
   /** Whether to show the price sidebar. Off on the payment step, which renders
    *  its own full order summary (so the price isn't shown twice). */
   showPrice?: boolean;
+  /** MULTI_DRAFT_ENABLED — the "My books" switcher in the header. */
+  multiDraftEnabled?: boolean;
+  drafts?: DraftSummary[];
+  currentDraftId?: string | null;
 }
 
 /**
@@ -33,12 +38,21 @@ export function WizardLayout({
   bookType,
   secondariesForPricing,
   showPrice = true,
+  multiDraftEnabled = false,
+  drafts,
+  currentDraftId,
 }: WizardLayoutProps) {
   return (
     <main className="bg-cream flex min-h-screen flex-col">
       <SiteHeader />
       <ProgressIndicator />
-      <StepHeader childName={childName} bookType={bookType} />
+      <StepHeader
+        childName={childName}
+        bookType={bookType}
+        multiDraftEnabled={multiDraftEnabled}
+        drafts={drafts}
+        currentDraftId={currentDraftId}
+      />
 
       <section className="desktop:justify-center flex flex-1 flex-col">
         <Container className="py-xl tablet:py-2xl">

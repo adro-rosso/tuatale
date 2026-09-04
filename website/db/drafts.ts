@@ -47,13 +47,82 @@ export async function getDraftByCookieId(
   const { data, error } = await client
     .from('drafts')
     .select('*')
+    // Multi-draft: the CURRENT draft is the most recently opened/switched-to (last_opened_at),
+    // falling back to most recently created (the tiebreak also covers pre-migration rows).
+    // last_opened_at trails the generated types until they're regenerated → cast the column.
+    .order('last_opened_at' as 'created_at', { ascending: false })
     .eq('cookie_id', cookieId)
     .eq('status', 'active')
+    // Don't resolve a draft that's past expiry (a reaper-lagging or just-removed one) — if the
+    // cookie has other parked drafts, resolution falls to the next; else the proxy mints fresh.
+    .gt('expires_at', new Date().toISOString())
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new DatabaseError('drafts.getByCookieId', error);
   return data;
+}
+
+/** A lightweight draft summary for the "My books" switcher. */
+export interface DraftSummary {
+  id: string;
+  child_name: string | null;
+  book_type: string | null;
+  current_step: string | null;
+  created_at: string;
+  last_opened_at: string | null;
+}
+
+/**
+ * List ALL active drafts for a browser cookie, most-recently-opened first — the switcher's
+ * data. A cookie legitimately owns several (each "start another" parks the previous one).
+ */
+export async function listActiveDraftsByCookieId(
+  cookieId: string,
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<DraftSummary[]> {
+  const { data, error } = await client
+    .from('drafts')
+    .select('id, child_name, book_type, current_step, created_at, last_opened_at')
+    .eq('cookie_id', cookieId)
+    .eq('status', 'active')
+    .gt('expires_at', new Date().toISOString())
+    .order('last_opened_at' as 'created_at', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw new DatabaseError('drafts.listActiveByCookieId', error);
+  return (data ?? []) as unknown as DraftSummary[];
+}
+
+/**
+ * "Delete" a draft the customer no longer wants: set its expiry into the past so the existing
+ * reaper removes the row AND cleans up its photos (reference-counted) on the next run — and it
+ * drops out of getDraftByCookieId / the switcher immediately (both filter expires_at > now).
+ * Ownership (cookie_id match) is enforced by the caller.
+ */
+export async function expireDraftNow(
+  id: string,
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<void> {
+  const { error } = await client
+    .from('drafts')
+    .update({ expires_at: new Date(Date.now() - 1000).toISOString() } as never)
+    .eq('id', id);
+  if (error) throw new DatabaseError('drafts.expireNow', error);
+}
+
+/**
+ * Mark a draft as just-opened (bumps last_opened_at → makes it the current draft for its
+ * cookie). Used by switchToDraft. Ownership is enforced by the caller (cookie_id match).
+ */
+export async function touchDraftOpened(
+  id: string,
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<void> {
+  const { error } = await client
+    .from('drafts')
+    .update({ last_opened_at: new Date().toISOString() } as never)
+    .eq('id', id);
+  if (error) throw new DatabaseError('drafts.touchOpened', error);
 }
 
 /**

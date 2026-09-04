@@ -2,6 +2,8 @@
 
 import { useSelectedLayoutSegment } from 'next/navigation';
 import { WIZARD_STEPS, isWizardStep, stepIndex, type WizardStep } from '@/lib/wizard-steps';
+import { MyBooksMenu } from './MyBooksMenu';
+import type { DraftSummary } from '@/db/drafts';
 
 /**
  * Step header — renders the "Step N of 6" caption and the personalised
@@ -16,6 +18,10 @@ import { WIZARD_STEPS, isWizardStep, stepIndex, type WizardStep } from '@/lib/wi
 interface StepHeaderProps {
   childName: string | null;
   bookType: string;
+  /** MULTI_DRAFT_ENABLED — shows the "My books" switcher when on. */
+  multiDraftEnabled?: boolean;
+  drafts?: DraftSummary[];
+  currentDraftId?: string | null;
 }
 
 function heading(step: WizardStep, name: string | null, bookType: string): string {
@@ -41,13 +47,18 @@ function heading(step: WizardStep, name: string | null, bookType: string): strin
   return name ?? 'them'; // unreachable, satisfies TS exhaustiveness
 }
 
-export function StepHeader({ childName, bookType }: StepHeaderProps) {
+export function StepHeader({ childName, bookType, multiDraftEnabled, drafts, currentDraftId }: StepHeaderProps) {
   const segment = useSelectedLayoutSegment();
   if (!segment || !isWizardStep(segment)) return null;
   const i = stepIndex(segment);
 
   return (
-    <header className="px-lg pt-sm pb-md text-center">
+    <header className="px-lg pt-sm pb-md relative text-center">
+      {multiDraftEnabled && drafts ? (
+        <div className="top-sm right-lg absolute z-10">
+          <MyBooksMenu drafts={drafts} currentDraftId={currentDraftId ?? null} />
+        </div>
+      ) : null}
       <p className="font-body text-warm-grey text-caption mb-xs tracking-[0.18em] uppercase">
         Step {i + 1} of {WIZARD_STEPS.length}
       </p>
