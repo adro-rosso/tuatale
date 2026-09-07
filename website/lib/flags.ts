@@ -16,3 +16,12 @@
  * post-payment (charged, no book).
  */
 export const isAdultBranchEnabled = (): boolean => process.env.ADULT_BRANCH_ENABLED === 'on';
+
+/**
+ * Self-serve post-order email correction (Batch 4b). Gates the "Fix it" affordance on the
+ * success page AND the correctOrderEmail action (fail-closed: off → the action refuses and
+ * points to support). Default OFF until the email_change_log migration has landed in the shared
+ * prod Supabase and Adro has judged it on Preview.
+ */
+export const isEmailCorrectionEnabled = (): boolean =>
+  process.env.EMAIL_CORRECTION_ENABLED === 'on';

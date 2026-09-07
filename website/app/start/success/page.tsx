@@ -2,6 +2,8 @@ import { getOrderByStripeSessionId } from '@/db/orders';
 import { Body } from '@/components/ui/Body';
 import { Heading } from '@/components/ui/Heading';
 import { formatPrice } from '@/lib/pricing';
+import { isEmailCorrectionEnabled } from '@/lib/flags';
+import { EmailFixPanel } from './_components/EmailFixPanel';
 
 /**
  * Post-payment landing page.
@@ -54,11 +56,12 @@ export default async function SuccessStepPage({
     return <ProcessingState sessionId={session_id} nextAttempt={attemptNum + 1} />;
   }
 
-  return <ConfirmationState order={order} />;
+  return <ConfirmationState order={order} sessionId={session_id} />;
 }
 
 function ConfirmationState({
   order,
+  sessionId,
 }: {
   order: {
     id: string;
@@ -68,6 +71,7 @@ function ConfirmationState({
     amount_paid_cents: number;
     currency: string;
   };
+  sessionId: string;
 }) {
   const themeExcerpt = order.theme.length > 100 ? `${order.theme.slice(0, 100)}…` : order.theme;
   // First eight characters of the UUID — enough for a customer to
@@ -85,6 +89,9 @@ function ConfirmationState({
           <span className="text-near-black">{order.customer_email}</span> when it&apos;s ready to
           see. This usually takes 3-5 days.
         </Body>
+        {isEmailCorrectionEnabled() ? (
+          <EmailFixPanel sessionId={sessionId} currentEmail={order.customer_email} />
+        ) : null}
       </div>
 
       <div className="border-warm-grey-light bg-cream-deep p-lg space-y-sm rounded-lg border text-left">

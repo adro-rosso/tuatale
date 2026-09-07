@@ -75,6 +75,36 @@ export async function getOrderByStripeSessionId(
 }
 
 /**
+ * One entry in orders.email_change_log — an append-only audit of customer_email changes.
+ * `source` distinguishes channels (self-serve success page vs. a future admin edit).
+ */
+export interface EmailChangeLogEntry {
+  from: string;
+  to: string;
+  at: string; // ISO timestamp
+  source: string;
+}
+
+/**
+ * Apply a self-serve email correction: set customer_email AND replace email_change_log with the
+ * caller-computed (existing + new entry) array, in one write. The caller already fetched the
+ * order (ownership + shipped gate + current log), so it owns the append. email_change_log lags
+ * the generated types (project_migration-history-drift) → cast the write.
+ */
+export async function applyEmailCorrection(
+  id: string,
+  newEmail: string,
+  log: EmailChangeLogEntry[],
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<void> {
+  const { error } = await client
+    .from('orders')
+    .update({ customer_email: newEmail, email_change_log: log } as never)
+    .eq('id', id);
+  if (error) throw new DatabaseError('orders.applyEmailCorrection', error);
+}
+
+/**
  * Patch the pipeline-related fields on an order (status, timing, error
  * payload, output URLs). Called from the pipeline integration layer in
  * Phase 4. Order's customer / child / payment fields are never patched
