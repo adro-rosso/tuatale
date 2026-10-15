@@ -37,7 +37,7 @@ import { loadTemplateRegistry, findTemplate } from "./template-registry.js";
 import { renderPageWithTemplate } from "./page-pipeline.js";
 import { deriveSheetAppearance } from "./appearance-derive.js";
 import { pageNegativePrompt } from "./art-styles.js";
-import { checkPage as qaCheckPage } from "./page-qa.js";
+import { checkPage as qaCheckPage, checkSheetIdentity as qaCheckSheet } from "./page-qa.js";
 import { composeAppearance, injectOutfit, composeMarkClause } from "./character-features.js";
 import { allocate } from "./allocator.js";
 import { WallCeilingError } from "./wall-ceiling.js";
@@ -727,6 +727,7 @@ export async function generateBook({
   let sheetsActualCost = 0;
   let sheetsCompletedCount = totalSheetsNeeded - sheetsToMintCount;
   const sheetResults = [];
+  const sheetQaEvents = []; // mint-time identity QA re-mints / anchor fallbacks (QA_GATE_ENABLED)
   const subjectSheetStatus = {};
 
   log.log();
@@ -929,9 +930,38 @@ export async function generateBook({
         currentStep: { kind: "sheet_mint", detail: `${subject.name} view ${i + 1}`, started_at: new Date().toISOString() },
       });
       try {
-        const buf = await generateImage(fullPrompt, refs, {}, {
+        let buf = await generateImage(fullPrompt, refs, {}, {
           callKind: "sheet_mint", subjectName: subject.name, view: i + 1, onSlowCall,
         });
+        // ---- Mint-time identity QA (QA_GATE_ENABLED) for CHAINED views --------------------
+        // A chained view that drifts from the anchor (observed 2026-10: chocolate labradoodle
+        // view-0 → pale-golden views 2-3) poisons EVERY page that references it, and no page
+        // re-roll can fix wrong references. Check vs the anchor; re-mint once; if still off,
+        // FALL BACK to the anchor image for this view — the subject keeps its full sheet set
+        // (R1 completeness gate unaffected) and no off-model reference ever reaches a page.
+        if (i > 0 && refs.length > 0 && anchorBuf && process.env.QA_GATE_ENABLED === "on") {
+          const budget = Math.max(0, Number(process.env.QA_REROLL_BUDGET ?? 1) || 0);
+          const idq = () => qaCheckSheet({ anchorBuffer: anchorBuf, candidateBuffer: buf, subjectType: subject.subject_type, animalKind: subject.animalKind });
+          let q = await idq();
+          let tries = 0;
+          while (q.verdict === "different" && tries < budget) {
+            tries += 1;
+            log.log(`    ⟳ sheet QA: ${subject.name} view ${i + 1} drifted from the anchor (${q.summary}) — re-minting ${tries}/${budget}`);
+            emit({ event: { kind: "sheet_qa_remint", subject: subject.name, view: i + 1, attempt: tries, reason: q.summary } });
+            await sleep(MIN_GEMINI_CALL_GAP_MS);
+            buf = await generateImage(fullPrompt, refs, {}, { callKind: "sheet_mint", subjectName: subject.name, view: i + 1, onSlowCall });
+            sheetsActualCost += GEMINI_IMAGE_USD_PER_CALL;
+            q = await idq();
+          }
+          if (q.verdict === "different") {
+            log.log(`    ⚑ sheet QA: ${subject.name} view ${i + 1} still off-model after ${tries} re-mint(s) — using the anchor image for this view`);
+            emit({ event: { kind: "sheet_qa_fallback", subject: subject.name, view: i + 1, reason: q.summary } });
+            buf = anchorBuf;
+            sheetQaEvents.push({ subject: subject.name, view: i + 1, remints: tries, fallback: true, summary: q.summary });
+          } else if (tries) {
+            sheetQaEvents.push({ subject: subject.name, view: i + 1, remints: tries, fallback: false, summary: q.summary });
+          }
+        }
         const ms = Date.now() - t0;
         fs.writeFileSync(filePath, buf);
         subjectBufs.push(buf);
@@ -1552,6 +1582,8 @@ export async function generateBook({
     qa_checked: qaResults.length,
     qa_flagged: qaResults.filter((q) => q.verdict === "FLAGGED").length,
     qa_rerolls: qaResults.reduce((n, q) => n + (q.rerolls || 0), 0),
+    sheet_qa_remints: sheetQaEvents.reduce((n, e) => n + (e.remints || 0), 0),
+    sheet_qa_fallbacks: sheetQaEvents.filter((e) => e.fallback).length,
     total_cost_usd: Number(totalCost.toFixed(4)),
     total_gemini_calls: totalCalls,
     locked_bike_colour: bikeColour ?? null, // Spec D-B: canonical bike colour (audit)

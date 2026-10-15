@@ -24,11 +24,50 @@ const SYSTEM = `You are a quality checker for a children's picture book. You see
 Flag if ANY of these is clearly true:
 - IDENTITY (gross only): a character is recognisably the WRONG creature vs the sheet — wrong species, wrong breed, wrong coat TYPE (curly vs smooth), wildly different body colour, or clearly a different individual. Do NOT flag a faint/missing single marking, expression, pose, camera distance, outfit colour, or small tone shifts.
 - SETTING/ACTION (gross only): the page is clearly somewhere else or doing something else than described — e.g. text says an indoor hallway but it reads as outdoors, or the described central action is absent. Do NOT flag pose or prop details (sitting vs standing, a door open vs closed, a hand position) — those are the illustrator's call.
-- DEFECTS: a baked-in border/frame/box/ruled line around or across the art; duplicated/extra/mirrored limbs; merged or disconnected anatomy (a limb through a wall/door); baked-in lettering/words/numbers; indoor/outdoor elements fused (grass on a floor); other obvious render corruption.
+- DEFECTS: a baked-in border/frame/box/ruled line around or across the art; duplicated/extra/mirrored limbs; merged or disconnected anatomy (a limb through a wall/door); baked-in lettering/words/numbers or an artist signature; indoor/outdoor elements fused (grass on a floor); other obvious render corruption.
+
+NOT a defect: a large blank cream/white area reserved for the story text — a side column (left or right) or a strip along the bottom — is BY DESIGN on these page layouts. Never flag the art for not filling that reserved area.
 
 When unsure, prefer "pass" — a false alarm wastes a redraw. Respond ONLY with JSON:
 {"identity":[{"name":str,"status":"on"|"off","note":str}],"scene_match":{"status":"match"|"mismatch","note":str},"defects":[{"type":"border"|"limb_duplication"|"merged_anatomy"|"baked_text"|"setting_fusion"|"other","note":str}],"verdict":"pass"|"flag","summary":str}
 verdict is "flag" iff any identity "off" OR scene_match "mismatch" OR defects non-empty.`;
+
+const SHEET_SYSTEM = `You compare two character-sheet illustrations of what should be the SAME individual. Image 1 is the ANCHOR (authoritative). Image 2 is a CANDIDATE view minted from it. Answer whether the candidate is recognisably the same creature as the anchor.
+
+Judge GROSS identity only: species/breed, coat or hair TYPE (curly vs smooth), and overall body/coat COLOUR (e.g. chocolate-brown vs pale golden is DIFFERENT; a slightly lighter shade of the same brown is SAME), plus build. Pose, angle, expression, framing and background are irrelevant.
+
+Respond ONLY with JSON: {"verdict":"same"|"different","summary":str}`;
+
+/**
+ * Mint-time identity check: is a chained character-sheet view the same creature as the locked/
+ * photo-anchored view-0? Catches chained-view drift (e.g. a chocolate labradoodle re-minted as
+ * pale golden), which otherwise poisons every page that references that view.
+ * Soft-fail: any error → "same" (never blocks a mint).
+ */
+export async function checkSheetIdentity({ anchorBuffer, candidateBuffer, subjectType, animalKind, timeoutMs = 45000 }) {
+  const t0 = Date.now();
+  const client = getClient();
+  if (!client || !anchorBuffer || !candidateBuffer) return { verdict: "same", summary: "sheet qa skipped", error: "no_key_or_input", ms: 0 };
+  try {
+    const what = subjectType === "non_human" ? `a ${animalKind || "pet"}` : "a person";
+    const resp = await client.messages.create(
+      {
+        model: QA_MODEL, max_tokens: 300, system: SHEET_SYSTEM,
+        messages: [{ role: "user", content: [
+          { type: "text", text: `Image 1 — ANCHOR (${what}):` }, img(anchorBuffer),
+          { type: "text", text: "Image 2 — CANDIDATE view:" }, img(candidateBuffer),
+          { type: "text", text: "Same creature as the anchor? Reply with ONLY the JSON object." },
+        ] }],
+      },
+      { timeout: timeoutMs },
+    );
+    const txt = (resp?.content ?? []).map((b) => b?.text ?? "").join("");
+    const raw = JSON.parse(txt.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    return { verdict: raw.verdict === "different" ? "different" : "same", summary: raw.summary ?? "", ms: Date.now() - t0 };
+  } catch (err) {
+    return { verdict: "same", summary: `sheet qa skipped: ${err?.message ?? err}`, error: String(err?.message ?? err), ms: Date.now() - t0 };
+  }
+}
 
 const mediaType = (buf) => (buf[0] === 0xff && buf[1] === 0xd8 ? "image/jpeg" : "image/png");
 const img = (buf) => ({ type: "image", source: { type: "base64", media_type: mediaType(buf), data: buf.toString("base64") } });
