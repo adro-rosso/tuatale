@@ -1,8 +1,8 @@
 // Art-style source of truth (W-B). Includes the ZERO-BEHAVIOUR-CHANGE guard: the
 // default (watercolour) style string must be byte-identical to the pre-W-B constant,
 // so the default render path is unchanged.
-import { describe, it, expect } from "vitest";
-import { ART_STYLES, STYLE_VALUES, DEFAULT_STYLE, resolveStyle, validateArtStyle, COMPOSITION_RULES, NEGATIVE_PROMPT } from "../../src/art-styles.js";
+import { describe, it, expect, afterEach } from "vitest";
+import { ART_STYLES, STYLE_VALUES, DEFAULT_STYLE, resolveStyle, validateArtStyle, COMPOSITION_RULES, COMPOSITION_RULES_NATURAL, NEGATIVE_PROMPT, pageCompositionRules } from "../../src/art-styles.js";
 
 // The exact watercolour string that lived in anthropic.js / character-preview.js
 // before W-B. If this ever drifts, the default book + preview change — fail loudly.
@@ -51,5 +51,35 @@ describe("art-styles source of truth", () => {
     expect(validateArtStyle("")).toBe("watercolour");
     expect(validateArtStyle("cutpaper")).toBe("cutpaper");
     expect(() => validateArtStyle("bogus")).toThrow(/not a known style/);
+  });
+});
+
+describe("pageCompositionRules — ART_NATURAL_ENABLED page-composition gate", () => {
+  afterEach(() => { delete process.env.ART_NATURAL_ENABLED; });
+
+  it("flag OFF: returns the template's own customCompositionRules unchanged (byte-identical)", () => {
+    delete process.env.ART_NATURAL_ENABLED;
+    expect(pageCompositionRules("full body, clean uncluttered background, consistent framing, face clearly visible."))
+      .toBe("full body, clean uncluttered background, consistent framing, face clearly visible.");
+  });
+
+  it("flag OFF + no template rule: falls back to the stiff default", () => {
+    delete process.env.ART_NATURAL_ENABLED;
+    expect(pageCompositionRules(undefined))
+      .toBe("full body, centered subject, clean uncluttered background, consistent framing, face clearly visible.");
+  });
+
+  it("flag ON: returns the natural rule, overriding any template rule", () => {
+    process.env.ART_NATURAL_ENABLED = "on";
+    expect(pageCompositionRules("full body, centered subject, face clearly visible.")).toBe(COMPOSITION_RULES_NATURAL);
+    expect(pageCompositionRules(undefined)).toBe(COMPOSITION_RULES_NATURAL);
+    expect(COMPOSITION_RULES_NATURAL).not.toBe(COMPOSITION_RULES); // genuinely different direction
+  });
+
+  it("flag must be exactly 'on' (fail-closed)", () => {
+    for (const v of ["", "true", "ON", "1", "yes"]) {
+      process.env.ART_NATURAL_ENABLED = v;
+      expect(pageCompositionRules("x")).toBe("x");
+    }
   });
 });

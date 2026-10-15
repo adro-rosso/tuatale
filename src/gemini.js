@@ -183,6 +183,14 @@ async function generateBranch(prompt, referenceImages, options, callContext, dep
   };
 
   const ctx = { ...callContext, wallCeilingMs: callContext.wallCeilingMs ?? profile.wallCeilingMs };
+  // Per-call model log so model verification for a given job is a log lookup, not an inference
+  // (the job record never persists the model string). One line per generateImage call.
+  console.log(
+    `[gemini] model=${MODEL} kind=${callContext.callKind ?? "?"}` +
+    `${callContext.subjectName ? ` subj=${callContext.subjectName}` : ""}` +
+    `${callContext.view != null ? ` view=${callContext.view}` : ""}` +
+    `${callContext.pageNumber != null ? ` page=${callContext.pageNumber}` : ""}`,
+  );
   const response = await sharedCallWithRetry(thunk, ctx, classify);
   return extractImage(response);
 }

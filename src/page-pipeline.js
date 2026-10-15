@@ -26,7 +26,7 @@ import { detectCleanRegion } from "./region-detection.js";
 import { fitTextToRegion } from "./auto-fit.js";
 import { generateImage } from "./gemini.js";
 import { stripNarrativeMarkup, expandNarrativeMarkup } from "./text-utils.js";
-import { fillMediumTokens } from "./art-styles.js";
+import { fillMediumTokens, pageCompositionRules } from "./art-styles.js";
 
 const GEMINI_IMAGE_USD_PER_CALL = 0.04;
 
@@ -751,8 +751,10 @@ export async function renderPageWithTemplate({
       templateComposition = fillMediumTokens(templateComposition, styleMedium);
 
       const styleLine = config.imageGeneration.styleOverride || sceneStyle;
-      const compositionLine = config.imageGeneration.customCompositionRules
-        || "full body, centered subject, clean uncluttered background, consistent framing, face clearly visible.";
+      // ART_NATURAL_ENABLED (default off): candid/dynamic PAGE staging instead of the stiff
+      // "centered/face-forward" rule. Page scenes only — sheet mints keep the clean reference
+      // framing. Flag off → byte-identical (the template's customCompositionRules, else stiff).
+      const compositionLine = pageCompositionRules(config.imageGeneration.customCompositionRules);
 
       // Adapt each subject for the prompt builder: sheetCount = actual
       // reference count this call sends for that subject (already capped

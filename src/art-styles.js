@@ -11,6 +11,25 @@
 
 export const COMPOSITION_RULES =
   "full body, centered subject, clean uncluttered background, consistent framing, face clearly visible";
+// NATURAL page composition (ART_NATURAL_ENABLED, 2026-10). The stiff rule above protects likeness
+// (full-body/centered/face-forward) but forces posed-portrait staging on PAGE scenes — the root of
+// the "unnatural / weird positioning" complaint (see project_book-art-regression-diagnosis + the
+// A/B in output/_book-review-2026-09-25/naturalness-probe). This variant restores candid, dynamic
+// posing and lived-in staging while keeping faces readable; it is applied ONLY to page scenes
+// (page-pipeline), never to character-sheet mints (sheets stay clean full-body front-facing).
+export const COMPOSITION_RULES_NATURAL =
+  "natural candid posing with dynamic, expressive body language and lifelike gesture; an interesting, varied camera angle rather than a straight-on portrait; the subject may be off-centre, turned, mid-motion, or partially cropped by the frame; a lived-in setting with depth and foreground and background; faces remain clear and recognisable; a spontaneous real moment, not a posed studio shot";
+// The stiff fallback used when a template declares no customCompositionRules.
+const COMPOSITION_RULES_PAGE_FALLBACK =
+  "full body, centered subject, clean uncluttered background, consistent framing, face clearly visible.";
+
+/** Resolve the PAGE-scene `Composition:` line. ART_NATURAL_ENABLED (default off) → the candid/
+ * dynamic rule for every page; off → the template's own customCompositionRules (or the stiff
+ * fallback). Page scenes only — sheet mints keep COMPOSITION_RULES. Pure except the env read. */
+export function pageCompositionRules(templateCustomRules) {
+  if (process.env.ART_NATURAL_ENABLED === "on") return COMPOSITION_RULES_NATURAL;
+  return templateCustomRules || COMPOSITION_RULES_PAGE_FALLBACK;
+}
 export const NEGATIVE_PROMPT =
   "photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, letters, words, captions, lettering, numbers, signage, watermark";
 
