@@ -35,6 +35,7 @@ import { assembleFrontMatter } from "./front-matter.js";
 import { generateImage } from "./gemini.js";
 import { loadTemplateRegistry, findTemplate } from "./template-registry.js";
 import { renderPageWithTemplate } from "./page-pipeline.js";
+import { deriveSheetAppearance } from "./appearance-derive.js";
 import { composeAppearance, injectOutfit, composeMarkClause } from "./character-features.js";
 import { allocate } from "./allocator.js";
 import { WallCeilingError } from "./wall-ceiling.js";
@@ -324,6 +325,43 @@ export function deemphasiseMarkWording(appearance) {
     /(?:a |an )?(?:faint |small |tiny |little |prominent )*\b(mole|birthmark|scar)\b\s*(?:low|high)?\s*(?:on|sits on)\s+(his|her|their|the)\s+(left|right)\s+cheek\b(?:,?\s*just\s+\w+\s+the\s+eye)?/i,
     (_full, mark, pronoun, side) => `a small faint ${mark} on ${pronoun} ${side} cheek`,
   );
+}
+
+// A customer appearance shorter than this (chars) counts as "thin" — too little for the image
+// model to hold, so a photo-anchored subject's breed/identity drifts at page render. Benji's
+// "a white patch of fur on his chest" (~33) is thin; a written paragraph is not.
+export const THIN_MARKERS_MAXLEN = 80;
+
+/**
+ * B — rich likeness anchor (ART_NATURAL_ENABLED). For each photo-anchored subject whose
+ * customer-written appearance (markers) is thin, derive a sheet-neutral appearance from its
+ * MINTED sheet (the canonical, customer-anchored likeness) and SUPPLEMENT the page-time anchor
+ * (meta.description). The customer's own words stay the lead; the derived facts only reinforce,
+ * so rich customer text is never overridden. Mutates subjectMetaByName in place.
+ *
+ * `derive` is injected (test seam; defaults to the real vision call). Soft-fail throughout: a
+ * null/throwing derive leaves the original anchor untouched — this never breaks a book.
+ */
+export async function enrichThinPhotoAnchors(subjectMetaByName, subjectList, { derive = deriveSheetAppearance, log = null } = {}) {
+  for (const subj of subjectList) {
+    const meta = subjectMetaByName[subj.name];
+    if (!meta || meta.skipped) continue;
+    if (!subjectHasPhoto(subj)) continue;                          // sheet is canonical only for photo-anchored
+    if ((subj.markers || "").trim().length >= THIN_MARKERS_MAXLEN) continue; // rich customer text → leave it
+    const sheet = meta.allSheets?.[0];
+    if (!sheet) continue;
+    let derived = null;
+    try {
+      derived = await derive(sheet, { subjectType: meta.subjectType, animalKind: subj.animalKind });
+    } catch {
+      derived = null; // soft-fail
+    }
+    if (derived) {
+      meta.description = `${meta.description} Reference likeness: ${deemphasiseMarkWording(derived)}`;
+      log?.log?.(`  [anchor] enriched ${subj.name}'s appearance from the minted sheet`);
+    }
+  }
+  return subjectMetaByName;
 }
 
 // Build the subject list driving Section A. Protagonist always present;
@@ -1098,6 +1136,13 @@ export async function generateBook({
         skipped: status?.skipped === true,
       };
     }
+  }
+
+  // B — rich likeness anchor (ART_NATURAL_ENABLED): enrich thin photo-anchored subjects' page
+  // anchors from their minted sheets so the model stops guessing (breed-prior drift). Sheets are
+  // minted by now; soft-fail keeps the original anchor on any derive failure. Flag off → no-op.
+  if (process.env.ART_NATURAL_ENABLED === "on") {
+    await enrichThinPhotoAnchors(subjectMetaByName, subjectList, { log });
   }
 
   function resolveSceneSubjects(scene) {
