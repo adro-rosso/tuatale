@@ -30,6 +30,21 @@ export function pageCompositionRules(templateCustomRules) {
   if (process.env.ART_NATURAL_ENABLED === "on") return COMPOSITION_RULES_NATURAL;
   return templateCustomRules || COMPOSITION_RULES_PAGE_FALLBACK;
 }
+
+// Border terms for the PAGE negative axis (ART_NATURAL_ENABLED). Ink/graphic media draw a
+// rectangular frame or ruled panel border into the art (seen on the 2026-09 ink_wash review,
+// p4/p6). The positive NO_FRAME_EMPHASIS already asks for a bleed; per
+// project_prompt-negative-saturation a defect ALREADY named in the negative is saturated — but
+// "border" is not in NEGATIVE_PROMPT at all, so adding it on this axis is a real new lever.
+// Page scenes only; NEGATIVE_PROMPT itself (sheet mint + golden) is unchanged.
+export const NEGATIVE_BORDER_TERMS = "frame, border, box, ruled line, panel border";
+
+/** Resolve the PAGE-scene `Avoid:` line. Flag on → base negative + border terms; off → base. */
+export function pageNegativePrompt(baseNegativePrompt) {
+  const base = baseNegativePrompt || NEGATIVE_PROMPT;
+  if (process.env.ART_NATURAL_ENABLED === "on") return `${base}, ${NEGATIVE_BORDER_TERMS}`;
+  return base;
+}
 export const NEGATIVE_PROMPT =
   "photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, letters, words, captions, lettering, numbers, signage, watermark";
 

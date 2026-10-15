@@ -2,7 +2,7 @@
 // default (watercolour) style string must be byte-identical to the pre-W-B constant,
 // so the default render path is unchanged.
 import { describe, it, expect, afterEach } from "vitest";
-import { ART_STYLES, STYLE_VALUES, DEFAULT_STYLE, resolveStyle, validateArtStyle, COMPOSITION_RULES, COMPOSITION_RULES_NATURAL, NEGATIVE_PROMPT, pageCompositionRules } from "../../src/art-styles.js";
+import { ART_STYLES, STYLE_VALUES, DEFAULT_STYLE, resolveStyle, validateArtStyle, COMPOSITION_RULES, COMPOSITION_RULES_NATURAL, NEGATIVE_PROMPT, NEGATIVE_BORDER_TERMS, pageCompositionRules, pageNegativePrompt } from "../../src/art-styles.js";
 
 // The exact watercolour string that lived in anthropic.js / character-preview.js
 // before W-B. If this ever drifts, the default book + preview change — fail loudly.
@@ -81,5 +81,30 @@ describe("pageCompositionRules — ART_NATURAL_ENABLED page-composition gate", (
       process.env.ART_NATURAL_ENABLED = v;
       expect(pageCompositionRules("x")).toBe("x");
     }
+  });
+});
+
+describe("pageNegativePrompt — ART_NATURAL_ENABLED page-negative border gate", () => {
+  afterEach(() => { delete process.env.ART_NATURAL_ENABLED; });
+
+  it("flag OFF: returns the base negative unchanged (byte-identical)", () => {
+    delete process.env.ART_NATURAL_ENABLED;
+    expect(pageNegativePrompt(NEGATIVE_PROMPT)).toBe(NEGATIVE_PROMPT);
+    expect(pageNegativePrompt(undefined)).toBe(NEGATIVE_PROMPT); // falls back to the brand constant
+  });
+
+  it("flag ON: appends the border terms to the base negative", () => {
+    process.env.ART_NATURAL_ENABLED = "on";
+    const out = pageNegativePrompt(NEGATIVE_PROMPT);
+    expect(out.startsWith(NEGATIVE_PROMPT)).toBe(true);
+    expect(out).toContain("border");
+    expect(out).toContain("ruled line");
+    expect(out).toBe(`${NEGATIVE_PROMPT}, ${NEGATIVE_BORDER_TERMS}`);
+  });
+
+  it("never touches NEGATIVE_PROMPT itself (sheet mint + golden unchanged)", () => {
+    process.env.ART_NATURAL_ENABLED = "on";
+    pageNegativePrompt(NEGATIVE_PROMPT);
+    expect(NEGATIVE_PROMPT).toBe("photorealistic, scary, dark, blurry, deformed hands, extra fingers, text, letters, words, captions, lettering, numbers, signage, watermark");
   });
 });

@@ -761,6 +761,21 @@ The protagonist of THIS story is a real ANIMAL — a pet — not a child. This s
 
 `;
 
+// ---- Natural art direction (ART_NATURAL_ENABLED, 2026-10) ------------------
+// APPENDED to the system prompt only when the flag is on, so a flag-off book's prompt is
+// byte-identical. Three refinements that pair with the natural page composition
+// (art-styles COMPOSITION_RULES_NATURAL): (1) write candid, dynamic MOMENTS rather than posed
+// portraits — the root of the "unnatural / weird positioning" complaint; (2) user-stated
+// roles/relationships are inviolable (fixes a hide-and-seek role inversion seen in review);
+// (3) tag genuine in-scene sounds with the existing [[sfx:]] markup (an untagged whistle).
+export const NATURAL_DIRECTION_BLOCK = `NATURAL ART DIRECTION (applies to this book)
+
+These refine the \`action\` and \`narrative_text\` rules above:
+
+- CANDID, NOT POSED: write each \`action\` as a spontaneous, dynamic MOMENT with natural body language and a specific gesture — a character mid-motion, turned, leaning, reaching, caught in the act — not a subject standing centred and facing the viewer. Favour varied, lived-in staging with some depth over a straight-on portrait. Keep it drawable and keep every named character recognisable, but let the scene breathe.
+- USER-STATED FACTS ARE INVIOLABLE: who does what, each character's role, and the relationships between them come from the customer's own words in the Theme. Never invert, swap, or reassign them (if the customer says one character hides and the other seeks, those roles must stay exactly as stated). When in doubt, stay literally faithful to what the customer wrote.
+- SOUND WORDS: when a scene contains a real sound that happens in the moment (a whistle, a knock, a splash), tag that sound word in \`narrative_text\` with [[sfx:word]] — within the emphasis-markup budget above. This is a reminder to use the existing sfx tag where a sound genuinely occurs, never a licence to invent sounds.`;
+
 // ---- Adult-audience branch (V1 register probe, 2026-07-17) -----------------
 // Same 12-page illustrated picture-book format, same styles/templates/pipeline.
 // The ONLY difference is the READER: an adult, not a child. These two conditional
@@ -1260,7 +1275,10 @@ export async function generateStory(input, options = {}) {
     // PROTAGONIST_KIND_OVERRIDE + COMPANIONS, leaving no stray whitespace).
     .replace(/\{\{SUBJECT_OVERRIDES\}\}/g, buildSubjectOverridesBlock(input))
     .replace(/\{\{AUDIENCE\}\}/g, levelDef.audience)
-    .replace(/\{\{PROSE_LENGTH\}\}/g, levelDef.proseLength);
+    .replace(/\{\{PROSE_LENGTH\}\}/g, levelDef.proseLength)
+    // ART_NATURAL_ENABLED: append the natural-direction refinements (candid moments, inviolable
+    // user-stated roles, in-scene sfx). Flag off → nothing appended, prompt byte-identical.
+    + (process.env.ART_NATURAL_ENABLED === "on" ? `\n\n${NATURAL_DIRECTION_BLOCK}` : "");
   const schema = buildStorySchema(registry, readingLevel, adultMode);
 
   // Compact input summary surfaced in MaxTokensError + ShapeValidationError

@@ -36,6 +36,7 @@ import { generateImage } from "./gemini.js";
 import { loadTemplateRegistry, findTemplate } from "./template-registry.js";
 import { renderPageWithTemplate } from "./page-pipeline.js";
 import { deriveSheetAppearance } from "./appearance-derive.js";
+import { pageNegativePrompt } from "./art-styles.js";
 import { composeAppearance, injectOutfit, composeMarkClause } from "./character-features.js";
 import { allocate } from "./allocator.js";
 import { WallCeilingError } from "./wall-ceiling.js";
@@ -1232,7 +1233,8 @@ export async function generateBook({
       narrativeText: scene.narrative_text,
       subjects,
       sceneStyle: story.pageStyle ?? story.style, // W-D: page-render uses the page vocab (replaces template styleOverride)
-      sceneNegativePrompt: story.negative_prompt,
+      // ART_NATURAL_ENABLED: page negative gains border terms (flag off → story.negative_prompt verbatim).
+      sceneNegativePrompt: pageNegativePrompt(story.negative_prompt),
       outputDir: pagesDir,
       imagePathOverride,
       callContext: { callKind: "page_render", pageNumber: scene.page, onSlowCall },
