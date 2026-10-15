@@ -24,8 +24,9 @@ describe("enrichThinPhotoAnchors", () => {
     const derive = vi.fn().mockResolvedValue("a curly brown labradoodle with amber eyes and a sturdy build");
     await enrichThinPhotoAnchors(subjectMetaByName, subjectList, { derive });
     expect(derive).toHaveBeenCalledOnce();
+    // Derived facts LEAD (authoritative for colour) so a story-written colour guess can't outrank the sheet.
     expect(subjectMetaByName.Benji.description).toBe(
-      "Benji is a labradoodle. Reference likeness: a curly brown labradoodle with amber eyes and a sturdy build",
+      "Reference likeness (authoritative for colour, coat and build): a curly brown labradoodle with amber eyes and a sturdy build Benji is a labradoodle.",
     );
   });
 

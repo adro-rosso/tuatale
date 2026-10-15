@@ -359,7 +359,9 @@ export async function enrichThinPhotoAnchors(subjectMetaByName, subjectList, { d
       derived = null; // soft-fail
     }
     if (derived) {
-      meta.description = `${meta.description} Reference likeness: ${deemphasiseMarkWording(derived)}`;
+      // Sheet-derived facts LEAD and are labelled authoritative: a story-written colour guess
+      // ("golden cream" for a chocolate dog — observed 2026-10) must not outrank the sheet.
+      meta.description = `Reference likeness (authoritative for colour, coat and build): ${deemphasiseMarkWording(derived)} ${meta.description}`;
       log?.log?.(`  [anchor] enriched ${subj.name}'s appearance from the minted sheet`);
     }
   }
