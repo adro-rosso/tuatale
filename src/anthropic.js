@@ -454,6 +454,20 @@ export const ADULT_WALL_CEILING_MS = Number(process.env.ADULT_WALL_CEILING_MS) >
   ? Number(process.env.ADULT_WALL_CEILING_MS)
   : 900_000;  // 15 min total, so one full retry fits inside the ceiling
 
+// ---- Story-gen headroom for EVERY book (2026-10-16) ------------------------
+// The adult fix above was right, but the margin problem is not adult-only: three
+// consecutive child/pet (Benji) story-gen calls measured 267s, 299s, 291s against the
+// shared 300s ceiling, and the next two hit it. That is the same coin flip the adult
+// comment describes (and the same "phantom cause" trap — see
+// feedback_ceiling-margin-phantom-causes). Both timeouts move together, SDK below wall,
+// exactly as for adult. Env-overridable; defaults mirror the adult values.
+export const STORY_SDK_TIMEOUT_MS = Number(process.env.STORY_SDK_TIMEOUT_MS) > 0
+  ? Number(process.env.STORY_SDK_TIMEOUT_MS)
+  : 420_000;  // 7 min — ~40% headroom over the 299s worst case observed
+export const STORY_WALL_CEILING_MS = Number(process.env.STORY_WALL_CEILING_MS) > 0
+  ? Number(process.env.STORY_WALL_CEILING_MS)
+  : 900_000;  // 15 min total, so one full retry fits inside the ceiling
+
 // ---- Output schema (for output_config.format) ------------------------------
 // What Claude generates. Wrapper merges these two fields with the brand
 // constants above to produce the final 5-field `story` object.
@@ -1393,14 +1407,15 @@ async function attemptStoryGeneration({ systemPrompt, userMessage, schema, attem
         messages: [{ role: "user", content: userMessage }],
       },
       // Per-REQUEST override; the shared client's 300_000 default still governs
-      // every other caller.
-      adultMode ? { timeout: ADULT_SDK_TIMEOUT_MS } : undefined,
+      // every other caller. Story-gen gets headroom for EVERY book (measured
+      // 267-299s vs the 300s ceiling); adult keeps its own tuned values.
+      { timeout: adultMode ? ADULT_SDK_TIMEOUT_MS : STORY_SDK_TIMEOUT_MS },
     ),
     {
       callKind: "story_gen",
       subjectName: validationInput?.child?.name,
       onSlowCall,
-      ...(adultMode ? { wallCeilingMs: ADULT_WALL_CEILING_MS } : {}),
+      wallCeilingMs: adultMode ? ADULT_WALL_CEILING_MS : STORY_WALL_CEILING_MS,
     },
   );
 
