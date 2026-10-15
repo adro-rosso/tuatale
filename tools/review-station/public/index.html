@@ -39,6 +39,8 @@
   .chip.status-approved { background:var(--okbg); color:var(--ok); }
   .chip.status-pending { background:#eef0ee; color:var(--muted); }
   .chip.stale { background:var(--warnbg); color:var(--warn); }
+  .chip.qa-flagged { background:#fde8e8; color:#a12a2a; font-weight:600; }
+  .chip.qa-pass { background:var(--okbg); color:var(--ok); }
   .sec { border:1px solid var(--line); border-radius:10px; padding:10px 11px; display:flex; flex-direction:column; gap:8px; }
   .sec h4 { margin:0; font-size:12px; font-weight:650; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
   textarea { width:100%; resize:vertical; font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
@@ -325,6 +327,9 @@ function render() {
           <span class="chip tmpl">${p.template_id ?? "—"}</span>
           <span class="chip status-${p.status}" id="st-${p.page}">${p.status}</span>
           ${p.stale ? `<span class="chip stale">image stale — re-render</span>` : ""}
+          ${p.qa ? (p.qa.verdict === "FLAGGED"
+              ? `<span class="chip qa-flagged" title="${(p.qa.summary || "").replace(/"/g, "&quot;")}">⚑ QA flagged${p.qa.rerolls ? ` (after ${p.qa.rerolls} re-roll${p.qa.rerolls > 1 ? "s" : ""})` : ""}</span>`
+              : `<span class="chip qa-pass" title="${(p.qa.summary || "").replace(/"/g, "&quot;")}">QA ok${p.qa.rerolls ? ` (re-rolled ${p.qa.rerolls})` : ""}</span>`) : ""}
           ${p.subjects_present.length ? `<span class="chip">${esc(p.subjects_present.join(", "))}</span>` : ""}
         </div>
 

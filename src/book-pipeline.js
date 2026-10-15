@@ -37,6 +37,7 @@ import { loadTemplateRegistry, findTemplate } from "./template-registry.js";
 import { renderPageWithTemplate } from "./page-pipeline.js";
 import { deriveSheetAppearance } from "./appearance-derive.js";
 import { pageNegativePrompt } from "./art-styles.js";
+import { checkPage as qaCheckPage } from "./page-qa.js";
 import { composeAppearance, injectOutfit, composeMarkClause } from "./character-features.js";
 import { allocate } from "./allocator.js";
 import { WallCeilingError } from "./wall-ceiling.js";
@@ -1252,6 +1253,7 @@ export async function generateBook({
   }
 
   const perPageResults = [];
+  const qaResults = []; // QA gate verdicts (QA_GATE_ENABLED) — persisted to qa.json + summary
   let totalScenesCost = 0;
   let pagesCompletedCount = 0;
   const escalationEntries = [];
@@ -1353,12 +1355,49 @@ export async function generateBook({
       }
     }
 
+    // ---- QA gate (QA_GATE_ENABLED, default off) -------------------------------------
+    // A structurally-good page gets a semantic vision check (page-qa.js: wrong creature, GROSS
+    // setting/action mismatch, baked borders/text, duplicated/merged limbs). On "flag": bounded
+    // same-template re-roll (QA_REROLL_BUDGET, default 1), each re-roll re-checked. FAIL-OPEN:
+    // when the budget is spent and it still flags, the page is KEPT as success and marked
+    // FLAGGED for the operator — `outcome` is never touched, so the R1 completeness gate
+    // (counts.failed) is unaffected and the book always completes. Never fatal-stops. A QA
+    // error counts as "pass" (page-qa soft-fails) so QA can never block a book.
+    let qaVerdict = null;
+    if (result.success && process.env.QA_GATE_ENABLED === "on") {
+      const budget = Math.max(0, Number(process.env.QA_REROLL_BUDGET ?? 1) || 0);
+      const qaSubjects = (Array.isArray(scene.subjects_present) ? scene.subjects_present : [])
+        .map((n) => subjectMetaByName[n]).filter((m) => m && !m.skipped && m.allSheets?.[0])
+        .map((m) => ({ name: m.name, description: m.description, sheetBuffer: m.allSheets[0] }));
+      const runQa = (r) => qaCheckPage({
+        imagePath: r.imagePath ?? path.join(pagesDir, `page-${String(scene.page).padStart(2, "0")}.png`),
+        scene, subjects: qaSubjects, style: story.pageStyle ?? story.style ?? "",
+      });
+      let qa = await runQa(result);
+      let rerolls = 0;
+      while (qa.verdict === "flag" && rerolls < budget) {
+        rerolls += 1;
+        log.log(`    ⟳ QA flagged (${qa.summary}) — re-rolling ${rerolls}/${budget}`);
+        emit({ event: { kind: "page_qa_reroll", page: scene.page, attempt: rerolls, reason: qa.summary } });
+        await sleep(2000);
+        const again = await tryRender(scene, finalTemplate ?? originalTemplateId);
+        totalScenesCost += again.diagnostics?.cost ?? 0;
+        if (!again.success) break; // structural failure on the re-roll → keep the previous good render
+        result = again;
+        qa = await runQa(result);
+      }
+      qaVerdict = { verdict: qa.verdict === "flag" ? "FLAGGED" : "pass", rerolls, summary: qa.summary ?? "", error: qa.error ?? null };
+      if (qaVerdict.verdict === "FLAGGED") log.log(`    ⚑ QA FLAGGED for review: ${qa.summary}`);
+      qaResults.push({ page: scene.page, ...qaVerdict });
+    }
+
     perPageResults.push({
       page: scene.page,
       originalTemplate: originalTemplateId,
       finalTemplate,
       outcome,
       pdfPath: result.success ? result.pdfPath : null,
+      qa: qaVerdict,
     });
 
     if (result.success) {
@@ -1496,6 +1535,12 @@ export async function generateBook({
 
   // The bookGeneration summary object — the CLI shim writes this into meta.json;
   // the Track B worker returns it as generationMetadata.
+  // QA gate: persist per-page verdicts beside the pages so the review artifacts + review station
+  // can surface FLAGGED pages. Written only when the gate ran (file absent otherwise).
+  if (qaResults.length) {
+    fs.writeFileSync(path.join(outputDir, "qa.json"), JSON.stringify({ model: process.env.QA_GATE_MODEL || "claude-sonnet-4-6", pages: qaResults }, null, 2));
+  }
+
   const summary = {
     completed_at: new Date().toISOString(),
     duration_seconds: Number((totalMs / 1000).toFixed(2)),
@@ -1504,6 +1549,9 @@ export async function generateBook({
     pages: counts,
     template_distribution: templateCounts,
     escalation_entries: escalationEntries.length,
+    qa_checked: qaResults.length,
+    qa_flagged: qaResults.filter((q) => q.verdict === "FLAGGED").length,
+    qa_rerolls: qaResults.reduce((n, q) => n + (q.rerolls || 0), 0),
     total_cost_usd: Number(totalCost.toFixed(4)),
     total_gemini_calls: totalCalls,
     locked_bike_colour: bikeColour ?? null, // Spec D-B: canonical bike colour (audit)

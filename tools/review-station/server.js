@@ -125,6 +125,10 @@ const PAGES_DIR = path.join(BOOK_DIR, "pages");
 const HISTORY_DIR = path.join(BOOK_DIR, "_history");
 const STATE_PATH = path.join(BOOK_DIR, "review-state.json");
 const META_PATH = path.join(BOOK_DIR, "meta.json");
+const QA_PATH = path.join(BOOK_DIR, "qa.json"); // QA gate verdicts (optional; absent when the gate didn't run)
+function readQa() {
+  try { return JSON.parse(fs.readFileSync(QA_PATH, "utf8")); } catch { return null; }
+}
 const SHEETS_DIR = path.join(BOOK_DIR, "character-sheets");
 // Option thumbnails for the operator sheet-re-roll. TRANSIENT — under BOOK_DIR, so in
 // --order mode it lives in the swept session temp dir (orphan-swept like _raster), and it
@@ -411,6 +415,8 @@ function buildInputsModel(story) {
 function buildViewModel() {
   const story = readStory();
   const state = readState();
+  const qa = readQa();
+  const qaByPage = new Map((qa?.pages ?? []).map((q) => [String(q.page), q]));
   let mutated = false;
   const pages = [];
   for (const scene of story.scenes) {
@@ -440,6 +446,7 @@ function buildViewModel() {
       status: ps.status,
       note: state.review_notes[key] ?? "",
       stale: ps.image_hash !== curImgHash,          // IMAGE stale only
+      qa: qaByPage.get(key) ?? null,                  // { verdict:"pass"|"FLAGGED", rerolls, summary } or null
       keeper: ps.keeper ?? null,
       history: (ps.history || []).map((h) => ({ ...h })),
     });

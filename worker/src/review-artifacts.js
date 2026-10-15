@@ -100,6 +100,9 @@ export async function pushReviewArtifacts({ orderId, scratchDir, story, meta }, 
   await put("story.json", Buffer.from(JSON.stringify(story)));
   await put("meta.json", Buffer.from(JSON.stringify(meta)));
   let count = 2;
+  // QA gate verdicts (present only when QA_GATE_ENABLED ran) → the review station shows FLAGGED pages.
+  const qaPath = path.join(scratchDir, "qa.json");
+  if (fs.existsSync(qaPath)) { await put("qa.json", fs.readFileSync(qaPath)); count += 1; }
 
   count += await uploadTree(sb, path.join(scratchDir, "character-sheets"), `${prefix}/character-sheets`, () => true);
   count += await uploadTree(
