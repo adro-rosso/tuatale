@@ -159,6 +159,26 @@ describe('createCheckoutSession', () => {
     expect(stripeSessionsCreate).toHaveBeenCalledTimes(1);
   });
 
+  it('falls back to the Vercel deployment URL for success/cancel when NEXT_PUBLIC_SITE_URL is unset (Preview)', async () => {
+    // Regression 2026-10-21: Preview test orders redirected to http://localhost:3000 after
+    // paying ("can't reach this page") because NEXT_PUBLIC_SITE_URL is Production-only.
+    delete process.env.NEXT_PUBLIC_SITE_URL;
+    process.env.VERCEL_URL = 'tuatale-abc123-tuatale.vercel.app';
+    try {
+      cookieValue.current = 'cookie-uuid-1';
+      draftStore.current = completeDraft();
+      stripeSessionsCreate.mockResolvedValue({ id: 'cs_pv', url: 'https://checkout.stripe.com/c/pay/cs_pv' });
+      await expect(createCheckoutSession()).rejects.toBeInstanceOf(RedirectSentinel);
+      const payload = stripeSessionsCreate.mock.calls[0]![0]!;
+      expect(payload.success_url).toBe(
+        'https://tuatale-abc123-tuatale.vercel.app/start/success?session_id={CHECKOUT_SESSION_ID}',
+      );
+      expect(payload.cancel_url).toBe('https://tuatale-abc123-tuatale.vercel.app/start/payment');
+    } finally {
+      delete process.env.VERCEL_URL;
+    }
+  });
+
   it('creates a Stripe session with correct line items and metadata, then redirects', async () => {
     cookieValue.current = 'cookie-uuid-1';
     draftStore.current = completeDraft();

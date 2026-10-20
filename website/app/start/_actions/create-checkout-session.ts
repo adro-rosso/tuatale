@@ -89,7 +89,14 @@ export async function createCheckoutSession(): Promise<never> {
       : [],
   });
 
-  const origin = (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+  // Redirect origin for Stripe's success/cancel URLs. NEXT_PUBLIC_SITE_URL is set in
+  // Production only; on a Vercel Preview fall back to the deployment's own URL (VERCEL_URL,
+  // host only) — without this, Preview test orders bounced to http://localhost:3000 after
+  // paying ("can't reach this page", 2026-10-21). Local dev keeps localhost.
+  const origin = (
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+  ).replace(/\/$/, '');
 
   const stripe = getStripe();
   const session = await stripe.checkout.sessions.create({
