@@ -17,8 +17,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { GeneratedPreview } from './GeneratedPreview';
-import { PhotoHero } from './PhotoHero';
 import { uploadPhoto, removeChildPhoto } from '@/app/start/_actions/preview';
+import { MAX_CHILD_PHOTOS } from '@/lib/photo-limits';
 import { CONSENT, type ConsentVersion } from '@/lib/consent/registry';
 
 const CHILD_CONSENT_VERSION: ConsentVersion = 'child-v1';
@@ -113,45 +113,42 @@ export function CharacterBuilder({
   const [open, setOpen] = useState<string | null>(null); // axis key
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Photo state — shared by the hero CTA and the mint (the photo path is the hero). `url`
-  // is a local object URL for the confirmation thumbnail (no network round-trip).
-  const [photo, setPhoto] = useState<{ path: string; hash: string; name: string; url: string } | null>(null);
+  // Photo state (multi-photo, 2026-10-20 — up to MAX_CHILD_PHOTOS, like pets). `url` is a
+  // local object URL for each thumbnail (no network round-trip). The FIRST photo is the hero /
+  // mint anchor for the picker (`photo` alias below); the worker face-ranks ALL of them.
+  type ChildPhoto = { path: string; hash: string; name: string; url: string };
+  const [photos, setPhotos] = useState<ChildPhoto[]>([]);
+  const photo = photos[0] ?? null; // compatibility alias for single-photo consumers (picker/preview)
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
-
-  const [removing, setRemoving] = useState(false);
+  const [removing, setRemoving] = useState<string | null>(null); // path being removed
+  const fileRef = useRef<HTMLInputElement>(null);
   // Parent/guardian consent — a hard precondition for a child photo. The upload is gated
   // on it, and its version id is sent so the server stores the canonical attestation text.
   const [consent, setConsent] = useState(false);
 
-  // Free a previous thumbnail's object URL when the photo is replaced or removed.
-  function revokePhotoUrl() {
-    setPhoto((prev) => {
-      if (prev?.url) URL.revokeObjectURL(prev.url);
-      return prev;
-    });
-  }
-
   // Real erasure: unlink + DELETE the stored object (not just clear client state), so
   // "remove any time" is honest. On failure keep the photo + surface it (the object may
-  // still exist). Mirrors AdultForm's remove handler.
-  async function onRemovePhoto() {
-    const current = photo;
-    if (!current) return;
+  // still exist). Mirrors the pet form's remove handler.
+  async function onRemovePhoto(path: string) {
     setPhotoError(null);
-    setRemoving(true);
+    setRemoving(path);
     try {
-      await removeChildPhoto(current.path);
-      revokePhotoUrl();
-      setPhoto(null);
+      await removeChildPhoto(path);
+      setPhotos((prev) => {
+        const gone = prev.find((p) => p.path === path);
+        if (gone?.url) URL.revokeObjectURL(gone.url);
+        return prev.filter((p) => p.path !== path);
+      });
     } catch {
       setPhotoError('Couldn’t remove that photo. Please try again.');
     } finally {
-      setRemoving(false);
+      setRemoving(null);
     }
   }
 
-  async function onPhotoChosen(file: File) {
+  async function onPhotosChosen(files: FileList | null) {
+    if (!files || files.length === 0) return;
     // Defensive: the button is disabled until consent, but never upload without it.
     if (!consent) {
       setPhotoError('Please confirm the parent/guardian consent checkbox first.');
@@ -160,27 +157,31 @@ export function CharacterBuilder({
     setUploading(true);
     setPhotoError(null);
     try {
-      const png = await toPngBlob(file);
-      const fd = new FormData();
-      fd.append('photo', png, 'photo.png');
-      fd.append('consent_version', CHILD_CONSENT_VERSION); // server stores the canonical text
-      const res = await uploadPhoto(fd);
-      if (!res.ok) {
-        // Moderation returned a specific reason (a thrown message would be redacted client-side).
-        setPhotoError(
-          res.reason === 'unavailable'
-            ? 'We couldn’t check that photo just now. Please try again in a moment.'
-            : 'That photo didn’t pass our safety check. Please choose a clear, everyday photo of your child.',
-        );
-        return;
+      const room = MAX_CHILD_PHOTOS - photos.length;
+      for (const file of Array.from(files).slice(0, Math.max(0, room))) {
+        const png = await toPngBlob(file);
+        const fd = new FormData();
+        fd.append('photo', png, 'photo.png');
+        fd.append('consent_version', CHILD_CONSENT_VERSION); // server stores the canonical text
+        const res = await uploadPhoto(fd);
+        if (!res.ok) {
+          // Moderation returned a specific reason (a thrown message would be redacted client-side).
+          setPhotoError(
+            res.reason === 'unavailable'
+              ? 'We couldn’t check that photo just now. Please try again in a moment.'
+              : 'That photo didn’t pass our safety check. Please choose a clear, everyday photo of your child.',
+          );
+          continue; // keep going with the rest of the selection
+        }
+        const added: ChildPhoto = { path: res.photoPath, hash: res.photoHash, name: file.name, url: URL.createObjectURL(png) };
+        setPhotos((prev) => (prev.length < MAX_CHILD_PHOTOS ? [...prev, added] : prev));
       }
-      revokePhotoUrl(); // replacing an earlier photo → free its thumbnail URL
-      setPhoto({ path: res.photoPath, hash: res.photoHash, name: file.name, url: URL.createObjectURL(png) });
     } catch {
       // Technical failure (no file, too large, storage, disabled) — thrown + redacted → generic.
       setPhotoError('Couldn’t upload that photo. Try another.');
     } finally {
       setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
     }
   }
 
@@ -242,15 +243,42 @@ export function CharacterBuilder({
             </span>
           </label>
 
-          <PhotoHero
-            photo={photo}
-            previewUrl={photo?.url ?? null}
-            uploading={uploading || removing}
-            disabled={!consent}
-            error={photoError}
-            onChoose={(f) => void onPhotoChosen(f)}
-            onRemove={() => void onRemovePhoto()}
-          />
+          {/* Multi-photo grid (up to MAX_CHILD_PHOTOS) — the proven pet-form mechanism. */}
+          <div className="gap-sm pt-md grid grid-cols-3 sm:grid-cols-5">
+            {photos.map((p) => (
+              <div key={p.path} className="border-warm-grey-light bg-cream-deep relative aspect-square overflow-hidden rounded-lg border">
+                {/* object-contain so the customer sees the WHOLE photo, uncropped. */}
+                {/* eslint-disable-next-line @next/next/no-img-element -- local object-url thumbnail */}
+                <img src={p.url} alt="Child photo" className="h-full w-full object-contain" />
+                <button
+                  type="button"
+                  onClick={() => void onRemovePhoto(p.path)}
+                  disabled={removing === p.path}
+                  className="bg-near-black/70 absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full text-cream disabled:opacity-60"
+                  aria-label="Remove photo"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {photos.length < MAX_CHILD_PHOTOS && (
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading || !consent}
+                className="border-warm-grey-light hover:border-iron-oxide font-body text-warm-grey text-caption flex aspect-square items-center justify-center rounded-lg border-2 border-dashed transition-colors disabled:opacity-60"
+              >
+                {uploading ? 'Uploading…' : photos.length === 0 ? '+ Add photos' : '+ Add'}
+              </button>
+            )}
+          </div>
+          <p className="font-body text-warm-grey text-caption pt-xs">
+            {photos.length}/{MAX_CHILD_PHOTOS} photos — a few clear, different angles give the best likeness.
+          </p>
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => void onPhotosChosen(e.target.files)} />
+          {photoError ? (
+            <p role="alert" className="font-body text-iron-oxide text-caption pt-xs font-medium">⚠ {photoError}</p>
+          ) : null}
         </div>
       )}
 

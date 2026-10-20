@@ -20,6 +20,7 @@ import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
 import { isConsentVersion, buildConsentRecord } from '@/lib/consent/registry';
 import { moderateChildPhoto } from '@/lib/moderation/child-photo';
+import { MAX_CHILD_PHOTOS } from '@/lib/photo-limits';
 import {
   findCachedPreview,
   createPreviewJob,
@@ -196,18 +197,20 @@ export async function uploadPhoto(formData: FormData): Promise<PhotoUploadResult
   // draft.photo_urls.child + the versioned consent record. This is what makes the photo
   // reap-able on draft expiry / removable / order-carried — a client-state-only path
   // (the old behaviour) would ORPHAN in the bucket if the customer abandoned the draft.
-  // Child is a single reference photo, so this REPLACES any prior one and cleans it up.
+  // Up to MAX_CHILD_PHOTOS reference photos (multi-angle likeness, like pets): APPEND, de-duped.
+  // If a stale client pushes past the cap, keep the newest and clean up the overflow objects.
   const cookieId = await getDraftCookieFromRequest();
   if (cookieId) {
     const draft = await getDraftByCookieId(cookieId);
     const priorChild = (draft?.photo_urls as { child?: string[] } | null)?.child ?? [];
-    const stale = priorChild.filter((p) => p !== photoPath);
-    if (stale.length) {
-      // Best-effort cleanup of the replaced photo's object (don't fail the new upload on it).
-      await createServerClient().storage.from(PREVIEW_BUCKET).remove(stale).catch(() => {});
+    const next = [...priorChild.filter((p) => p !== photoPath), photoPath];
+    const overflow = next.length > MAX_CHILD_PHOTOS ? next.splice(0, next.length - MAX_CHILD_PHOTOS) : [];
+    if (overflow.length) {
+      // Best-effort cleanup of the dropped photos' objects (don't fail the new upload on it).
+      await createServerClient().storage.from(PREVIEW_BUCKET).remove(overflow).catch(() => {});
     }
     await updateDraftByCookieId(cookieId, {
-      photo_urls: { child: [photoPath] },
+      photo_urls: { child: next },
       photo_consent_at: new Date().toISOString(),
       // Versioned consent record — lagging column, cast (generated types trail the migration).
       photo_consent: buildConsentRecord(consentVersion, new Date().toISOString()),

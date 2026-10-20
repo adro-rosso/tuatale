@@ -37,6 +37,8 @@ const HUMAN = "human";
 // website secondary-uploader limit (secondarySchema: photos.max(5)) so a
 // many-photo upload can't bloat the single mint call. (2026-07-24)
 const MAX_SECONDARY_PHOTOS = 5;
+// Child reference photos (2026-10-20): up to 5, like pets/secondaries — the worker face-ranks them.
+const MAX_CHILD_PHOTOS = 5;
 
 /**
  * Default age for a secondary. Non-humans get 5; humans use their explicit age
@@ -189,10 +191,20 @@ export function adaptOrderToPipelineInput(order) {
     // (legacy orders, free-text path) -> undefined -> features omitted (no change).
     const features = validateChildFeatures(order.child_features, order.child_gender);
     if (features) child.features = features;
-    // Photo-anchor plumbing (probe, 2026-07-07): the primary's uploaded photo lives
-    // in Supabase Storage; expose its path so the worker downloads it to a local file
-    // before the pipeline reads it. photo_urls shape: { child?: "uploads/<hash>.png" }.
-    if (order.photo_urls?.child) child.photoPath = order.photo_urls.child;
+    // Photo-anchor plumbing (probe, 2026-07-07; multi-photo 2026-10-20): the child's
+    // uploaded photo(s) live in Supabase Storage. photo_urls.child is an ARRAY (the draft
+    // has stored it as one since the consent work; a legacy string is tolerated). Expose
+    // them as photo_paths — the same multi-photo path pets + secondaries use — so the
+    // worker downloads each and face-ranks the clear ones (selectBestPhotos). photoPath
+    // stays as the legacy singular fallback (= first), exactly like adaptSecondary.
+    const childPhotos = Array.isArray(order.photo_urls?.child)
+      ? order.photo_urls.child
+      : (order.photo_urls?.child ? [order.photo_urls.child] : []);
+    const kept = childPhotos.filter(Boolean).slice(0, MAX_CHILD_PHOTOS);
+    if (kept.length) {
+      child.photo_paths = kept;
+      child.photoPath = kept[0];
+    }
   }
   return {
     child,
