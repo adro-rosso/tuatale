@@ -68,8 +68,13 @@ export function checkDraftCompleteness(draft: Draft): DraftCompletenessResult {
   }
 
   const missing: RequiredDraftField[] = REQUIRED_FIELDS.filter((f) => isEmpty(draft[f]));
-  // Appearance requirement: free-text OR a structured-complete character.
-  if (isEmpty(draft.child_appearance) && !isStructuredComplete(draft.child_features)) {
+  // Appearance requirement: free-text OR a structured-complete character OR ≥1 child
+  // reference photo (the photo is the likeness source — CHILD_PHOTO_ENABLED path; same contract
+  // as pets). Must match the child-step validator (has_photo) and the post-payment guard in
+  // create-order, or a customer gets through the step and is then bounced at checkout.
+  const childPhotos = (draft.photo_urls as { child?: unknown } | null)?.child;
+  const hasChildPhoto = Array.isArray(childPhotos) && childPhotos.length > 0;
+  if (isEmpty(draft.child_appearance) && !isStructuredComplete(draft.child_features) && !hasChildPhoto) {
     missing.push('child_appearance');
   }
   return { complete: missing.length === 0, missing };

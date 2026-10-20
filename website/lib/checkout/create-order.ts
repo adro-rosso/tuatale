@@ -95,8 +95,13 @@ export async function createOrderFromDraft(
     }
   } else {
     // Child: appearance requirement mirrors the Zod rule — a 50+ char free-text
-    // description OR a structured-complete character (the 4 identity axes).
-    const hasAppearance = !!draft.child_appearance || isStructuredComplete(draft.child_features);
+    // description OR a structured-complete character (the 4 identity axes) OR ≥1 child
+    // reference photo (the photo is the likeness source; CHILD_PHOTO_ENABLED path). This is
+    // the POST-PAYMENT guard — it must accept exactly what the wizard + checkout accept, or a
+    // paid photo-only order would throw here (charged, no book).
+    const childPhotos = (draft.photo_urls as { child?: unknown } | null)?.child;
+    const hasChildPhoto = Array.isArray(childPhotos) && childPhotos.length > 0;
+    const hasAppearance = !!draft.child_appearance || isStructuredComplete(draft.child_features) || hasChildPhoto;
     if (
       !draft.child_name ||
       !draft.age_range ||

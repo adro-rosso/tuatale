@@ -96,7 +96,7 @@ interface BuilderProps {
   photoEnabled?: boolean;
   /** Child reference photos (owned by ChildForm so a form re-mount can't wipe them). */
   photos?: ChildPhoto[];
-  onPhotosChange?: (next: ChildPhoto[]) => void;
+  onPhotosChange?: (next: ChildPhoto[] | ((prev: ChildPhoto[]) => ChildPhoto[])) => void;
 }
 
 export function CharacterBuilder({
@@ -123,8 +123,11 @@ export function CharacterBuilder({
   // session-only object URL for a fresh upload's thumbnail (null = restored → "Saved"). The FIRST
   // photo is the hero / mint anchor for the picker (`photo` alias); the worker face-ranks ALL.
   const photos = photosProp;
-  const setPhotos = (next: ChildPhoto[] | ((prev: ChildPhoto[]) => ChildPhoto[])) =>
-    onPhotosChange(typeof next === 'function' ? next(photosProp) : next);
+  // onPhotosChange is the PARENT'S React setter (supports functional updates). Never resolve a
+  // functional update against `photosProp` here: during a multi-file upload loop that closure is
+  // stale, so every append would overwrite the previous one (the "replaced by the incoming
+  // photo" bug). Forward the updater and let React apply it against the latest state.
+  const setPhotos = onPhotosChange;
   const photo = photos[0] ?? null; // compatibility alias for single-photo consumers (picker/preview)
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
