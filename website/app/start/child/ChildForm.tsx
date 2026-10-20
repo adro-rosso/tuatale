@@ -1,5 +1,6 @@
 'use client';
 
+import { type ChildPhoto } from '@/lib/photo-limits';
 import { useActionState, useMemo, useState } from 'react';
 import { submitChildStep, type SubmitChildState } from '@/app/start/_actions/submit-child';
 import { type ChildFormValues } from '@/lib/child-form';
@@ -33,6 +34,8 @@ interface ChildFormProps {
   /** CHILD_PHOTO_ENABLED (server-only, default false) — renders the child photo path
    *  for PRIVATE testing only. Must be OFF in any public env. Threaded from the page. */
   childPhotoEnabled?: boolean;
+  /** Child reference photos already on the draft (storage paths) — survive reloads. */
+  initialPhotos?: string[];
 }
 
 const initialState: SubmitChildState = { errors: {} };
@@ -51,7 +54,7 @@ function ageFromRange(range: string): number {
   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
 
-export function ChildForm({ initial, artStyle, draftId, childPhotoEnabled = false }: ChildFormProps) {
+export function ChildForm({ initial, artStyle, draftId, childPhotoEnabled = false, initialPhotos = [] }: ChildFormProps) {
   const [state, formAction, isPending] = useActionState(submitChildStep, initialState);
   const errors = state.errors;
   // Blocked-continue visibility: scroll to + focus the first offending field on a failed submit.
@@ -82,6 +85,13 @@ export function ChildForm({ initial, artStyle, draftId, childPhotoEnabled = fals
   const [name, setName] = useState<string>(fieldValue('name'));
   const [ageRange, setAgeRange] = useState<string>(fieldValue('age_range'));
   const [appearance, setAppearance] = useState<string>(fieldValue('appearance'));
+  // Child photos live HERE (not in CharacterBuilder): the <form> below re-mounts on a failed
+  // submit (key={formKey}), which would wipe builder-local state — the photos are already
+  // persisted server-side, so losing the thumbnails was a pure UI bug. Seeded from the draft
+  // (restored photos show "Saved"), appended by uploads.
+  const [photos, setPhotos] = useState<ChildPhoto[]>(() =>
+    initialPhotos.map((path) => ({ path, hash: '', name: 'Saved photo', url: null })),
+  );
   const [background, setBackground] = useState<string>(fieldValue('background'));
   // Reading-level OVERRIDE. '' = untouched (the card highlights the age-derived
   // default but submits '' → NULL server-side, so the book tracks the child's
@@ -184,6 +194,8 @@ export function ChildForm({ initial, artStyle, draftId, childPhotoEnabled = fals
                 artStyle={artStyle}
                 draftId={draftId}
                 photoEnabled={childPhotoEnabled}
+                photos={photos}
+                onPhotosChange={setPhotos}
               />
             ) : (
               <div className="space-y-md">

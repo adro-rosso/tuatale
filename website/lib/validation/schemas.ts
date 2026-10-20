@@ -150,6 +150,10 @@ export const childSchema = z
     // a structured-complete character OR a 50+ char description (see superRefine).
     appearance: z.string().max(500, COPY.AT_UPPER).optional(),
     features: childFeaturesSchema.optional(),
+    // Set by the server (never trusted from the form): the draft already holds ≥1 child
+    // reference photo (CHILD_PHOTO_ENABLED path). The photo is then the likeness source, so
+    // the written/structured appearance is genuinely optional — same contract as pets.
+    has_photo: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     // Gender-gate (renderability): boys may only use the restricted hair_style set.
@@ -161,9 +165,10 @@ export const childSchema = z
         message: COPY.HAIR_STYLE_NOT_FOR_BOYS,
       });
     }
-    // Requirement: structured-complete OR free-text >= 50 chars.
+    // Requirement: structured-complete OR free-text >= 50 chars — WAIVED when a reference
+    // photo is on the draft (the "all optional" copy is then literally true).
     const freeOk = (data.appearance?.trim().length ?? 0) >= 50;
-    if (!isStructuredComplete(data.features) && !freeOk) {
+    if (!data.has_photo && !isStructuredComplete(data.features) && !freeOk) {
       ctx.addIssue({
         code: 'custom',
         path: ['appearance'],

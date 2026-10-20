@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { validateChild } from '@/lib/validation/validate';
-import { updateDraftByCookieId } from '@/db/drafts';
+import { updateDraftByCookieId, getDraftByCookieId } from '@/db/drafts';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import type { FieldErrors } from '@/lib/validation/validate';
 import { type ChildFormValues, STRUCTURED_KEYS, buildChildFeatures } from '@/lib/child-form';
@@ -42,12 +42,23 @@ export async function submitChildStep(
   const input = readFormValues(formData);
   const features = buildChildFeatures(input);
 
+  const cookieId = await getDraftCookieFromRequest();
+  if (!cookieId) redirect('/start/reset');
+
+  // A child reference photo on the draft makes the written/structured appearance optional
+  // (the photo is the likeness source). SERVER-decided from the draft, never from the form.
+  // Only meaningful where CHILD_PHOTO_ENABLED lets uploadPhoto store one; off → no photos.
+  const draft = await getDraftByCookieId(cookieId);
+  const childPhotos = (draft?.photo_urls as { child?: string[] } | null)?.child;
+  const has_photo = Array.isArray(childPhotos) && childPhotos.length > 0;
+
   const result = validateChild({
     name: input.name,
     age_range: input.age_range,
     gender: input.gender,
     appearance: input.appearance,
     features,
+    has_photo,
   });
   if (!result.ok) {
     return { errors: result.errors, values: input };
@@ -63,9 +74,6 @@ export async function submitChildStep(
   // worker's resolveReadingLevel derives from the age band. Never blocks the step.
   const rlParsed = readingLevelSchema.safeParse(input.reading_level || undefined);
   const reading_level = rlParsed.success ? (rlParsed.data ?? null) : null;
-
-  const cookieId = await getDraftCookieFromRequest();
-  if (!cookieId) redirect('/start/reset');
 
   await updateDraftByCookieId(cookieId, {
     child_name: result.data.name,

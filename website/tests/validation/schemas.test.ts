@@ -317,3 +317,19 @@ describe('readingLevelSchema', () => {
     expect([...READING_LEVEL_VALUES]).toEqual(['simplest', 'standard', 'advanced']);
   });
 });
+
+describe('childSchema — has_photo waives the appearance/build requirement (2026-10-20)', () => {
+  const base = { name: 'Mia', age_range: '5-7', gender: 'girl' };
+  it('no photo + no appearance + no features → appearance error (unchanged behaviour)', () => {
+    const r = childSchema.safeParse({ ...base });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues.some((i) => i.path.join('.') === 'appearance')).toBe(true);
+  });
+  it('has_photo → passes with nothing written ("all optional" is literally true)', () => {
+    const r = childSchema.safeParse({ ...base, has_photo: true });
+    expect(r.success).toBe(true);
+  });
+  it('has_photo: false behaves exactly like absent', () => {
+    expect(childSchema.safeParse({ ...base, has_photo: false }).success).toBe(false);
+  });
+});

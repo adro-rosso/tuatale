@@ -72,6 +72,8 @@ export default async function ChildStepPage() {
       artStyle={artStyle}
       draftId={draft?.id ?? null}
       childPhotoEnabled={childPhotoEnabled}
+      // Photos already on the draft survive a reload (shown as "Saved").
+      initialPhotos={((draft?.photo_urls as { child?: string[] } | null)?.child ?? []).filter((p) => typeof p === 'string')}
       initial={{
         name: draft?.child_name ?? '',
         age_range: draft?.age_range ?? '',

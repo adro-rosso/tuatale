@@ -6,3 +6,7 @@
 // 5, same as pets — the worker's face-ranking (selectBestPhotos) picks the clear-face ones, so
 // more angles = better likeness. The client enforces the cap; the server caps defensively.
 export const MAX_CHILD_PHOTOS = 5;
+
+/** A child reference photo as the wizard holds it. `url` is a session-only object URL for a
+ * fresh upload's thumbnail; null for a photo restored from the draft (shows "Saved"). */
+export type ChildPhoto = { path: string; hash: string; name: string; url: string | null };

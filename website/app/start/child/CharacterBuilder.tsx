@@ -18,7 +18,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { GeneratedPreview } from './GeneratedPreview';
 import { uploadPhoto, removeChildPhoto } from '@/app/start/_actions/preview';
-import { MAX_CHILD_PHOTOS } from '@/lib/photo-limits';
+import { MAX_CHILD_PHOTOS, type ChildPhoto } from '@/lib/photo-limits';
 import { CONSENT, type ConsentVersion } from '@/lib/consent/registry';
 
 const CHILD_CONSENT_VERSION: ConsentVersion = 'child-v1';
@@ -94,6 +94,9 @@ interface BuilderProps {
   /** CHILD_PHOTO_ENABLED (server-only, default false). Renders the child photo path
    *  for PRIVATE testing only — see the header note. Must be OFF in any public env. */
   photoEnabled?: boolean;
+  /** Child reference photos (owned by ChildForm so a form re-mount can't wipe them). */
+  photos?: ChildPhoto[];
+  onPhotosChange?: (next: ChildPhoto[]) => void;
 }
 
 export function CharacterBuilder({
@@ -109,15 +112,19 @@ export function CharacterBuilder({
   artStyle,
   draftId,
   photoEnabled = false,
+  photos: photosProp = [],
+  onPhotosChange = () => {},
 }: BuilderProps) {
   const [open, setOpen] = useState<string | null>(null); // axis key
   const pickerRef = useRef<HTMLDivElement>(null);
 
-  // Photo state (multi-photo, 2026-10-20 — up to MAX_CHILD_PHOTOS, like pets). `url` is a
-  // local object URL for each thumbnail (no network round-trip). The FIRST photo is the hero /
-  // mint anchor for the picker (`photo` alias below); the worker face-ranks ALL of them.
-  type ChildPhoto = { path: string; hash: string; name: string; url: string };
-  const [photos, setPhotos] = useState<ChildPhoto[]>([]);
+  // Photo state (multi-photo, 2026-10-20 — up to MAX_CHILD_PHOTOS, like pets) is OWNED BY THE
+  // PARENT (ChildForm) and passed in, so a failed-submit form re-mount can't wipe it. `url` is a
+  // session-only object URL for a fresh upload's thumbnail (null = restored → "Saved"). The FIRST
+  // photo is the hero / mint anchor for the picker (`photo` alias); the worker face-ranks ALL.
+  const photos = photosProp;
+  const setPhotos = (next: ChildPhoto[] | ((prev: ChildPhoto[]) => ChildPhoto[])) =>
+    onPhotosChange(typeof next === 'function' ? next(photosProp) : next);
   const photo = photos[0] ?? null; // compatibility alias for single-photo consumers (picker/preview)
   const [uploading, setUploading] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -247,9 +254,13 @@ export function CharacterBuilder({
           <div className="gap-sm pt-md grid grid-cols-3 sm:grid-cols-5">
             {photos.map((p) => (
               <div key={p.path} className="border-warm-grey-light bg-cream-deep relative aspect-square overflow-hidden rounded-lg border">
-                {/* object-contain so the customer sees the WHOLE photo, uncropped. */}
-                {/* eslint-disable-next-line @next/next/no-img-element -- local object-url thumbnail */}
-                <img src={p.url} alt="Child photo" className="h-full w-full object-contain" />
+                {p.url ? (
+                  // object-contain so the customer sees the WHOLE photo, uncropped.
+                  // eslint-disable-next-line @next/next/no-img-element -- local object-url thumbnail
+                  <img src={p.url} alt="Child photo" className="h-full w-full object-contain" />
+                ) : (
+                  <div className="bg-cream-deep font-body text-warm-grey text-caption flex h-full w-full items-center justify-center">Saved</div>
+                )}
                 <button
                   type="button"
                   onClick={() => void onRemovePhoto(p.path)}
