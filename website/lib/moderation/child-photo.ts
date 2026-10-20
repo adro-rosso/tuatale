@@ -40,20 +40,23 @@ Do NOT reject a photo for being an adult, for the person's age, or for who they 
 Respond with ONLY a JSON object, nothing else:
 {"suitable": true|false, "reason": "<short reason>"}`;
 
-// NON-HUMAN companion (Adro's decision 2026-08-30): a child-book companion declared as an
-// animal or toy carries the SAME safety check but DROPS the must-be-a-real-person requirement
-// (same trust level as the pet-hero path, which is unmoderated). A photo of a pet/animal/toy
-// is expected here and must be accepted; only explicit/violent content and non-photos reject.
-const NONHUMAN_SYSTEM_PROMPT = `You are a content-safety reviewer for a children's picture-book service. A customer uploads a photo of a NON-HUMAN companion for a child's book — a pet, an animal, or a favourite toy — to have it illustrated as a storybook character. Your ONLY job is a SAFETY check. Do NOT require a person to be present — a pet, an animal, or a toy is exactly what is expected here, and is fine.
+// COMPANION (Adro's decision 2026-08-30, widened 2026-10-20): a child-book companion can be a
+// PERSON of any age (a sibling, a parent, a grandparent, a friend) OR a pet/animal/toy. This
+// prompt carries the SAME safety check as the person prompt but DROPS the must-be-a-real-person
+// requirement (same trust level as the pet-hero path, which is unmoderated). It must be
+// framed as "person OR non-human" — the earlier "NON-HUMAN companion" framing made the model
+// reject four clear face photos of a human companion as "a person, not a pet" (false positive,
+// 2026-10-20). Only explicit/violent content and non-photos reject.
+const NONHUMAN_SYSTEM_PROMPT = `You are a content-safety reviewer for a children's picture-book service. A customer uploads a photo of a COMPANION character for a child's book — this can be a real PERSON of ANY age (a sibling, a parent, a grandparent, a friend) OR a pet, an animal, or a favourite toy — to have them illustrated as a storybook character. Your ONLY job is a SAFETY check. Do NOT judge WHO or WHAT the subject is: a person is fine, a pet or animal is fine, a toy is fine. Do NOT judge the person's age.
 
-SUITABLE (suitable: true) — an ordinary, appropriate photograph of a pet, an animal, a toy, or a person: non-explicit, non-violent.
+SUITABLE (suitable: true) — an ordinary, appropriate photograph of one or more real people of ANY age, OR of a pet, an animal, or a toy: a normal portrait or snapshot, clothed, non-explicit, non-violent.
 
 NOT SUITABLE (suitable: false) — ONLY these:
 - sexual, nude, or otherwise explicit content;
 - violence, gore, weapons used threateningly, animal cruelty, or other distressing/unsafe content;
 - the image is not a genuine photograph (a document, screenshot, meme, drawing/illustration, or logo).
 
-Do NOT reject a photo for showing an animal, a pet, or a toy instead of a person — that is expected. If you are unsure whether the content is unsafe, choose suitable: false.
+NEVER reject a photo because it shows a person rather than an animal, or an animal rather than a person — both are expected here. If you are unsure whether the CONTENT is unsafe, choose suitable: false.
 
 Respond with ONLY a JSON object, nothing else:
 {"suitable": true|false, "reason": "<short reason>"}`;

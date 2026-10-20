@@ -61,9 +61,20 @@ describe('moderateChildPhoto — fail-closed', () => {
     expect(await moderateChildPhoto(bytes, { allowNonHuman: true })).toEqual({ ok: true });
     const system = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body).system as string;
     // Safety bar kept, person-requirement dropped.
-    expect(system).toMatch(/NON-HUMAN|pet, an animal, or a favourite toy/i);
+    expect(system).toMatch(/pet, an animal, or a favourite toy/i);
     expect(system).toMatch(/explicit|violent/i);
     expect(system).not.toMatch(/no person in it/i);
+  });
+
+  it('companion prompt accepts a PERSON too (regression: 2026-10-20 false positive "a person, not a pet")', async () => {
+    const fetchMock = mockAnthropic(JSON.stringify({ suitable: true, reason: 'a person' }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await moderateChildPhoto(bytes, { allowNonHuman: true })).toEqual({ ok: true });
+    const system = JSON.parse((fetchMock.mock.calls[0]![1] as { body: string }).body).system as string;
+    // Framed as person OR non-human — never "non-human only", which made the model reject humans.
+    expect(system).toMatch(/real PERSON of ANY age/);
+    expect(system).toMatch(/NEVER reject a photo because it shows a person/);
+    expect(system).not.toMatch(/NON-HUMAN companion/);
   });
 
   it('allowNonHuman still rejects explicit/unsafe content (fail-closed unchanged)', async () => {
