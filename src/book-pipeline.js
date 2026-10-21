@@ -35,7 +35,7 @@ import { assembleFrontMatter } from "./front-matter.js";
 import { generateImage } from "./gemini.js";
 import { loadTemplateRegistry, findTemplate } from "./template-registry.js";
 import { renderPageWithTemplate } from "./page-pipeline.js";
-import { deriveSheetAppearance } from "./appearance-derive.js";
+import { deriveSheetAppearance, derivePhotoAppearance } from "./appearance-derive.js";
 import { pageNegativePrompt } from "./art-styles.js";
 import { checkPage as qaCheckPage, checkSheetIdentity as qaCheckSheet } from "./page-qa.js";
 import { composeAppearance, injectOutfit, composeMarkClause } from "./character-features.js";
@@ -281,7 +281,21 @@ export function buildSheetViewPrompt(subject, story, { viewIndex, subjectHasPhot
   // (usePhoto) → NO-OP for non-photo books (the view prompt's "neutral" already suffices there).
   const expressionScope = usePhoto ? expressionScopeDirective(isPet) : "";
   const matchRef = !usePhoto && hasChainRef ? matchRefDirective(isPet) : "";
-  return `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${refAuthority}${expressionScope}${matchRef}`;
+  const painted = paintedFacesSheetDirective(isPet, subjectHasPhoto);
+  return `${basePrompt}\n\nView for this image: ${viewPrompt}.${photoRef}${refAuthority}${expressionScope}${matchRef}${painted}`;
+}
+
+// PAINTED_FACES (probe 2026-10-21, default off -> byte-identical). Photo-anchored human sheets came
+// out with photographic faces on painted bodies; every page then inherits the photo face. Positive-
+// axis fix at the SOURCE: the sheet is a painted portrait in the book's medium. Humans with a
+// photo only (pets / non-photo subjects unchanged).
+function paintedFacesSheetDirective(isPet, subjectHasPhoto) {
+  if (process.env.PAINTED_FACES !== "on" || isPet || !subjectHasPhoto) return "";
+  return `\n\nRENDERING - PAINTED, NOT PHOTOGRAPHIC: this sheet is a painted portrait in the Style ` +
+    `above. Keep the identity exact (face shape, features, proportions, hair, skin tone), but render ` +
+    `the face and skin with the SAME visible brushwork, paint texture and edges as the clothing - ` +
+    `like a portrait painter working from the photograph. No photographic skin smoothness, no ` +
+    `camera lighting, no lens look; the whole figure is one painting.`;
 }
 
 function expressionScopeDirective(isPet) {
@@ -366,6 +380,77 @@ export async function enrichThinPhotoAnchors(subjectMetaByName, subjectList, { d
     }
   }
   return subjectMetaByName;
+}
+
+// ---------------------------------------------------------------------------
+// PHOTO_APPEARANCE (2026-10-21, default off). For a photo-anchored HUMAN the story-written
+// physical text ("tall, lean frame, strong square jaw") is drawn literally at sheet mint AND on
+// every page, and it fights the photographs: Eddie's uncle came out as a slim catalogue model.
+// Flag on → replace the physical part of the description with a descriptor derived FROM THE
+// PHOTOS (src/appearance-derive.js derivePhotoAppearance), keeping the outfit sentence(s) and a
+// neutral lead ("<name> is 4 years old." / "<name> is Eddie's uncle."). Runs BEFORE planBook so the
+// sheet fingerprint sees the final text, and the derived text is CACHED per book dir
+// (character-sheets/photo-appearance-<prefix>.json) so a later re-render reuses the same words and
+// the locked sheets are never silently re-minted. Soft-fail: derive null/throw → untouched.
+// Pets/non-human and subjects without photos → untouched. Flag off → byte-identical no-op.
+// ---------------------------------------------------------------------------
+export const PHOTO_APPEARANCE_CACHE_PREFIX = "photo-appearance-";
+
+function outfitSentences(text) {
+  return ((text || "").match(/[^.]*\bwear(?:s|ing)?\b[^.]*\./gi) || []).map((x) => x.trim()).join(" ");
+}
+
+export async function applyPhotoAppearance(story, meta, { outputDir, derive = derivePhotoAppearance, log = null, readFile = fs.readFileSync } = {}) {
+  const applied = [];
+  if (process.env.PHOTO_APPEARANCE !== "on" || !story || !meta?.inputs) return applied;
+  const cacheDir = path.join(outputDir, "character-sheets");
+  const targets = [];
+  const child = meta.inputs.child;
+  const childPhotos = Array.isArray(child?.photo_paths) && child.photo_paths.length
+    ? child.photo_paths : (child?.photoPath ? [child.photoPath] : []);
+  if (child && child.subject_type !== "non_human" && childPhotos.length && typeof story.character === "string") {
+    const age = child.age != null ? `${child.name} is ${child.age} years old.` : `${child.name}.`;
+    targets.push({ prefix: "protagonist", name: child.name, photos: childPhotos, lead: age,
+      get: () => story.character, set: (v) => { story.character = v; } });
+  }
+  (meta.inputs.secondaries ?? []).forEach((ms, i) => {
+    const comp = (story.companion_characters ?? []).find((c) => c?.name === ms?.name);
+    if (!comp || ms.subject_type !== "human") return;
+    const photos = Array.isArray(ms.photo_paths) && ms.photo_paths.length ? ms.photo_paths : (ms.photoPath ? [ms.photoPath] : []);
+    if (!photos.length) return;
+    const rel = ms.relationship ? `${ms.name} is ${story.character_name ?? child?.name ?? "the child"}'s ${ms.relationship}.` : `${ms.name}.`;
+    targets.push({ prefix: `companion-${i + 1}`, name: ms.name, photos, lead: rel,
+      get: () => comp.character_description, set: (v) => { comp.character_description = v; } });
+  });
+  for (const t of targets) {
+    const cachePath = path.join(cacheDir, `${PHOTO_APPEARANCE_CACHE_PREFIX}${t.prefix}.json`);
+    let derived = null;
+    try {
+      if (fs.existsSync(cachePath)) {
+        derived = JSON.parse(fs.readFileSync(cachePath, "utf8"))?.derived ?? null;
+        if (derived) log?.log?.(`  [photo-appearance] ${t.name}: reusing cached descriptor`);
+      }
+      if (!derived) {
+        const bufs = t.photos.map((f) => { try { return readFile(f); } catch { return null; } }).filter(Boolean);
+        if (!bufs.length) continue;
+        derived = await derive(bufs);
+        if (derived) {
+          fs.mkdirSync(cacheDir, { recursive: true });
+          fs.writeFileSync(cachePath, JSON.stringify({ subject: t.name, derived, photos: t.photos.map((f) => path.basename(f)), at: new Date().toISOString() }, null, 2));
+        }
+      }
+    } catch (err) {
+      log?.log?.(`  [photo-appearance] ${t.name}: soft-fail (${err?.message ?? err}) — keeping story text`);
+      derived = null;
+    }
+    if (!derived) continue;
+    const before = t.get();
+    const next = `${t.lead} ${String(derived).trim()} ${outfitSentences(before)}`.replace(/\s+/g, " ").trim();
+    t.set(next);
+    applied.push(t.name);
+    log?.log?.(`  [photo-appearance] ${t.name}: description derived from ${t.photos.length} photo(s)`);
+  }
+  return applied;
 }
 
 // Build the subject list driving Section A. Protagonist always present;
@@ -696,6 +781,9 @@ export async function generateBook({
   const bookPdfPath = path.join(outputDir, "book.pdf");
   const escalationsLogPath = path.join(outputDir, "escalations.log");
   fs.mkdirSync(sheetsDir, { recursive: true });
+  // PHOTO_APPEARANCE: photo-derived physical text for photo-anchored humans, BEFORE planBook
+  // (fingerprint) — cached in sheetsDir so re-renders reuse the same words. Flag off → no-op.
+  await applyPhotoAppearance(story, meta, { outputDir, log });
   fs.mkdirSync(pagesDir, { recursive: true });
 
   const displayPath = (abs) => path.relative(outputDir, abs).replace(/\\/g, "/");

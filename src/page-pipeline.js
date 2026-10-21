@@ -404,7 +404,23 @@ function buildReferenceAuthorityDirective(subjects) {
     `child; each face must be individually recognisable as the specific child in their reference. ` +
     `This applies equally to EVERY character in the references: an adult or a pet is likewise never ` +
     `a generic or stereotyped stand-in — each must be individually recognisable as the specific ` +
-    `individual in their reference.\n\n`
+    `individual in their reference.\n\n` +
+    paintedFacesPageDirective()
+  );
+}
+
+// PAINTED_FACES (probe 2026-10-21, default off -> byte-identical). The Eddie book rendered every
+// face photo-smooth inside thick impasto scenes: "EXACTLY as in the references" + photo-chained
+// sheets made the model copy the photographic RENDERING, not just the identity, and the saturated
+// negative ("photorealistic") cannot delete what the positive requires. Positive-axis carve-out:
+// references define WHO, the medium defines HOW.
+function paintedFacesPageDirective() {
+  if (process.env.PAINTED_FACES !== "on") return "";
+  return (
+    `The references define WHO each character is; the medium above defines HOW they are painted: ` +
+    `render every face and all skin with the SAME visible brushwork, paint texture and edges as the ` +
+    `clothing and the setting - a painter's portrait of that exact person, never a photographic ` +
+    `face set into a painting. No photographic skin smoothness, no camera lighting, no lens look.\n\n`
   );
 }
 
@@ -754,7 +770,13 @@ export async function renderPageWithTemplate({
       // ART_NATURAL_ENABLED (default off): candid/dynamic PAGE staging instead of the stiff
       // "centered/face-forward" rule. Page scenes only — sheet mints keep the clean reference
       // framing. Flag off → byte-identical (the template's customCompositionRules, else stiff).
-      const compositionLine = pageCompositionRules(config.imageGeneration.customCompositionRules);
+      // Template frame note (2026-10-21, band-crop fix): a template whose image is cropped into a
+      // wide band (object-fit:cover + bottom fade) tells the painter where the safe area is.
+      // Absent -> byte-identical prompt. Appended regardless of ART_NATURAL (geometry, not style).
+      const compositionLine = [
+        pageCompositionRules(config.imageGeneration.customCompositionRules),
+        config.imageGeneration.frameNote,
+      ].filter(Boolean).join("; ");
 
       // Adapt each subject for the prompt builder: sheetCount = actual
       // reference count this call sends for that subject (already capped

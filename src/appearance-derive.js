@@ -64,3 +64,59 @@ export async function deriveSheetAppearance(sheetBuffer, { subjectType, animalKi
     return null; // soft-fail: caller keeps the existing anchor
   }
 }
+
+// Photo-derived appearance (probe 2026-10-21). For a photo-anchored HUMAN the customer's free text
+// ("tall, lean frame, strong square jaw") is drawn literally and FIGHTS the photographs: the Eddie
+// book's uncle came out as a slim, chiselled catalogue model while his photos show a full rounded
+// face, heavy brows and a sturdy build. Reference authority covers face/hair at render, but build
+// and jaw WORDS still pull. This derives the physical descriptor FROM THE PHOTOS (all kept photos
+// in one vision call) so the Appearance line agrees with the references. Sheet-neutral: facts
+// only, no expression, no clothing. Soft-fail → null (caller keeps the original text).
+const PHOTO_SYSTEM =
+  "You describe a real person's PHYSICAL appearance for a portrait painter, from their photographs, " +
+  "so the painter can tell THIS person from a generic good-looking one. Lead with the 4 to 6 features " +
+  "that most set them apart, stated as clear comparatives against an average adult of their sex: face " +
+  "fullness (fuller/narrower), cheeks, chin and jaw shape (rounded/pointed/broad/heavy), brow weight " +
+  "(heavy/light), eye depth and shape, nose width/length, mouth width, hair colour, texture, LENGTH " +
+  "(cropped / ear-length / collar-length / shoulder-length), VOLUME and how it sits (height on top, " +
+  "parting, swept, fringe), skin tone, neck thickness and overall build " +
+  "(sturdy/slim/broad/heavy-set). NEVER use hedge words: no 'medium', 'moderate', 'average', 'defined', " +
+  "'well-proportioned'. NO expression or mood, NO pose, NO clothing, NO background, NO age guess, NO " +
+  "flattering adjectives (no 'handsome', 'athletic', 'chiselled'). Two or three short sentences, present " +
+  "tense, starting with 'A person with'.";
+
+/**
+ * Derive a sheet-neutral physical descriptor from one or more PHOTOGRAPHS of the same person.
+ * @param {Buffer[]} photoBuffers - PNG/JPEG bytes (all kept photos of the subject).
+ * @param {object} [opts] - { timeoutMs }
+ * @returns {Promise<string|null>} descriptor, or null on any failure (soft-fail).
+ */
+export const PHOTO_DERIVE_MODEL = process.env.PHOTO_APPEARANCE_MODEL || "claude-sonnet-4-6";
+
+export async function derivePhotoAppearance(photoBuffers, { timeoutMs = 30000, model = PHOTO_DERIVE_MODEL } = {}) {
+  const client = getClient();
+  const bufs = (photoBuffers || []).filter((b) => b && b.length);
+  if (!client || !bufs.length) return null;
+  try {
+    const resp = await client.messages.create(
+      {
+        model,
+        max_tokens: 300,
+        system: PHOTO_SYSTEM,
+        messages: [{
+          role: "user",
+          content: [
+            ...bufs.map((b) => ({ type: "image", source: { type: "base64", media_type: mediaType(b), data: b.toString("base64") } })),
+            { type: "text", text: `These ${bufs.length} photo(s) show the SAME person. Describe their physical appearance as instructed.` },
+          ],
+        }],
+      },
+      { timeout: timeoutMs },
+    );
+    const text = (resp?.content ?? []).map((b) => b?.text ?? "").join("").trim();
+    return text || null;
+  } catch (err) {
+    console.warn('[derivePhotoAppearance] soft-fail:', err?.status ?? '', err?.message ?? String(err));
+    return null;
+  }
+}
