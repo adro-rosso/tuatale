@@ -147,6 +147,27 @@ describe('secondarySchema', () => {
     }
   });
 
+  it('appearance is OPTIONAL when the companion has photos (photos set the likeness)', () => {
+    // 2026-10-21: a required 30-char line ("tall lean frame, strong jaw") was drawn literally and
+    // fought the uploaded photographs; with photos the text may be empty.
+    const result = secondarySchema.safeParse({
+      ...validHumanSecondary,
+      appearance: '',
+      photos: ['uploads/draft-1/abc.png'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('appearance still needs 30+ chars when the companion has NO photos', () => {
+    const result = secondarySchema.safeParse({ ...validHumanSecondary, appearance: 'short' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path[0] === 'appearance');
+      expect(issue?.message).toBe(VALIDATION_COPY.TOO_SHORT);
+    }
+    expect(secondarySchema.safeParse({ ...validHumanSecondary, appearance: '', photos: [] }).success).toBe(false);
+  });
+
   it('rejects empty relationship with the bespoke copy', () => {
     const result = secondarySchema.safeParse({
       ...validHumanSecondary,

@@ -294,12 +294,19 @@ function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChi
         />
       </CardField>
 
-      <CardField label="What do they look like?" error={errors['appearance']}>
+      <CardField
+        label={(data.photos?.length ?? 0) > 0 ? 'Anything else about how they look? (optional)' : 'What do they look like?'}
+        error={errors['appearance']}
+      >
         <textarea
           value={data.appearance}
           maxLength={300}
           rows={3}
-          placeholder="The more specific, the better."
+          placeholder={
+            (data.photos?.length ?? 0) > 0
+              ? 'Your photos set their likeness. Add only what a photo cannot show.'
+              : 'The more specific, the better.'
+          }
           onChange={(e) => onChange({ appearance: e.target.value })}
           className={`${fieldControl} resize-y`}
         />

@@ -185,7 +185,10 @@ export const secondarySchema = z
     subject_type: z.enum(SUBJECT_TYPES, { message: COPY.CHOOSE_ONE }),
     gender: z.enum(GENDERS).optional(),
     relationship: z.string().min(1, COPY.RELATIONSHIP_REQUIRED).max(80, COPY.TOO_LONG),
-    appearance: z.string().min(30, COPY.TOO_SHORT).max(300, COPY.AT_UPPER),
+    // Free-text appearance. REQUIRED (30+ chars) only when the companion has NO photos: with
+    // photos the likeness comes from the photographs and a customer-written line like "tall
+    // lean frame, strong jaw" is drawn literally and fights them (2026-10-21, Eddie's uncle).
+    appearance: z.string().max(300, COPY.AT_UPPER).default(''),
     extra_care: z.boolean().default(false),
     // Storage paths — a companion's photos drive their likeness (first photo is
     // the adapter's photoPath anchor). Pet books only; adults/pets, never a child.
@@ -197,6 +200,11 @@ export const secondarySchema = z
   .refine((data) => data.subject_type !== 'human' || data.gender !== undefined, {
     message: COPY.CHOOSE_ONE,
     path: ['gender'],
+  })
+  // No photos → the text is the only likeness source → keep the 30-char floor.
+  .refine((data) => (data.photos?.length ?? 0) > 0 || data.appearance.trim().length >= 30, {
+    message: COPY.TOO_SHORT,
+    path: ['appearance'],
   });
 
 export type SecondaryInput = z.infer<typeof secondarySchema>;
