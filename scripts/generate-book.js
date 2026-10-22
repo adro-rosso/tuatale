@@ -20,7 +20,7 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import { loadTemplateRegistry } from "../src/template-registry.js";
-import { planBook, generateBook } from "../src/book-pipeline.js";
+import { planBook, generateBook, applyPhotoAppearance } from "../src/book-pipeline.js";
 import { createStatusFile, updateStatus, finalizeStatus, registerAbortHandlers } from "../src/status-writer.js";
 
 // ---- Paths -----------------------------------------------------------------
@@ -211,6 +211,10 @@ if (!childName || !Number.isInteger(childAge) || childAge <= 0) {
 // ---- Plan (validation + sheet-reuse + cost estimate) -----------------------
 const sheetsDir = path.join(bookDir, "character-sheets");
 const registry = await loadTemplateRegistry();
+
+// PHOTO_APPEARANCE: apply (or reuse the cached) photo-derived descriptors BEFORE the pre-plan so
+// the confirm banner / reuse estimate matches what generateBook will actually do. Idempotent.
+await applyPhotoAppearance(story, meta, { outputDir: bookDir, log: console });
 
 let plan;
 try {

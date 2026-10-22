@@ -396,20 +396,32 @@ export async function enrichThinPhotoAnchors(subjectMetaByName, subjectList, { d
 // ---------------------------------------------------------------------------
 export const PHOTO_APPEARANCE_CACHE_PREFIX = "photo-appearance-";
 
+const OUTFIT_VERB = /\b(wears?|wearing|wore|dressed in)\b/i;
 function outfitSentences(text) {
-  return ((text || "").match(/[^.]*\bwear(?:s|ing)?\b[^.]*\./gi) || []).map((x) => x.trim()).join(" ");
+  return String(text || "")
+    .split(/(?<=[.!?])\s+/)
+    .map((x) => x.trim())
+    .filter((x) => OUTFIT_VERB.test(x))
+    .map((x) => (/[.!?]$/.test(x) ? x : `${x}.`))
+    .join(" ");
 }
 
 export async function applyPhotoAppearance(story, meta, { outputDir, derive = derivePhotoAppearance, log = null, readFile = fs.readFileSync } = {}) {
   const applied = [];
-  if (process.env.PHOTO_APPEARANCE !== "on" || !story || !meta?.inputs) return applied;
+  if (!story || !meta?.inputs) return applied;
+  // Flag gates NEW derivations only. A cache file means "this book was minted with the derived
+  // words": apply it even with the flag off, so a station re-render from a shell without the
+  // flag computes the SAME fingerprint and never silently re-mints (review 2026-10-22, #3).
+  const flagOn = process.env.PHOTO_APPEARANCE === "on";
   const cacheDir = path.join(outputDir, "character-sheets");
+  if (!flagOn && !fs.existsSync(cacheDir)) return applied;
   const targets = [];
   const child = meta.inputs.child;
   const childPhotos = Array.isArray(child?.photo_paths) && child.photo_paths.length
     ? child.photo_paths : (child?.photoPath ? [child.photoPath] : []);
   if (child && child.subject_type !== "non_human" && childPhotos.length && typeof story.character === "string") {
-    const age = child.age != null ? `${child.name} is ${child.age} years old.` : `${child.name}.`;
+    const age = child.is_adult ? `${child.name} is an adult.`
+      : child.age != null ? `${child.name} is ${child.age} years old.` : `${child.name}.`;
     targets.push({ prefix: "protagonist", name: child.name, photos: childPhotos, lead: age,
       get: () => story.character, set: (v) => { story.character = v; } });
   }
@@ -419,7 +431,7 @@ export async function applyPhotoAppearance(story, meta, { outputDir, derive = de
     const photos = Array.isArray(ms.photo_paths) && ms.photo_paths.length ? ms.photo_paths : (ms.photoPath ? [ms.photoPath] : []);
     if (!photos.length) return;
     const rel = ms.relationship ? `${ms.name} is ${story.character_name ?? child?.name ?? "the child"}'s ${ms.relationship}.` : `${ms.name}.`;
-    targets.push({ prefix: `companion-${i + 1}`, name: ms.name, photos, lead: rel,
+    targets.push({ prefix: ms.id ?? `companion-${i + 1}`, name: ms.name, photos, lead: rel,
       get: () => comp.character_description, set: (v) => { comp.character_description = v; } });
   });
   for (const t of targets) {
@@ -431,9 +443,13 @@ export async function applyPhotoAppearance(story, meta, { outputDir, derive = de
         if (derived) log?.log?.(`  [photo-appearance] ${t.name}: reusing cached descriptor`);
       }
       if (!derived) {
+        if (!flagOn) continue; // no cache + flag off → untouched (byte-identical)
         const bufs = t.photos.map((f) => { try { return readFile(f); } catch { return null; } }).filter(Boolean);
         if (!bufs.length) continue;
         derived = await derive(bufs);
+        // The descriptor must carry no clothing (system prompt); if the model slips a "wears…"
+        // sentence in, drop it here so outfitSentences() can never duplicate it (#4).
+        if (derived) derived = String(derived).split(/(?<=[.!?])\s+/).filter((x) => !OUTFIT_VERB.test(x)).join(" ").trim() || null;
         if (derived) {
           fs.mkdirSync(cacheDir, { recursive: true });
           fs.writeFileSync(cachePath, JSON.stringify({ subject: t.name, derived, photos: t.photos.map((f) => path.basename(f)), at: new Date().toISOString() }, null, 2));
@@ -444,8 +460,12 @@ export async function applyPhotoAppearance(story, meta, { outputDir, derive = de
       derived = null;
     }
     if (!derived) continue;
-    const before = t.get();
-    const next = `${t.lead} ${String(derived).trim()} ${outfitSentences(before)}`.replace(/\s+/g, " ").trim();
+    const before = String(t.get() ?? "");
+    const head = `${t.lead} ${String(derived).trim()}`.replace(/\s+/g, " ").trim();
+    if (before.replace(/\s+/g, " ").trim().startsWith(head)) { applied.push(t.name); continue; } // already applied (resume / re-render)
+    const outfit = outfitSentences(before);
+    if (!outfit) log?.log?.(`  [photo-appearance] ${t.name}: no outfit sentence found in the story text — pages carry no clothing line`);
+    const next = `${head} ${outfit}`.replace(/\s+/g, " ").trim();
     t.set(next);
     applied.push(t.name);
     log?.log?.(`  [photo-appearance] ${t.name}: description derived from ${t.photos.length} photo(s)`);

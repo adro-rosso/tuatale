@@ -96,7 +96,8 @@ export const PHOTO_DERIVE_MODEL = process.env.PHOTO_APPEARANCE_MODEL || "claude-
 export async function derivePhotoAppearance(photoBuffers, { timeoutMs = 30000, model = PHOTO_DERIVE_MODEL } = {}) {
   const client = getClient();
   const bufs = (photoBuffers || []).filter((b) => b && b.length);
-  if (!client || !bufs.length) return null;
+  if (!client) { console.warn("[derivePhotoAppearance] no ANTHROPIC_API_KEY — skipping (story text kept)"); return null; }
+  if (!bufs.length) return null;
   try {
     const resp = await client.messages.create(
       {

@@ -71,6 +71,43 @@ describe("applyPhotoAppearance", () => {
     expect(second.story.companion_characters[0].character_description).toBe(first.story.companion_characters[0].character_description);
   });
 
+  it("flag OFF but a cache file exists → cached words are applied (station re-render keeps the fingerprint)", async () => {
+    process.env.PHOTO_APPEARANCE = "on";
+    const first = fixture();
+    await applyPhotoAppearance(first.story, first.meta, { outputDir: tmp, derive: vi.fn().mockResolvedValue("A person with a fuller face."), readFile: () => PNG });
+    delete process.env.PHOTO_APPEARANCE;
+    const again = fixture();
+    const derive = vi.fn();
+    const applied = await applyPhotoAppearance(again.story, again.meta, { outputDir: tmp, derive, readFile: () => PNG });
+    expect(derive).not.toHaveBeenCalled();
+    expect(applied).toEqual(["Eddie", "Matthew"]);
+    expect(again.story.character).toBe(first.story.character);
+    expect(again.story.companion_characters[0].character_description).toBe(first.story.companion_characters[0].character_description);
+  });
+
+  it("re-application is idempotent: an already-rewritten description is left byte-identical", async () => {
+    process.env.PHOTO_APPEARANCE = "on";
+    const { story, meta } = fixture();
+    const derive = vi.fn().mockResolvedValue("A person with a fuller face. He wears glasses."); // clothing slip in the descriptor
+    await applyPhotoAppearance(story, meta, { outputDir: tmp, derive, readFile: () => PNG });
+    const once = JSON.stringify(story);
+    expect(story.character).not.toMatch(/glasses/); // the slipped wear-sentence is dropped, never duplicated
+    await applyPhotoAppearance(story, meta, { outputDir: tmp, derive, readFile: () => PNG });
+    expect(JSON.stringify(story)).toBe(once);
+  });
+
+  it("outfit sentences: 'dressed in' and 'wore' are kept, 'Mr.' does not fragment, missing outfit logs", async () => {
+    process.env.PHOTO_APPEARANCE = "on";
+    const { story, meta } = fixture();
+    story.character = "Eddie is 4 years old. Mr. Bun is his toy. He is dressed in a red jumper and shorts";
+    story.companion_characters[0].character_description = "Matthew is tall. No clothing here.";
+    const log = { log: vi.fn() };
+    await applyPhotoAppearance(story, meta, { outputDir: tmp, derive: vi.fn().mockResolvedValue("A person with a round face."), readFile: () => PNG, log });
+    expect(story.character).toBe("Eddie is 4 years old. A person with a round face. He is dressed in a red jumper and shorts.");
+    expect(story.companion_characters[0].character_description).toBe("Matthew is Eddie's uncle. A person with a round face.");
+    expect(log.log.mock.calls.some((c) => /no outfit sentence/.test(String(c[0])))).toBe(true);
+  });
+
   it("skips non-human and photo-less subjects; derive null → untouched (soft-fail)", async () => {
     process.env.PHOTO_APPEARANCE = "on";
     const { story, meta } = fixture();

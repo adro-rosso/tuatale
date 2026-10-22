@@ -18,7 +18,7 @@ export const COMPOSITION_RULES =
 // posing and lived-in staging while keeping faces readable; it is applied ONLY to page scenes
 // (page-pipeline), never to character-sheet mints (sheets stay clean full-body front-facing).
 export const COMPOSITION_RULES_NATURAL =
-  "natural candid posing with dynamic, expressive body language and lifelike gesture; an interesting, varied camera angle rather than a straight-on portrait; the subject may be off-centre, turned, mid-motion, or partially cropped by the frame; a lived-in setting with depth and foreground and background; faces remain clear and recognisable; a spontaneous real moment, not a posed studio shot";
+  "natural candid posing with dynamic, expressive body language and lifelike gesture; an interesting, varied camera angle rather than a straight-on portrait; the subject may be off-centre, turned, or mid-motion, but every figure stays complete inside the frame; a lived-in setting with depth and foreground and background; faces remain clear and recognisable; a spontaneous real moment, not a posed studio shot";
 // The stiff fallback used when a template declares no customCompositionRules.
 const COMPOSITION_RULES_PAGE_FALLBACK =
   "full body, centered subject, clean uncluttered background, consistent framing, face clearly visible.";
