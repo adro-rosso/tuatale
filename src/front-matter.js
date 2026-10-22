@@ -11,6 +11,7 @@
 // the interior used. All page metrics use a PROVISIONAL safe inset (central
 // ~80%); the true trim/bleed/safe-area is vendor-gated (Stage B.2).
 
+import sharp from "sharp";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -194,6 +195,54 @@ async function fitCoverTitleSize(lines, { maxFontSize, minFontSize, regionWidthP
   return fit.fits ? fit.fontSize : minFontSize;
 }
 
+// ---------------------------------------------------------------------------
+// Baked cover scrim (2026-10-23). The integrated cover drew its "text box" as a CSS gradient
+// (`.scrim`, rgba → transparent). Chromium exports that as a shading with transparency, and
+// Edge's (Adobe) engine renders its soft upper edge much shorter — the title (and before that
+// the brand line) appeared to float OUTSIDE the box. Fix: blend the band into the hero raster
+// (opaque JPEG, no transparency in the PDF) and size it from the ACTUAL text block (title lines
+// + name + mark + bottom offset) plus a margin, so the whole block always sits on the band.
+// ---------------------------------------------------------------------------
+const COVER_LOWER_BOTTOM_IN = 0.52;   // .lower bottom offset (keep in sync with the CSS below)
+const COVER_BAND_MARGIN_IN = 0.40;    // band extends this far above the text block
+const COVER_BAND_FEATHER_IN = 0.55;   // soft edge above the margin
+
+/** Height (inches) of the title block: title lines + "for <name>" + brand mark. */
+export function coverTextBlockHeightIn({ lineCount, fontSizePt }) {
+  const titleIn = (lineCount * fontSizePt * 1.0) / 72;
+  const nameIn = 0.15 + (15 * 1.25) / 72;       // margin-top + 15pt line
+  const markIn = 0.18 + (11.5 * 1.25) / 72;     // margin-top + 11.5pt line
+  return titleIn + nameIn + markIn;
+}
+
+export async function bakeCoverScrim({ imagePath, outDir, cream, lineCount, fontSizePt }) {
+  const meta = await sharp(imagePath).metadata();
+  const W = meta.width, H = meta.height;
+  const pageW = parseInches(COVER_PAGE_SIZE.width), pageH = parseInches(COVER_PAGE_SIZE.height);
+  // object-fit: cover, center center → which part of the image is visible, in image px.
+  const scale = Math.max(pageW / W, pageH / H);
+  const visH = pageH / scale, vy0 = (H - visH) / 2;
+  const blockIn = coverTextBlockHeightIn({ lineCount, fontSizePt });
+  const bandTopIn = COVER_LOWER_BOTTOM_IN + blockIn + COVER_BAND_MARGIN_IN;        // strong zone up to here
+  const featherTopIn = bandTopIn + COVER_BAND_FEATHER_IN;
+  const yAt = (fromBottomIn) => vy0 + visH * (1 - Math.min(1, fromBottomIn / pageH)); // image px
+  const yBand = yAt(bandTopIn) / H, yFeather = yAt(featherTopIn) / H, yBottom = (vy0 + visH) / H;
+  const rgb = cream ? "18,12,6" : "250,246,235";
+  const [aBottom, aBand] = cream ? [0.50, 0.36] : [0.70, 0.56];
+  const stops =
+    `<stop offset="${Math.max(0, yFeather)}" stop-color="rgb(${rgb})" stop-opacity="0"/>` +
+    `<stop offset="${yBand}" stop-color="rgb(${rgb})" stop-opacity="${aBand}"/>` +
+    `<stop offset="${yBottom}" stop-color="rgb(${rgb})" stop-opacity="${aBottom}"/>` +
+    `<stop offset="1" stop-color="rgb(${rgb})" stop-opacity="${aBottom}"/>`;
+  const svg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">${stops}</linearGradient></defs><rect width="${W}" height="${H}" fill="url(#g)"/></svg>`,
+  );
+  const out = path.join(outDir, "cover-hero-scrimmed.jpg");
+  const tinted = await sharp(imagePath).composite([{ input: svg, blend: "over" }]).png().toBuffer();
+  await sharp(tinted).flatten().removeAlpha().jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toFile(out);
+  return out;
+}
+
 function buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleColor }) {
   const cream = titleColor !== "espresso";
   // Softened vs prototype B: peak opacity ~0.46 (was 0.66), feathered to nothing.
@@ -212,7 +261,7 @@ function buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleC
   // reads on ANY hero (2026-07-07 colophon fix); espresso keeps a light halo.
   const markShadow = cream ? "0 1px 2px rgba(0,0,0,.72),0 0 7px rgba(0,0,0,.5)" : "0 1px 2px rgba(255,252,244,.65)";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">${COVER_FONTS_LINK}<style>${COVER_BASE_CSS}
-  .scrim{position:absolute;left:0;right:0;bottom:0;height:42%;background:${scrim};}
+  /* .scrim removed 2026-10-23: the band is baked into the hero (bakeCoverScrim) — no PDF transparency. */
   /* 2026-10-23: the brand mark lives INSIDE this block (under the name) — it used to float at the page's
      bottom edge and read as detached from the title (Adro, Eddie's cover). */
   .lower{position:absolute;left:7%;right:7%;bottom:0.52in;text-align:center;}
@@ -221,7 +270,6 @@ function buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleC
   .mark{display:block;margin:0.18in 0 0;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:11.5pt;letter-spacing:0.32em;text-transform:uppercase;color:${markCol};text-shadow:${markShadow};}
   </style></head><body><div class="cover">
     <img class="hero" src="${heroUrl}" alt="">
-    <div class="scrim"></div>
     <div class="lower"><h1 class="title">${linesHtml}</h1><p class="forname">for ${escHtml(name)}</p><div class="mark">${TUATALE_MARK}</div></div>
   </div></body></html>`;
 }
@@ -251,10 +299,14 @@ export async function renderCoverPage({ title, name, imagePath, outputDir, outNa
   const maxFontSize = isBand ? 50 : 54;
   const regionWidthPt = pageWpt * (isBand ? 0.80 : 0.82);
   const fontSizePt = await fitCoverTitleSize(lines, { maxFontSize, minFontSize: 28, regionWidthPt });
-  const heroUrl = pathToFileURL(imagePath).href;
   // 'auto' → sample the hero's title zone and pick espresso (light) / cream (dark
   // or ambiguous). Default stays the locked 'cream'. Ignored for the band path.
   const resolvedColor = titleColor === "auto" ? await pickTitleColor(imagePath) : titleColor;
+  // Integrated cover: bake the band into the hero (sized from the text block) → opaque PDF.
+  const heroPath = isBand
+    ? imagePath
+    : await bakeCoverScrim({ imagePath, outDir: outputDir, cream: resolvedColor !== "espresso", lineCount: lines.length, fontSizePt });
+  const heroUrl = pathToFileURL(heroPath).href;
   const html = isBand
     ? buildBandCoverHtml({ heroUrl, linesHtml, name, fontSizePt })
     : buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleColor: resolvedColor });
