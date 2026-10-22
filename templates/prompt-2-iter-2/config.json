@@ -32,6 +32,18 @@
     "pageSize": {
       "width": "11in",
       "height": "8.5in"
+    },
+    "fade": {
+      "box": {
+        "left": 0.35,
+        "top": 0,
+        "width": 0.65,
+        "height": 1
+      },
+      "objectPosition": "right center",
+      "direction": "left",
+      "end": 0.18,
+      "background": "#FAF9F0"
     }
   }
 }

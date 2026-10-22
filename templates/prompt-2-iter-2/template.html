@@ -58,8 +58,6 @@
     height: 100%;
     /* 18% left-edge feather: 0 → 18% fades from transparent to opaque;
        the remaining 82% of the image is fully visible. */
-    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 18%, black 100%);
-            mask-image: linear-gradient(to right, transparent 0%, black 18%, black 100%);
   }
   .image-layer img {
     width: 100%;
@@ -100,6 +98,8 @@
   .narrative p:last-child {
     margin-bottom: 0;
   }
+  /* Fade is BAKED into the raster by page-pipeline bakeFade() (rendering.fade in config.json)
+     — no CSS mask, so the PDF carries no soft mask/shading (Edge/Adobe dropped it, 2026-10-22). */
 </style>
 </head>
 <body>

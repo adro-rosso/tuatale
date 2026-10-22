@@ -213,15 +213,16 @@ function buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleC
   const markShadow = cream ? "0 1px 2px rgba(0,0,0,.72),0 0 7px rgba(0,0,0,.5)" : "0 1px 2px rgba(255,252,244,.65)";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">${COVER_FONTS_LINK}<style>${COVER_BASE_CSS}
   .scrim{position:absolute;left:0;right:0;bottom:0;height:42%;background:${scrim};}
-  .lower{position:absolute;left:7%;right:7%;bottom:0.66in;text-align:center;}
+  /* 2026-10-23: the brand mark lives INSIDE this block (under the name) — it used to float at the page's
+     bottom edge and read as detached from the title (Adro, Eddie's cover). */
+  .lower{position:absolute;left:7%;right:7%;bottom:0.52in;text-align:center;}
   .title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:${fontSizePt}pt;line-height:1.0;margin:0;color:${titleCol};text-shadow:${titleShadow};}
   .forname{font-family:'Nunito',sans-serif;font-style:italic;font-weight:600;font-size:15pt;margin:0.15in 0 0;color:${nameCol};text-shadow:${softShadow};}
-  .mark{position:absolute;left:0;right:0;bottom:0.32in;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:11.5pt;letter-spacing:0.32em;text-transform:uppercase;color:${markCol};text-shadow:${markShadow};}
+  .mark{display:block;margin:0.18in 0 0;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:11.5pt;letter-spacing:0.32em;text-transform:uppercase;color:${markCol};text-shadow:${markShadow};}
   </style></head><body><div class="cover">
     <img class="hero" src="${heroUrl}" alt="">
     <div class="scrim"></div>
-    <div class="lower"><h1 class="title">${linesHtml}</h1><p class="forname">for ${escHtml(name)}</p></div>
-    <div class="mark">${TUATALE_MARK}</div>
+    <div class="lower"><h1 class="title">${linesHtml}</h1><p class="forname">for ${escHtml(name)}</p><div class="mark">${TUATALE_MARK}</div></div>
   </div></body></html>`;
 }
 

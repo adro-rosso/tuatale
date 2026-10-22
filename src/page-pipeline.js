@@ -133,6 +133,78 @@ function buildDynamicCss({ region, fontSize, color }) {
   `;
 }
 
+// ---------------------------------------------------------------------------
+// Baked fade (2026-10-22). The band templates used a CSS `mask-image: linear-gradient(...)`
+// to feather the illustration into the cream page. Chromium exports that as a soft mask +
+// function-based shading, which Edge's (Adobe) PDF engine drops — the customer saw blank
+// pages / missing illustrations. Fix: bake the same fade INTO the raster (blend to the page
+// cream along the gradient) and hand the template a plain opaque image; the template keeps
+// its object-fit:cover crop, so we map the gradient from CONTAINER coordinates into the
+// image's own pixels exactly as CSS would have placed it. Config (per template):
+//   rendering.fade = { box:{left,top,width,height} (fractions of the page),
+//                      objectPosition:"center top"|"right center"|..., direction:"bottom"|"right"|"left",
+//                      start:0.82 (opaque until here, transparent at the far edge) |
+//                      end:0.18 (direction "left": transparent at 0, opaque from here), background:"#FAF9F0" }
+// No `fade` in config → the raw image is used untouched (byte-identical for other templates).
+// ---------------------------------------------------------------------------
+const POS_FRAC = { left: 0, center: 0.5, right: 1, top: 0, bottom: 1 };
+
+/** Pure: where does the fade run, in IMAGE pixel coordinates along its axis? */
+export function computeFadeSpan({ imageWidth, imageHeight, pageWidthIn, pageHeightIn, fade }) {
+  const cw = pageWidthIn * (fade.box?.width ?? 1);
+  const ch = pageHeightIn * (fade.box?.height ?? 1);
+  const scale = Math.max(cw / imageWidth, ch / imageHeight); // object-fit: cover
+  const [px = "center", py = "center"] = String(fade.objectPosition || "center center").split(/\s+/);
+  const ax = POS_FRAC[px] ?? 0.5, ay = POS_FRAC[py] ?? 0.5;
+  const offX = (cw - imageWidth * scale) * ax;   // ≤ 0 on the cropped axis
+  const offY = (ch - imageHeight * scale) * ay;
+  // Visible rect of the image, in image px.
+  const vx0 = -offX / scale, vy0 = -offY / scale, vw = cw / scale, vh = ch / scale;
+  const dir = fade.direction || "bottom";
+  if (dir === "bottom") {
+    const start = fade.start ?? 0.82;
+    return { axis: "y", opaqueUntil: vy0 + vh * start, transparentAt: vy0 + vh, side: "end" };
+  }
+  if (dir === "right") {
+    const start = fade.start ?? 0.85;
+    return { axis: "x", opaqueUntil: vx0 + vw * start, transparentAt: vx0 + vw, side: "end" };
+  }
+  if (dir === "left") {
+    const end = fade.end ?? 0.18;
+    return { axis: "x", opaqueUntil: vx0 + vw * end, transparentAt: vx0, side: "start" };
+  }
+  throw new Error(`bakeFade: unknown direction "${dir}"`);
+}
+
+/** Write <outDir>/page-NN-faded.png (opaque, fade blended to the page cream). Returns its path. */
+export async function bakeFade({ imagePath, outDir, pageNumStr, config }) {
+  const fade = config?.rendering?.fade;
+  if (!fade) return imagePath;
+  const meta = await sharp(imagePath).metadata();
+  const W = meta.width, H = meta.height;
+  const pageW = parseFloat(config.rendering.pageSize?.width ?? "11in");
+  const pageH = parseFloat(config.rendering.pageSize?.height ?? "8.5in");
+  const span = computeFadeSpan({ imageWidth: W, imageHeight: H, pageWidthIn: pageW, pageHeightIn: pageH, fade });
+  const bg = fade.background || "#FAF9F0";
+  // Alpha mask as an SVG linear gradient: white = keep image, transparent = page cream.
+  const a = Math.max(0, Math.min(1, span.opaqueUntil / (span.axis === "y" ? H : W)));
+  const b = Math.max(0, Math.min(1, span.transparentAt / (span.axis === "y" ? H : W)));
+  const stops = span.side === "end"
+    ? `<stop offset="0" stop-color="#fff"/><stop offset="${a}" stop-color="#fff"/><stop offset="${b}" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>`
+    : `<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="${b}" stop-color="#fff" stop-opacity="0"/><stop offset="${a}" stop-color="#fff"/><stop offset="1" stop-color="#fff"/>`;
+  const vec = span.axis === "y" ? `x1="0" y1="0" x2="0" y2="1"` : `x1="0" y1="0" x2="1" y2="0"`;
+  const svg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><defs><linearGradient id="g" ${vec}>${stops}</linearGradient></defs><rect width="${W}" height="${H}" fill="url(#g)"/></svg>`,
+  );
+  // JPEG so Chromium embeds the stream as-is (a PNG here doubled the page PDF size).
+  const out = path.join(outDir, `page-${pageNumStr}-faded.jpg`);
+  // Two passes: sharp applies flatten BEFORE composite regardless of call order, so the mask
+  // must land in its own pipeline and the flatten (alpha → cream, alpha removed) in a second.
+  const masked = await sharp(imagePath).ensureAlpha().composite([{ input: svg, blend: "dest-in" }]).png().toBuffer();
+  await sharp(masked).flatten({ background: bg }).removeAlpha().jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toFile(out);
+  return out;
+}
+
 // ---- Render PDF with dynamic CSS injection -------------------------------
 // Returns { pdfPath, renderedPngPath }. The PNG is a viewport screenshot
 // taken in the same Puppeteer session as the PDF — same HTML, same
@@ -973,9 +1045,12 @@ export async function renderPageWithTemplate({
     // ---- 5b. Render PDF (dynamic CSS injection only for Type A) -------
     const tRenderStart = Date.now();
     const pdfPath = path.join(outputDir, `page-${pageNumStr}.pdf`);
+    // Baked fade: the template receives an opaque, pre-feathered raster (no CSS mask → no PDF
+    // soft mask/shading for a viewer to drop). Detection/auto-fit above ran on the RAW image.
+    const displayImagePath = await bakeFade({ imagePath, outDir: outputDir, pageNumStr, config });
     const { renderedPngPath } = await renderPdfWithDynamicCss({
       templateHtmlPath,
-      imagePath,
+      imagePath: displayImagePath,
       narrativeText,
       pageSize: config.rendering.pageSize,
       dynamicCss: dynamicCssOut,
