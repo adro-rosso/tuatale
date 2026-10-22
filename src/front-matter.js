@@ -215,7 +215,7 @@ export function coverTextBlockHeightIn({ lineCount, fontSizePt }) {
   return titleIn + nameIn + markIn;
 }
 
-export async function bakeCoverScrim({ imagePath, outDir, cream, lineCount, fontSizePt }) {
+export async function bakeCoverScrim({ imagePath, outDir, cream, lineCount, fontSizePt, lowerBottomIn = COVER_LOWER_BOTTOM_IN, bandMarginIn = COVER_BAND_MARGIN_IN }) {
   const meta = await sharp(imagePath).metadata();
   const W = meta.width, H = meta.height;
   const pageW = parseInches(COVER_PAGE_SIZE.width), pageH = parseInches(COVER_PAGE_SIZE.height);
@@ -223,7 +223,7 @@ export async function bakeCoverScrim({ imagePath, outDir, cream, lineCount, font
   const scale = Math.max(pageW / W, pageH / H);
   const visH = pageH / scale, vy0 = (H - visH) / 2;
   const blockIn = coverTextBlockHeightIn({ lineCount, fontSizePt });
-  const bandTopIn = COVER_LOWER_BOTTOM_IN + blockIn + COVER_BAND_MARGIN_IN;        // strong zone up to here
+  const bandTopIn = lowerBottomIn + blockIn + bandMarginIn;        // strong zone up to here
   const featherTopIn = bandTopIn + COVER_BAND_FEATHER_IN;
   const yAt = (fromBottomIn) => vy0 + visH * (1 - Math.min(1, fromBottomIn / pageH)); // image px
   const yBand = yAt(bandTopIn) / H, yFeather = yAt(featherTopIn) / H, yBottom = (vy0 + visH) / H;
@@ -243,7 +243,7 @@ export async function bakeCoverScrim({ imagePath, outDir, cream, lineCount, font
   return out;
 }
 
-function buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleColor }) {
+function buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleColor, lowerBottomIn = COVER_LOWER_BOTTOM_IN }) {
   const cream = titleColor !== "espresso";
   // Softened vs prototype B: peak opacity ~0.46 (was 0.66), feathered to nothing.
   const scrim = cream
@@ -264,7 +264,7 @@ function buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleC
   /* .scrim removed 2026-10-23: the band is baked into the hero (bakeCoverScrim) — no PDF transparency. */
   /* 2026-10-23: the brand mark lives INSIDE this block (under the name) — it used to float at the page's
      bottom edge and read as detached from the title (Adro, Eddie's cover). */
-  .lower{position:absolute;left:7%;right:7%;bottom:0.52in;text-align:center;}
+  .lower{position:absolute;left:7%;right:7%;bottom:${lowerBottomIn}in;text-align:center;}
   .title{font-family:'Fredoka',sans-serif;font-weight:700;font-size:${fontSizePt}pt;line-height:1.0;margin:0;color:${titleCol};text-shadow:${titleShadow};}
   .forname{font-family:'Nunito',sans-serif;font-style:italic;font-weight:600;font-size:15pt;margin:0.15in 0 0;color:${nameCol};text-shadow:${softShadow};}
   .mark{display:block;margin:0.18in 0 0;text-align:center;font-family:'Nunito',sans-serif;font-weight:700;font-size:11.5pt;letter-spacing:0.32em;text-transform:uppercase;color:${markCol};text-shadow:${markShadow};}
@@ -286,7 +286,7 @@ function buildBandCoverHtml({ heroUrl, linesHtml, name, fontSizePt }) {
   </div></body></html>`;
 }
 
-export async function renderCoverPage({ title, name, imagePath, outputDir, outName = "cover", coverTitleStyle = "integrated", titleColor = "auto", subtitle = null }) {
+export async function renderCoverPage({ title, name, imagePath, outputDir, outName = "cover", coverTitleStyle = "integrated", titleColor = "auto", subtitle = null, lowerBottomIn = COVER_LOWER_BOTTOM_IN, maxTitlePt = null, bandMarginIn = COVER_BAND_MARGIN_IN }) {
   // Backward-compat: older callers passed subtitle "A story for X" — derive name.
   if (!name && subtitle) {
     const m = /for\s+(.+?)\.?$/i.exec(subtitle);
@@ -296,7 +296,7 @@ export async function renderCoverPage({ title, name, imagePath, outputDir, outNa
   const linesHtml = lines.map(escHtml).join("<br>");
   const pageWpt = parseInches(COVER_PAGE_SIZE.width) * 72;
   const isBand = coverTitleStyle === "band";
-  const maxFontSize = isBand ? 50 : 54;
+  const maxFontSize = maxTitlePt ?? (isBand ? 50 : 54);
   const regionWidthPt = pageWpt * (isBand ? 0.80 : 0.82);
   const fontSizePt = await fitCoverTitleSize(lines, { maxFontSize, minFontSize: 28, regionWidthPt });
   // 'auto' → sample the hero's title zone and pick espresso (light) / cream (dark
@@ -305,11 +305,11 @@ export async function renderCoverPage({ title, name, imagePath, outputDir, outNa
   // Integrated cover: bake the band into the hero (sized from the text block) → opaque PDF.
   const heroPath = isBand
     ? imagePath
-    : await bakeCoverScrim({ imagePath, outDir: outputDir, cream: resolvedColor !== "espresso", lineCount: lines.length, fontSizePt });
+    : await bakeCoverScrim({ imagePath, outDir: outputDir, cream: resolvedColor !== "espresso", lineCount: lines.length, fontSizePt, lowerBottomIn, bandMarginIn });
   const heroUrl = pathToFileURL(heroPath).href;
   const html = isBand
     ? buildBandCoverHtml({ heroUrl, linesHtml, name, fontSizePt })
-    : buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleColor: resolvedColor });
+    : buildIntegratedCoverHtml({ heroUrl, linesHtml, name, fontSizePt, titleColor: resolvedColor, lowerBottomIn });
   return renderHtmlToPdf({ html, pageSize: COVER_PAGE_SIZE, outputDir, outName });
 }
 
