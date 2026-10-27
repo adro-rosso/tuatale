@@ -61,7 +61,7 @@ export const COVER_PALETTES = {
 // Lines inside the block are sized in EM so the in-page fitter scales the whole block.
 // ---------------------------------------------------------------------------
 const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const stroke = (w, c) => `-webkit-text-stroke:${w}em ${c};paint-order:stroke fill;`;
+// NOTE: never use text strokes on a rendered cover (Type 3 fonts in the PDF); lintCoverHtml rejects them.
 const joinLines = (lines, cls = "") => lines.map((l) => `<div class="ln ${cls}">${esc(l)}</div>`).join("");
 
 export const COVER_VOICES = {
@@ -197,7 +197,8 @@ export function stackLines(title, maxChars = 9) {
 // ---------------------------------------------------------------------------
 const MARK = (extra = "") => `<div class="mark" style="${extra}">A Tuatale Book</div>`;
 const heroImg = (url, style) => `<img class="hero" src="${url}" alt="" style="${style}">`;
-const lightMark = `color:${CREAM};${stroke(0.25, ESP)}`;
+// Mark over art: a solid cream pill (a text STROKE would make Chromium emit the glyphs as a Type 3 font).
+const lightMark = `color:${ESP};background:${CREAM};padding:.55em .9em;border-radius:2em;`;
 
 export const COVER_PLACEMENTS = {
   sky: {
@@ -307,10 +308,37 @@ export const NO_PANEL_CLAUSE = "The book's title will be printed over this image
 // ---------------------------------------------------------------------------
 // Page assembly
 // ---------------------------------------------------------------------------
-export function coverFontsLink(voiceKey) {
-  const fams = [...new Set([...(COVER_VOICES[voiceKey]?.fonts ?? []), "Nunito:wght@800"])];
-  return `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>` +
-    `<link href="https://fonts.googleapis.com/css2?${fams.map((f) => `family=${f}`).join("&")}&display=swap" rel="stylesheet">`;
+// Self-hosted STATIC TrueType fonts (assets/fonts/, OFL). Chromium embeds static TTFs as
+// CIDFontType2 subsets; the Google-served VARIABLE fonts came out as Type 3 (glyph streams),
+// which print prepress can reject. Variable families (Fraunces, Oswald, Nunito) were cut to
+// static instances with fontTools. No network at render time.
+export const COVER_FONT_FILES = {
+  "Fraunces":         [["Fraunces-Bold.ttf", 700, "normal"], ["Fraunces-SemiBold.ttf", 600, "normal"], ["Fraunces-BoldItalic.ttf", 700, "italic"], ["Fraunces-SemiBoldItalic.ttf", 600, "italic"]],
+  "Sorts Mill Goudy": [["SortsMillGoudy-Regular.ttf", 400, "normal"], ["SortsMillGoudy-Italic.ttf", 400, "italic"]],
+  "Alegreya SC":      [["AlegreyaSC-Bold.ttf", 700, "normal"], ["AlegreyaSC-Medium.ttf", 500, "normal"]],
+  "Oswald":           [["Oswald-Bold.ttf", 700, "normal"], ["Oswald-SemiBold.ttf", 600, "normal"]],
+  "Patrick Hand":     [["PatrickHand-Regular.ttf", 400, "normal"]],
+  "Arvo":             [["Arvo-Bold.ttf", 700, "normal"]],
+  "Varela Round":     [["VarelaRound-Regular.ttf", 400, "normal"]],
+  "Gochi Hand":       [["GochiHand-Regular.ttf", 400, "normal"]],
+  "Nunito":           [["Nunito-ExtraBold.ttf", 800, "normal"], ["Nunito-Bold.ttf", 700, "normal"], ["Nunito-SemiBoldItalic.ttf", 600, "italic"]],
+};
+export const COVER_FONTS_DIR_URL = new URL("../assets/fonts/", import.meta.url).href; // file:///…/assets/fonts/
+
+/** Family names a voice uses (its `fonts` entries are Google-style specs; the family is before ':'). */
+export function voiceFontFamilies(voiceKey) {
+  return [...new Set([...(COVER_VOICES[voiceKey]?.fonts ?? []).map((f) => f.split(":")[0].replace(/\+/g, " ")), "Nunito"])];
+}
+
+/** <style> with @font-face rules for the voice's families, pointing at the local TTFs. */
+export function coverFontsLink(voiceKey, dirUrl = COVER_FONTS_DIR_URL) {
+  const rules = [];
+  for (const fam of voiceFontFamilies(voiceKey)) {
+    for (const [file, weight, style] of COVER_FONT_FILES[fam] ?? []) {
+      rules.push(`@font-face{font-family:'${fam}';font-weight:${weight};font-style:${style};font-display:block;src:url('${dirUrl}${file}') format('truetype');}`);
+    }
+  }
+  return `<style>${rules.join("\n")}</style>`;
 }
 
 export const COVER_BASE_CSS = `
@@ -396,6 +424,7 @@ export function lintCoverHtml(html) {
   if (/linear-gradient|conic-gradient|repeating-/.test(css)) out.push("gradient");
   if (/radial-gradient/.test(css.replace(/\.dots\{[^}]*\}/, ""))) out.push("radial-gradient in use");
   if (/mask-image|mix-blend|backdrop-filter|filter:\s*(blur|drop-shadow)|box-shadow:(?!\s*none)|text-shadow:(?!\s*none)/.test(css)) out.push("mask/blend/filter/shadow");
+  if (/text-stroke/.test(css)) out.push("text-stroke (Chromium emits stroked glyphs as a Type 3 font)");
   if (/rgba\([^)]*,\s*0?\.\d+\s*\)|opacity:\s*0?\.\d/.test(css.replace(/\.dots\{[^}]*\}/, ""))) out.push("transparency");
   return out;
 }

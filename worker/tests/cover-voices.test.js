@@ -1,6 +1,9 @@
 // Cover system (2026-10-27): voices × placements are pure, deterministic and viewer-proof.
 import { describe, it, expect } from "vitest";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
+  COVER_FONT_FILES, COVER_FONTS_DIR_URL, voiceFontFamilies,
   COVER_VOICES, COVER_PLACEMENTS, COVER_PALETTES, COVER_ENERGIES, COVER_AGE_BANDS,
   hashSeed, coverEnergyFor, ageBandFor, selectCoverVoice, selectCoverPlacement,
   balanceTwoLines, stackLines, buildCoverPageHtml, lintCoverHtml, HERO_COMPOSITIONS,
@@ -54,9 +57,18 @@ describe("page HTML", () => {
       expect(html).toContain("for Eddie");
       expect(html).toContain("A Tuatale Book");
       expect(html).toContain("__coverFitDone");
-      expect(html).toContain("fonts.googleapis.com/css2?family=");
+      expect(html).toContain("@font-face{font-family:");
+      expect(html).not.toContain("fonts.googleapis.com");
     }
   });
+  it("every voice's font families are self-hosted static TTFs that exist on disk", () => {
+    const dir = fileURLToPath(COVER_FONTS_DIR_URL);
+    for (const v of Object.keys(COVER_VOICES)) for (const fam of voiceFontFamilies(v)) {
+      expect(COVER_FONT_FILES[fam], `${v} uses ${fam}`).toBeDefined();
+      for (const [file] of COVER_FONT_FILES[fam]) expect(fs.existsSync(dir + file), `${fam}: ${file}`).toBe(true);
+    }
+  });
+
   it("lint catches the constructs Edge drops", () => {
     expect(lintCoverHtml("<style>.x{background:linear-gradient(red,blue)}</style>")).toContain("gradient");
     expect(lintCoverHtml("<style>.x{mask-image:url(a)}</style>")).toContain("mask/blend/filter/shadow");

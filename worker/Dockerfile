@@ -44,6 +44,7 @@ RUN npx puppeteer browsers install chrome
 # ---- Source ----------------------------------------------------------------
 COPY src/ ./src/
 COPY templates/ ./templates/
+COPY assets/ ./assets/
 COPY worker/src/ ./worker/src/
 
 # Deploy SHA — used BOTH as the Sentry release tag AND as /health's `version`, so a worker
