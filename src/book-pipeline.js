@@ -1618,6 +1618,8 @@ export async function generateBook({
       const fm = await assembleFrontMatter({
         story, childName, childAge, sheets: sheetBufs,
         generatedAtIso: meta?.generatedAt, dedicationMessage, adultMode, vibe,
+        // COVER_VOICES: age band + a per-book seed (stable across re-renders of the same book).
+        coverSelection: { ageRange: meta?.inputs?.ageRange ?? null, seed: `${story.title}|${childName}|${meta?.inputs?.theme ?? ""}` },
         outputDir: path.join(outputDir, "front-matter"), withCover: true,
       });
       frontPdfs = fm.front; backPdfs = fm.back; frontMatterCost = fm.cost;

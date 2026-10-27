@@ -22,6 +22,10 @@ import { fitTextToRegion } from "./auto-fit.js";
 import { maskName } from "./text-utils.js";
 import { generateImage as realGenerateImage } from "./gemini.js";
 import { pickTitleColor } from "./cover-title-color.js";
+import {
+  COVER_VOICES, COVER_PLACEMENTS, HERO_COMPOSITIONS, NO_PANEL_CLAUSE, buildCoverPageHtml, lintCoverHtml,
+  coverEnergyFor, ageBandFor, selectCoverVoice, selectCoverPlacement,
+} from "./cover-voices.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.join(__dirname, "..", "templates");
@@ -63,6 +67,8 @@ export async function renderHtmlToPdf({ html, pageSize, outputDir, outName }) {
     await page.setViewport({ width: wPx, height: hPx });
     await page.goto(pathToFileURL(tmp).href, { waitUntil: "networkidle0" });
     await page.evaluate(() => document.fonts.ready);
+    // Cover-system pages fit their title in-page against the REAL loaded fonts; wait for it.
+    await page.waitForFunction(() => window.__coverFitDone === undefined || window.__coverFitDone === true, { timeout: 15000 });
     await page.pdf({ path: pdfPath, width: pageSize.width, height: pageSize.height, printBackground: true, margin: { top: 0, right: 0, bottom: 0, left: 0 }, preferCSSPageSize: false });
     await page.screenshot({ path: pngPath, clip: { x: 0, y: 0, width: wPx, height: hPx }, type: "png" });
   } finally {
@@ -316,7 +322,7 @@ export async function renderCoverPage({ title, name, imagePath, outputDir, outNa
 // Generate the cover hero image (~$0.04). Reuses the SAME reference sheets the
 // interior used + the cover-iter-1 composition + Sonnet's per-story
 // cover_concept. Returns the image Buffer. Single-protagonist shape (launch).
-export async function generateCoverHero({ story, childName, childAge, sheets }, deps = {}) {
+export async function generateCoverHero({ story, childName, childAge, sheets, heroKind = null, aspectRatio = null }, deps = {}) {
   const { generateImage = realGenerateImage } = deps;
   const { config } = loadTemplate("cover-iter-1");
   const ig = config.imageGeneration;
@@ -325,6 +331,21 @@ export async function generateCoverHero({ story, childName, childAge, sheets }, 
   // style: post-W-D the style line comes off the story (pageStyle), not a
   // template styleOverride. Fall back to story.style for older stories.
   const styleLine = story.pageStyle || story.style;
+  // COVER_VOICES (2026-10-27): the placement dictates the hero's framing + aspect ratio
+  // (portrait for a side column, wide stage for a band/frame, open sky for a top title).
+  // Without a placement the legacy cover template prompt is used, byte-identical.
+  if (heroKind && HERO_COMPOSITIONS[heroKind]) {
+    const prompt = [
+      `Subject: a ${childAge}-year-old child.`,
+      `Appearance: ${charDesc}.`,
+      `Style: ${styleLine}.`,
+      `Composition: ${ig.customCompositionRules}`,
+      HERO_COMPOSITIONS[heroKind],
+      NO_PANEL_CLAUSE,
+      `Avoid: ${story.negative_prompt}, text, letters, words, panels, banners, frames.`,
+    ].join("\n") + `\n\nScene: ${story.cover_concept}\n\nUse the provided reference images of the character to keep their appearance, clothing, and proportions consistent.`;
+    return generateImage(prompt, sheets, { aspectRatio }, { callKind: "cover_gen", subjectName: childName });
+  }
   const prompt = [
     `Subject: a ${childAge}-year-old child.`,
     `Appearance: ${charDesc}.`,
@@ -336,6 +357,34 @@ export async function generateCoverHero({ story, childName, childAge, sheets }, 
   return generateImage(prompt, sheets, { aspectRatio: ig.aspectRatio }, { callKind: "cover_gen", subjectName: childName });
 }
 
+// ---------------------------------------------------------------------------
+// COVER_VOICES cover (2026-10-27). Voice = lettering copied from a real picture-book cover,
+// chosen by the book's energy × the child's age band; placement = where the title lives and
+// how the hero was composed for it; palette colour hash-picked per energy. Solid-safe HTML
+// (lintCoverHtml) + in-page title fitting against the real fonts; the hero is an opaque JPEG.
+// ---------------------------------------------------------------------------
+export function chooseCover({ energy = null, vibe = null, ageRange = null, seed = "", force = {} } = {}) {
+  const e = coverEnergyFor({ coverEnergy: energy, vibe });
+  const band = ageBandFor(ageRange);
+  const voiceKey = COVER_VOICES[force.voice] ? force.voice : selectCoverVoice({ energy: e, ageRange: band });
+  const pick = selectCoverPlacement({ seed, energy: e });
+  const placementId = COVER_PLACEMENTS[force.placement] ? force.placement : pick.placement;
+  return { energy: e, ageRange: band, voiceKey, placementId, palette: pick.palette, torn: pick.torn,
+    heroKind: COVER_PLACEMENTS[placementId].hero, aspectRatio: COVER_PLACEMENTS[placementId].aspectRatio };
+}
+
+export async function renderVoiceCover({ title, name, imagePath, outputDir, outName = "cover", choice }) {
+  // Opaque JPEG hero: nothing in the PDF but one DCT image + vector fills + text.
+  const heroJpg = path.join(outputDir, `${outName}-hero.jpg`);
+  await sharp(imagePath).flatten({ background: "#FAF9F0" }).removeAlpha().jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toFile(heroJpg);
+  const html = buildCoverPageHtml({ voiceKey: choice.voiceKey, placementId: choice.placementId, heroUrl: pathToFileURL(heroJpg).href, title, name, palette: choice.palette, torn: choice.torn });
+  const offences = lintCoverHtml(html);
+  if (offences.length) throw new Error(`renderVoiceCover: unsafe CSS for PDF viewers: ${offences.join(", ")}`);
+  const out = await renderHtmlToPdf({ html, pageSize: COVER_PAGE_SIZE, outputDir, outName });
+  fs.writeFileSync(path.join(outputDir, `${outName}-choice.json`), JSON.stringify({ ...choice, title, name, voice: COVER_VOICES[choice.voiceKey].name, placement: COVER_PLACEMENTS[choice.placementId].name }, null, 2));
+  return out;
+}
+
 /**
  * Assemble the front/back matter around the story pages. Returns ordered PDF
  * path lists to merge as: [...front, ...story, ...back], plus the Gemini cost.
@@ -345,7 +394,7 @@ export async function generateCoverHero({ story, childName, childAge, sheets }, 
  * Deps injectable for tests/preview ($0): pass a stub generateImage, or
  * withCover:false + a coverImagePath to reuse an existing hero (the harness path).
  */
-export async function assembleFrontMatter({ story, childName, childAge, sheets, generatedAtIso, dedicationMessage = null, outputDir, withCover = true, coverImagePath = null, coverTitleStyle = "integrated", adultMode = false, vibe = null }, deps = {}) {
+export async function assembleFrontMatter({ story, childName, childAge, sheets, generatedAtIso, dedicationMessage = null, outputDir, withCover = true, coverImagePath = null, coverSelection = null, coverTitleStyle = "integrated", adultMode = false, vibe = null }, deps = {}) {
   fs.mkdirSync(outputDir, { recursive: true });
   let cost = 0;
   const front = [];
@@ -354,14 +403,23 @@ export async function assembleFrontMatter({ story, childName, childAge, sheets, 
   // typographic treatment (integrated hybrid default | band); the review-UI
   // toggle will thread a per-cover choice here later.
   let heroPath = coverImagePath;
+  // COVER_VOICES=on → the voice/placement cover system; off → legacy cover, byte-identical.
+  const voices = process.env.COVER_VOICES === "on";
+  const choice = voices ? chooseCover({
+    energy: story.cover_energy ?? null, vibe, ageRange: coverSelection?.ageRange ?? null,
+    seed: coverSelection?.seed ?? `${story.title}|${childName}`,
+    force: { voice: process.env.COVER_FORCE_VOICE, placement: process.env.COVER_FORCE_PLACEMENT },
+  }) : null;
   if (withCover && !heroPath) {
-    const buf = await generateCoverHero({ story, childName, childAge, sheets }, deps);
+    const buf = await generateCoverHero({ story, childName, childAge, sheets, heroKind: choice?.heroKind ?? null, aspectRatio: choice?.aspectRatio ?? null }, deps);
     cost += GEMINI_IMAGE_USD_PER_CALL;
     heroPath = path.join(outputDir, "cover-hero.png");
     fs.writeFileSync(heroPath, buf);
   }
   if (heroPath) {
-    const cov = await renderCoverPage({ title: story.title, name: childName, imagePath: heroPath, outputDir, outName: "00-cover", coverTitleStyle });
+    const cov = choice
+      ? await renderVoiceCover({ title: story.title, name: childName, imagePath: heroPath, outputDir, outName: "00-cover", choice })
+      : await renderCoverPage({ title: story.title, name: childName, imagePath: heroPath, outputDir, outName: "00-cover", coverTitleStyle });
     front.push(cov.pdfPath);
   }
 

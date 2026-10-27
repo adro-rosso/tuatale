@@ -572,6 +572,11 @@ export function buildStorySchema(registry, readingLevel = "standard", adultMode 
         type: "string",
         description: "A vivid 2-4 sentence art-direction note describing the IDEAL FRONT-COVER image for THIS specific story — its signature action/moment, key visual motif, and emotional mood. HARD CONSTRAINTS: the protagonist's face and the main action MUST sit in the upper half/centre of the frame; the lower ~40% MUST stay calm and open (no faces, action, or key objects there — it is reserved for the title panel). Show the protagonist DOING the signature action (not posing), with a sense of camera distance/angle that fits the moment.",
       },
+      cover_energy: {
+        type: "string",
+        enum: ["gentle", "wonder", "playful"],
+        description: "The emotional register of THIS story as a whole: gentle (cosy, tender, bedtime, a tribute), wonder (adventure, discovery, awe), playful (funny, silly, mischievous). Selects the cover lettering.",
+      },
       cover_subjects: {
         type: "array",
         description: "Subjects anchored on the cover. At product launch this MUST be exactly a one-element array containing the protagonist's name — `[<protagonist_name>]` — even if your cover_concept narrative mentions a companion as part of the scene's atmosphere. Companions are not anchored on the cover at launch.",
@@ -749,13 +754,13 @@ COVER CONCEPT
 
 After you've written the whole story, describe the IDEAL FRONT-COVER IMAGE for THIS specific story — the single image that best captures it. NOT a generic theme illustration: name the signature action or moment, the key visual motif, and the emotional mood that make THIS story recognisable at a glance. Show the protagonist DOING the signature action (alive and mid-moment, not stiffly posing), and vary the camera DISTANCE to fit the moment — intimate close-up wonder, a mid-action beat, or a small child in a big world. Aim for compositional variety across stories; let the moment dictate the framing.
 
-The cover has a translucent title panel across the bottom, so the concept MUST stay compatible with it (these are hard constraints, not suggestions):
+The title is printed by the LAYOUT later, and the layout also decides the framing (where the figures sit, how much sky), so describe WHAT the cover shows — who, doing what, where, in what light and mood — and NOT where things sit in the frame. One hard constraint:
 - The protagonist's FACE must read RIGHT-SIDE-UP and be clearly legible — shown front-on, three-quarter, or in profile. NEVER inverted or upside-down; NEVER an extreme overhead angle looking straight down on a child lying on their back; NEVER so tilted or foreshortened that the face distorts. Camera DISTANCE may vary freely (close, mid, or wide) and the ACTION may be anything — it is only the face's orientation and readability that is fixed. (If the signature moment is the child lying down looking up, frame it from the side or at a gentle three-quarter so the face still reads upright — do not place the camera directly above an on-their-back child.)
-- The protagonist's face and the main action MUST sit in the UPPER HALF / CENTRE of the frame.
-- Do NOT put any key detail — faces, the main action, important objects — in the lower portion. The bottom ~40% of the frame must stay CALM and OPEN (it is reserved for the title panel). You may describe quiet low foreground there (open ground, calm water, soft grass, gentle glow) but nothing critical.
-- One full-bleed image. Specify WHAT is depicted and the framing energy; do not fight the calm-lower-zone rule.
+- One image, one moment. Do not mention panels, banners, titles, text, or where a title would go.
 
 Keep it to 2-4 sentences: vivid and specific, an art-direction note an illustrator could paint from.
+
+Also output \`cover_energy\`: the register of the WHOLE BOOK as a reader feels it — "gentle" (cosy, tender, bedtime, a tribute or memory), "wonder" (adventure, discovery, awe, a big new world) or "playful" (funny, silly, mischievous, a romp). It selects the cover's lettering, so judge the book, not the cover image.
 
 Also output \`cover_subjects\`: at this product launch, this MUST be EXACTLY a single-element array containing the protagonist's name — \`[<protagonist_name>]\`. The protagonist is the cover's anchored subject. Even if your \`cover_concept\` narrative mentions a companion as part of the scene's atmosphere, \`cover_subjects\` only ever contains the protagonist at launch. Do not include companions in \`cover_subjects\`.`;
 
@@ -1371,6 +1376,8 @@ export async function generateStory(input, options = {}) {
     scenes: claudeOutput.scenes.map((s) => ({ ...s, narrative_text: stripNarrativeDashes(s.narrative_text) })),
     cover_concept: claudeOutput.cover_concept,
     cover_subjects: claudeOutput.cover_subjects,
+    // Optional (older stories lack it); the cover system defaults to "wonder".
+    cover_energy: ["gentle", "wonder", "playful"].includes(claudeOutput.cover_energy) ? claudeOutput.cover_energy : undefined,
   };
 
   return {
