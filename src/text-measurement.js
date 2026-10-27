@@ -5,7 +5,13 @@
 // output. The foundation for text-aware image zones in the template
 // system (see SESSION_NOTES "Pivot — Template architecture").
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import crypto from "node:crypto";
+import { pathToFileURL } from "node:url";
 import puppeteer from "puppeteer";
+import { FONT_FILES, fontFaceStyle } from "./fonts.js";
 
 // CSS spec: 1in = 96 CSS px = 72 PDF pt. Independent of physical DPI.
 // Puppeteer's headless Chromium renders at 96 CSS DPI, and page.pdf({width:
@@ -34,7 +40,9 @@ function googleFontsUrl(fontFamily, fontWeight) {
  *
  * @param {object} opts
  * @param {string} opts.text          - the narrative content to measure
- * @param {string} opts.fontFamily    - Google Fonts name (system fonts also accepted)
+ * @param {string} opts.fontFamily    - family name. Self-hosted static TTF when it is in
+ *                                      src/fonts.js FONT_FILES (the file the PDF embeds);
+ *                                      otherwise Google Fonts / system fonts
  * @param {number} opts.fontSize      - point size, e.g. 18
  * @param {number} opts.lineHeight    - multiplier, e.g. 1.7
  * @param {string} opts.maxWidth      - CSS width, e.g. "540pt" / "5.5in" / "32%"
@@ -82,13 +90,20 @@ export async function measureText({
   if (letterSpacing)       styleRules.push(`letter-spacing: ${letterSpacing}`);
   if (fontVariantNumeric)  styleRules.push(`font-variant-numeric: ${fontVariantNumeric}`);
 
+  // Measure against the SAME font files Chromium embeds in the page PDF (assets/fonts/,
+  // static TTFs via @font-face) — deterministic and network-free. Families outside the
+  // self-hosted map (system fonts, one-off scripts) keep the Google Fonts fallback.
+  const fontLinks = FONT_FILES[fontFamily]
+    ? fontFaceStyle([fontFamily])
+    : `<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="${googleFontsUrl(fontFamily, fontWeight)}" rel="stylesheet">`;
+
   const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="${googleFontsUrl(fontFamily, fontWeight)}" rel="stylesheet">
+${fontLinks}
 <style>
   @page { size: ${pageWidth} ${pageHeight}; margin: 0; }
   html, body { margin: 0; padding: 0; }
@@ -111,12 +126,18 @@ export async function measureText({
 </body>
 </html>`;
 
+  // Load via a file:// URL rather than setContent(): Chromium only lets a file://
+  // page fetch the file:// font URLs the @font-face rules point at. Unique temp
+  // path per call — measureText runs concurrently across pages and books.
+  const tmpHtmlPath = path.join(os.tmpdir(), `daboo-measure-${crypto.randomUUID()}.html`);
+  fs.writeFileSync(tmpHtmlPath, html, "utf8");
+
   let browser;
   try {
     browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "networkidle0" });
-    // Wait for web fonts (Google Fonts) to actually load before measuring.
+    await page.goto(pathToFileURL(tmpHtmlPath).href, { waitUntil: "networkidle0" });
+    // Wait for the web fonts to actually load before measuring.
     await page.evaluate(() => document.fonts.ready);
 
     const m = await page.evaluate(() => {
@@ -173,5 +194,6 @@ export async function measureText({
     if (browser) {
       try { await browser.close(); } catch { /* ignore close errors */ }
     }
+    try { fs.unlinkSync(tmpHtmlPath); } catch { /* best effort */ }
   }
 }

@@ -9,6 +9,8 @@
 //
 // Pure: no I/O. front-matter.js renders the HTML this module builds.
 
+import { FONT_FILES, FONTS_DIR_URL, fontFaceStyle } from "./fonts.js";
+
 // ---------------------------------------------------------------------------
 // Energies, age bands, selection
 // ---------------------------------------------------------------------------
@@ -322,22 +324,11 @@ export const NO_PANEL_CLAUSE = "The book's title will be printed over this image
 // ---------------------------------------------------------------------------
 // Page assembly
 // ---------------------------------------------------------------------------
-// Self-hosted STATIC TrueType fonts (assets/fonts/, OFL). Chromium embeds static TTFs as
-// CIDFontType2 subsets; the Google-served VARIABLE fonts came out as Type 3 (glyph streams),
-// which print prepress can reject. Variable families (Fraunces, Oswald, Nunito) were cut to
-// static instances with fontTools. No network at render time.
-export const COVER_FONT_FILES = {
-  "Fraunces":         [["Fraunces-Bold.ttf", 700, "normal"], ["Fraunces-SemiBold.ttf", 600, "normal"], ["Fraunces-BoldItalic.ttf", 700, "italic"], ["Fraunces-SemiBoldItalic.ttf", 600, "italic"]],
-  "Sorts Mill Goudy": [["SortsMillGoudy-Regular.ttf", 400, "normal"], ["SortsMillGoudy-Italic.ttf", 400, "italic"]],
-  "Alegreya SC":      [["AlegreyaSC-Bold.ttf", 700, "normal"], ["AlegreyaSC-Medium.ttf", 500, "normal"]],
-  "Oswald":           [["Oswald-Bold.ttf", 700, "normal"], ["Oswald-SemiBold.ttf", 600, "normal"]],
-  "Patrick Hand":     [["PatrickHand-Regular.ttf", 400, "normal"]],
-  "Arvo":             [["Arvo-Bold.ttf", 700, "normal"]],
-  "Varela Round":     [["VarelaRound-Regular.ttf", 400, "normal"]],
-  "Gochi Hand":       [["GochiHand-Regular.ttf", 400, "normal"]],
-  "Nunito":           [["Nunito-ExtraBold.ttf", 800, "normal"], ["Nunito-Bold.ttf", 700, "normal"], ["Nunito-SemiBoldItalic.ttf", 600, "italic"]],
-};
-export const COVER_FONTS_DIR_URL = new URL("../assets/fonts/", import.meta.url).href; // file:///…/assets/fonts/
+// Fonts: self-hosted STATIC TrueType (assets/fonts/, OFL). The shared map + the why live in
+// src/fonts.js (Google-served variable fonts embed as Type 3 glyph streams; the interior pages
+// and front matter use the same map). The cover-era names stay exported for callers/tests.
+export const COVER_FONT_FILES = FONT_FILES;
+export const COVER_FONTS_DIR_URL = FONTS_DIR_URL; // file:///…/assets/fonts/
 
 /** Family names a voice uses (its `fonts` entries are Google-style specs; the family is before ':'). */
 export function voiceFontFamilies(voiceKey) {
@@ -345,14 +336,8 @@ export function voiceFontFamilies(voiceKey) {
 }
 
 /** <style> with @font-face rules for the voice's families, pointing at the local TTFs. */
-export function coverFontsLink(voiceKey, dirUrl = COVER_FONTS_DIR_URL) {
-  const rules = [];
-  for (const fam of voiceFontFamilies(voiceKey)) {
-    for (const [file, weight, style] of COVER_FONT_FILES[fam] ?? []) {
-      rules.push(`@font-face{font-family:'${fam}';font-weight:${weight};font-style:${style};font-display:block;src:url('${dirUrl}${file}') format('truetype');}`);
-    }
-  }
-  return `<style>${rules.join("\n")}</style>`;
+export function coverFontsLink(voiceKey, dirUrl = FONTS_DIR_URL) {
+  return fontFaceStyle(voiceFontFamilies(voiceKey), dirUrl);
 }
 
 export const COVER_BASE_CSS = `

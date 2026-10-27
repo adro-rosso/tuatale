@@ -27,6 +27,7 @@ import { fitTextToRegion } from "./auto-fit.js";
 import { generateImage } from "./gemini.js";
 import { stripNarrativeMarkup, expandNarrativeMarkup } from "./text-utils.js";
 import { fillMediumTokens, pageCompositionRules } from "./art-styles.js";
+import { localizeFonts } from "./fonts.js";
 
 const GEMINI_IMAGE_USD_PER_CALL = 0.04;
 
@@ -38,9 +39,10 @@ const GEMINI_IMAGE_USD_PER_CALL = 0.04;
 // B) without re-measuring. Treatments live ONLY in the CSS text zone — never
 // on the image. ACCENT is the brand iron-oxide (matches cover + website).
 const TZ_ACCENT = "#7a3328";
-const TREATMENT_FONT_LINK =
-  '<link href="https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap" rel="stylesheet">';
-const TREATMENT_CSS = `
+// Both treatment faces (EB Garamond drop cap/emphasis, Architects Daughter sound words) are
+// self-hosted static TTFs; localizeFonts() adds their @font-face rules at render time
+// (src/fonts.js). Exported so worker/tests/fonts.test.js can check the families it names.
+export const TREATMENT_CSS = `
   /* emphasis (b): slightly larger + iron-oxide accent — sparing */
   .tz-em { color: ${TZ_ACCENT}; font-size: 1.16em; font-weight: 500; }
   /* sound word (b): hand-lettered + accent + slight tilt */
@@ -234,12 +236,15 @@ async function renderPdfWithDynamicCss({
     .replace(/\{\{IMAGE_URL\}\}/g, imageFileUrl)
     .replace(/\{\{NARRATIVE_TEXT\}\}/g, narrativeHtml);
 
-  // Always inject the typography-treatment font + CSS so the tz-* classes
-  // resolve. Goes in before any dynamicCss so the latter's !important
-  // font-size on .narrative still wins; the tz-* sizes are em-relative.
-  templateHtml = templateHtml.replace(
-    /<\/head>/i,
-    `${TREATMENT_FONT_LINK}<style>${TREATMENT_CSS}</style></head>`
+  // Always inject the typography-treatment CSS so the tz-* classes resolve,
+  // then the local @font-face rules for every self-hosted family the page
+  // names (the template's body face + the treatment faces; any stray Google
+  // Fonts <link> is stripped — a Google-served variable font embeds as a
+  // Type 3 font). Both go in before any dynamicCss so the latter's
+  // !important font-size on .narrative still wins; the tz-* sizes are
+  // em-relative.
+  templateHtml = localizeFonts(
+    templateHtml.replace(/<\/head>/i, `<style>${TREATMENT_CSS}</style></head>`)
   );
 
   // Source-order CSS: the injected <style> at end of <head> overrides the
@@ -260,7 +265,7 @@ async function renderPdfWithDynamicCss({
   // (caused the Mia + Priya retries in the 2026-05-25 robustness batch).
   // crypto.randomUUID() guarantees no two renders share a path. The temp
   // HTML has no relative-path deps (image is an absolute file:// URL,
-  // fonts are absolute https), so os.tmpdir() is safe.
+  // fonts are absolute file:// URLs into assets/fonts/), so os.tmpdir() is safe.
   const tempHtmlPath = path.join(os.tmpdir(), `daboo-render-${crypto.randomUUID()}.html`);
   fs.writeFileSync(tempHtmlPath, templateHtml, "utf8");
 

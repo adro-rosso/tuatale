@@ -27,6 +27,7 @@ import {
   coverEnergyFor, ageBandFor, selectCoverVoice, selectCoverPlacement, coverSeedFor,
   COVER_FONT_FILES, COVER_FONTS_DIR_URL, voiceFontFamilies,
 } from "./cover-voices.js";
+import { localizeFonts } from "./fonts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES_DIR = path.join(__dirname, "..", "templates");
@@ -80,11 +81,14 @@ export async function renderHtmlToPdf({ html, pageSize, outputDir, outName }) {
 }
 
 // Substitutes {{KEY}} placeholders from `subs` (HTML-escaped) + `rawSubs`
-// (pre-escaped / numeric) into a disk template, then renders it.
+// (pre-escaped / numeric) into a disk template, makes its fonts local (static
+// TTFs from assets/fonts/ via @font-face — no Google Fonts, no Type 3 in the
+// PDF; src/fonts.js), then renders it.
 export async function renderTemplatePage({ templateHtmlPath, pageSize, subs, outputDir, outName, rawSubs = {} }) {
   let html = fs.readFileSync(templateHtmlPath, "utf8");
   for (const [k, v] of Object.entries(subs)) html = html.replaceAll(`{{${k}}}`, escHtml(v));
   for (const [k, v] of Object.entries(rawSubs)) html = html.replaceAll(`{{${k}}}`, String(v));
+  html = localizeFonts(html);
   return renderHtmlToPdf({ html, pageSize, outputDir, outName });
 }
 
@@ -139,8 +143,11 @@ export function buildColophonSubs({ childName, generatedAtIso }) {
   };
 }
 
+/** kind → templates/<dir> for the $0 text pages (worker/tests/fonts.test.js walks these too). */
+export const FRONT_MATTER_TEMPLATE_DIRS = { title: "title-iter-1", dedication: "dedication-iter-1", colophon: "colophon-iter-1" };
+
 export async function renderFrontMatterPage({ kind, subs, outputDir, outName }) {
-  const dir = { title: "title-iter-1", dedication: "dedication-iter-1", colophon: "colophon-iter-1" }[kind];
+  const dir = FRONT_MATTER_TEMPLATE_DIRS[kind];
   if (!dir) throw new Error(`renderFrontMatterPage: unknown kind "${kind}"`);
   const { config, htmlPath } = loadTemplate(dir);
   return renderTemplatePage({ templateHtmlPath: htmlPath, pageSize: config.rendering.pageSize, subs, outputDir, outName: outName ?? kind });

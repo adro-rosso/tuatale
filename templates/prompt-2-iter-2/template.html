@@ -4,15 +4,11 @@
 <meta charset="utf-8">
 <title>template — prompt-2-iter-2</title>
 
-<!-- Google Fonts: EB Garamond. Old-style serif chosen to match the Recraft
-     reference's typographic character (Garamond / Caslon family). Loaded
-     over the network at render time; the renderer script waits for
-     document.fonts.ready before printing the PDF so font embedding is
-     deterministic. If we ever need offline rendering we self-host the
-     woff2 files inside this template dir. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<!-- EB Garamond: old-style serif chosen to match the Recraft reference's
+     typographic character (Garamond / Caslon family). -->
+<!-- Fonts: EB Garamond is self-hosted (assets/fonts/, static TrueType) and its @font-face
+     rules are injected at render time by src/fonts.js. No Google Fonts <link> here: the
+     Google-served variable font embedded as a Type 3 font in the PDF, which print rejects. -->
 
 <style>
   /* ---- Page size + reset ---------------------------------------------

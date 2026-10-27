@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import puppeteer from "puppeteer";
+import { localizeFonts } from "../src/fonts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.join(__dirname, "..");
@@ -144,13 +145,15 @@ const narrativeText = fs.readFileSync(textPath, "utf8").trim();
 // URL-encoding correctly so Chromium can fetch the local PNG.
 const imageFileUrl = pathToFileURL(imagePath).href;
 
-const renderedHtml = templateHtml
+// localizeFonts: the templates carry no Google Fonts <link> any more; the self-hosted
+// static TTFs (assets/fonts/) are injected as @font-face rules, same as the real pipeline.
+const renderedHtml = localizeFonts(templateHtml
   .replace(/\{\{IMAGE_URL\}\}/g, imageFileUrl)
-  .replace(/\{\{NARRATIVE_TEXT\}\}/g, escapeHtml(narrativeText));
+  .replace(/\{\{NARRATIVE_TEXT\}\}/g, escapeHtml(narrativeText)));
 
 // Write rendered HTML to a temp file inside the template dir, so Puppeteer
 // loads it via file:// — that's what lets Chromium load the image file://
-// src and the relative Google Fonts link without cross-origin headaches.
+// src and the file:// font URLs (src/fonts.js) without cross-origin headaches.
 const tempHtmlPath = path.join(templatePath, "_rendering.html");
 fs.writeFileSync(tempHtmlPath, renderedHtml, "utf8");
 
@@ -168,7 +171,7 @@ try {
   browser = await puppeteer.launch({ headless: true });
   const page = await browser.newPage();
   await page.goto(pathToFileURL(tempHtmlPath).href, { waitUntil: "networkidle0" });
-  // Wait for web fonts (EB Garamond from Google Fonts) to load.
+  // Wait for the self-hosted web fonts (EB Garamond) to load.
   await page.evaluate(() => document.fonts.ready);
   await page.pdf({
     path: outputPdfPath,
