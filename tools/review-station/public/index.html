@@ -301,11 +301,16 @@ function render() {
   // DIFFERENT order than the one this station is open on (it serves one order per process).
   if (STATE.adminUrl) { $("adminLink").href = STATE.adminUrl; $("adminLink").style.display = ""; }
   const wanted = new URLSearchParams(location.search).get("order");
-  if (wanted && wanted !== STATE.orderId) {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (wanted && wanted.toLowerCase() !== (STATE.orderId || "").toLowerCase()) {
     $("orderMismatch").style.display = "";
-    $("orderMismatch").innerHTML = `This station is open on ${STATE.orderId ? "order <b>" + esc(STATE.orderId.slice(0, 8)) + "</b>" : "a local book"}, `
-      + `but the admin link was for order <b>${esc(wanted.slice(0, 8))}</b>. Stop this station (Ctrl+C in its terminal) and run: `
-      + `<code>npm run station -- ${esc(wanted)}</code>`;
+    const here = STATE.orderId ? "order <b>" + esc(STATE.orderId.slice(0, 8)) + "</b>" : "a local book";
+    // Only ever print a shell command for a real order id: the link is untrusted input, and a
+    // pasted command runs in the operator's shell (escaping HTML does not protect the shell).
+    $("orderMismatch").innerHTML = UUID.test(wanted)
+      ? `This station is open on ${here}, but the admin link was for order <b>${esc(wanted.slice(0, 8))}</b>. `
+        + `Stop this station (Ctrl+C in its terminal) and run: <code>npm run station -- ${esc(wanted.toLowerCase())}</code>`
+      : `This station is open on ${here}. The link carried an unrecognised order id, so no command is shown.`;
   } else { $("orderMismatch").style.display = "none"; }
   $("finalizeBtn").style.display = isProd ? "none" : "";
   $("finalizeBtn").disabled = !summary.allApproved;
@@ -445,7 +450,7 @@ async function reship() {
   if (r.ok) {
     $("finalizeMsg").innerHTML = `✓ Re-shipped: book.pdf replaced (${r.bookPages} pages), pushed ${r.pushed.length} artifact(s). `
       + `<span style="color:var(--warn)">Note: the admin PDF link may serve the old book for a short cache window.</span>`
-      + (STATE.adminUrl ? ` <b>Next:</b> <a href="${STATE.adminUrl}" target="_blank" rel="noopener">open the admin page and click Ship ↗</a>` : "");
+      + (STATE.adminUrl ? ` <b>Next:</b> <a href="${esc(STATE.adminUrl)}" target="_blank" rel="noopener">open the admin page and click Ship ↗</a>` : "");
   } else {
     const failed = (r.checks || []).filter((c) => !c.pass).map((c) => `${c.name} (${c.detail})`);
     $("finalizeMsg").innerHTML = `<span style="color:var(--err)">✗ Re-ship ABORTED — customer book UNTOUCHED.</span> `

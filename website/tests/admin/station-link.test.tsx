@@ -5,7 +5,8 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { StationLinkSection, stationLinks } from '@/components/admin/StationLinkSection';
+import { StationLinkSection } from '@/components/admin/StationLinkSection';
+import { stationLinks } from '@/lib/admin/station-links';
 
 const ORDER = '05ee561a-03e9-4700-a1f2-cd6649948e7b';
 const JOB = 'c8ab77ef-85e5-4e74-bd3e-65665e29107c';

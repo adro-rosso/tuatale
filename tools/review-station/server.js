@@ -68,6 +68,10 @@ if (!ARGS.dir && !ARGS.order) {
   console.error("                deleted on close; needs Supabase creds in --env-file, default worker/.env.local)");
   process.exit(1);
 }
+if (ARGS.order === true) {
+  console.error("FAIL: --order needs an order id. Usage: npm run station -- <orderId>");
+  process.exit(1);
+}
 const PORT = Number(ARGS.port) || 4600;
 const ENV_FILE = ARGS["env-file"] || "worker/.env.local";
 

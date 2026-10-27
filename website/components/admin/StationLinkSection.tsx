@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { stationLinks } from '@/lib/admin/station-links';
 
 /**
  * "Needs changes?" — the hand-off from the admin page (first line of review) to the local
@@ -10,15 +11,6 @@ import { useState } from 'react';
  * command is offered with a copy button. After a re-ship the operator comes back here and
  * clicks Ship (the station links back to this page).
  */
-export const STATION_PORT = 4600;
-
-export function stationLinks(orderId: string, jobId: string) {
-  return {
-    openUrl: `http://localhost:${STATION_PORT}/?order=${encodeURIComponent(orderId)}&job=${encodeURIComponent(jobId)}`,
-    startCommand: `npm run station -- ${orderId}`,
-  };
-}
-
 export function StationLinkSection({
   orderId,
   jobId,
@@ -28,7 +20,7 @@ export function StationLinkSection({
   jobId: string;
   status: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
   // Only books that exist can be fixed: awaiting review, or already shipped (a re-ship
   // replaces the delivered PDF). Pending / failed / cancelled jobs have nothing to edit.
   if (status !== 'awaiting_review' && status !== 'shipped') return null;
@@ -37,10 +29,10 @@ export function StationLinkSection({
   async function copy() {
     try {
       await navigator.clipboard.writeText(startCommand);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied('copied');
+      setTimeout(() => setCopied('idle'), 2000);
     } catch {
-      setCopied(false);
+      setCopied('failed');
     }
   }
 
@@ -78,7 +70,7 @@ export function StationLinkSection({
               onClick={copy}
               className="text-iron-oxide font-body text-caption hover:underline"
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied === 'copied' ? 'Copied' : copied === 'failed' ? 'Copy failed: select the text' : 'Copy'}
             </button>
           </div>
         </div>
