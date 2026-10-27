@@ -21,9 +21,9 @@ export function StationLinkSection({
   status: string;
 }) {
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
-  // Only books that exist can be fixed: awaiting review, or already shipped (a re-ship
-  // replaces the delivered PDF). Pending / failed / cancelled jobs have nothing to edit.
-  if (status !== 'awaiting_review' && status !== 'shipped') return null;
+  // Only a book awaiting review can be fixed: Ship deletes orders/<id>/review/ (the editable
+  // pages + sheets the station loads), so a shipped book cannot be opened in the station.
+  if (status !== 'awaiting_review') return null;
   const { openUrl, startCommand } = stationLinks(orderId, jobId);
 
   async function copy() {

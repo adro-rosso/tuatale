@@ -14,6 +14,7 @@ import { saveNotesAction } from './_actions/save-notes';
 import { shipJobAction } from './_actions/ship-job';
 import { retryJobAction } from './_actions/retry-job';
 import { cancelJobAction } from './_actions/cancel-job';
+import { resendShipEmailAction } from './_actions/resend-email';
 
 /**
  * Job detail page. One pipeline job + its associated order. 404
@@ -89,6 +90,7 @@ export default async function AdminOrderDetailPage({
         shipAction={shipJobAction.bind(null, job.id)}
         retryAction={retryJobAction.bind(null, job.id)}
         cancelAction={cancelJobAction.bind(null, job.id)}
+        resendEmailAction={resendShipEmailAction.bind(null, job.id)}
       />
     </div>
   );

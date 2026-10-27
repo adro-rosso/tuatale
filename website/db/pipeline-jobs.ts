@@ -439,6 +439,17 @@ export async function updateReviewNotes(
  * Does NOT touch status — the email outcome is orthogonal to whether
  * the job is shipped.
  */
+/** Replace the job's book download link (admin re-sign on resend). */
+export async function updateJobPdfUrl(
+  id: string,
+  pdfUrl: string,
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<PipelineJobRow> {
+  const { data, error } = await client.from('pipeline_jobs').update({ pdf_url: pdfUrl }).eq('id', id).select().single();
+  if (error) throw new DatabaseError('pipelineJobs.updateJobPdfUrl', error);
+  return data;
+}
+
 export async function updateJobNotificationStatus(
   id: string,
   args: {

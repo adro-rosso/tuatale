@@ -28,12 +28,7 @@ describe('StationLinkSection', () => {
     expect(screen.getByText(`npm run station -- ${ORDER}`)).toBeTruthy();
   });
 
-  it('also renders for a shipped book (a re-ship replaces the delivered PDF)', () => {
-    render(<StationLinkSection orderId={ORDER} jobId={JOB} status="shipped" />);
-    expect(screen.getByRole('link', { name: /review station/ })).toBeTruthy();
-  });
-
-  it.each(['pending', 'running', 'failed', 'cancelled'])('renders nothing for %s', (status) => {
+  it.each(['shipped', 'pending', 'running', 'failed', 'cancelled'])('renders nothing for %s', (status) => {
     const { container } = render(<StationLinkSection orderId={ORDER} jobId={JOB} status={status} />);
     expect(container.innerHTML).toBe('');
   });

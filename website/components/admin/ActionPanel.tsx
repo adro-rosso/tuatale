@@ -11,6 +11,8 @@ interface ActionPanelProps {
   shipAction: (formData: FormData) => void | Promise<void>;
   retryAction: (formData: FormData) => void | Promise<void>;
   cancelAction: (formData: FormData) => void | Promise<void>;
+  /** Shipped jobs only: re-sign the download link and resend the delivery email. */
+  resendEmailAction?: (formData: FormData) => void | Promise<void>;
 }
 
 /**
@@ -32,12 +34,32 @@ export function ActionPanel({
   shipAction,
   retryAction,
   cancelAction,
+  resendEmailAction,
 }: ActionPanelProps) {
   const status = job.status as PipelineJobStatus;
   const canShip = status === 'awaiting_review';
   const canRetry = status === 'failed';
   const canCancel = status === 'pending' || status === 'awaiting_review' || status === 'failed';
   const isTerminal = status === 'shipped' || status === 'cancelled';
+
+  if (status === 'shipped' && resendEmailAction) {
+    const failed = !job.notification_sent_at && Boolean(job.notification_error);
+    return (
+      <section className="space-y-sm">
+        <h2 className="font-body text-warm-grey text-caption tracking-wider uppercase">Actions</h2>
+        <p className="font-body text-warm-grey text-body">
+          {failed
+            ? 'Shipped, but the delivery email did not go out. Resend it once the cause is fixed.'
+            : 'Shipped. You can resend the delivery email with a fresh 7-day download link.'}
+        </p>
+        <form>
+          <Button type="submit" variant={failed ? 'primary' : 'secondary'} formAction={resendEmailAction}>
+            Resend delivery email
+          </Button>
+        </form>
+      </section>
+    );
+  }
 
   if (isTerminal) {
     return (

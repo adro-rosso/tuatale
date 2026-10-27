@@ -50,6 +50,30 @@ const actions = {
   cancelAction: noop,
 };
 
+describe('ActionPanel — resend delivery email', () => {
+  it('shipped + email failed: shows a primary Resend button and the failure note', () => {
+    const html = renderToStaticMarkup(
+      <ActionPanel job={fakeJob({ status: 'shipped', notification_error: 'domain not verified' })} {...actions} resendEmailAction={noop} />,
+    );
+    expect(html).toContain('Resend delivery email');
+    expect(html).toContain('did not go out');
+    expect(html).not.toContain('Ship to customer');
+  });
+  it('shipped + email sent: still offers a resend', () => {
+    const html = renderToStaticMarkup(
+      <ActionPanel job={fakeJob({ status: 'shipped', notification_sent_at: '2026-10-27T12:00:00Z' })} {...actions} resendEmailAction={noop} />,
+    );
+    expect(html).toContain('Resend delivery email');
+    expect(html).toContain('fresh 7-day download link');
+  });
+  it('cancelled: no resend button', () => {
+    const html = renderToStaticMarkup(
+      <ActionPanel job={fakeJob({ status: 'cancelled' })} {...actions} resendEmailAction={noop} />,
+    );
+    expect(html).not.toContain('Resend delivery email');
+  });
+});
+
 describe('ActionPanel', () => {
   it('awaiting_review: shows Save + Ship + Cancel; no Retry', () => {
     const html = renderToStaticMarkup(
