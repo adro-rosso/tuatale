@@ -96,12 +96,10 @@ export const COVER_VOICES = {
   "wonder-3-5": {
     name: "We're Going on a Bear Hunt", ref: "Rosen / Oxenbury (1989)",
     fonts: ["Fraunces:ital,wght@0,600;0,700;1,600;1,700"],
+    // One ink only (Adro, 2026-10-27: no rainbow lettering; subtle contrast at most).
     build: ({ lines, name, ink, align }) => {
-      const cols = ink === "light" ? ["#CFE0F2", "#CDE6CF", "#F3C9BC", "#F6DDA8", "#DCCBEA"] : ["#2F6FA8", "#3F8A4A", "#C4462F", "#D88A22", "#7C4E9E"];
-      let k = 0;
-      const rows = lines.map((l) => `<div class="ln">${[...l].map((ch) => ch === " " ? " " : `<span style="color:${cols[k++ % cols.length]}">${esc(ch)}</span>`).join("")}</div>`).join("");
-      const sub = ink === "light" ? "#EADFC6" : "#5B4A36";
-      return `<div class="title" style="font-family:'Fraunces',serif;font-style:italic;font-weight:700;line-height:1.05;text-align:${align}">${rows}` +
+      const col = ink === "light" ? CREAM : "#4F5F7A", sub = ink === "light" ? "#EADFC6" : "#5B4A36";
+      return `<div class="title" style="font-family:'Fraunces',serif;font-style:italic;font-weight:700;color:${col};line-height:1.05;text-align:${align}">${joinLines(lines)}` +
         `<div class="sub" style="font-weight:600;font-size:.36em;margin-top:.2em;color:${sub}">for ${esc(name)}</div></div>`;
     },
   },
