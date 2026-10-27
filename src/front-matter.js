@@ -24,7 +24,8 @@ import { generateImage as realGenerateImage } from "./gemini.js";
 import { pickTitleColor } from "./cover-title-color.js";
 import {
   COVER_VOICES, COVER_PLACEMENTS, HERO_COMPOSITIONS, NO_PANEL_CLAUSE, buildCoverPageHtml, lintCoverHtml,
-  coverEnergyFor, ageBandFor, selectCoverVoice, selectCoverPlacement,
+  coverEnergyFor, ageBandFor, selectCoverVoice, selectCoverPlacement, coverSeedFor,
+  COVER_FONT_FILES, COVER_FONTS_DIR_URL, voiceFontFamilies,
 } from "./cover-voices.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -339,7 +340,7 @@ export async function generateCoverHero({ story, childName, childAge, sheets, he
       `Subject: a ${childAge}-year-old child.`,
       `Appearance: ${charDesc}.`,
       `Style: ${styleLine}.`,
-      `Composition: ${ig.customCompositionRules}`,
+      `Composition: full body, clean background, face clearly visible.`,
       HERO_COMPOSITIONS[heroKind],
       NO_PANEL_CLAUSE,
       `Avoid: ${story.negative_prompt}, text, letters, words, panels, banners, frames.`,
@@ -373,7 +374,15 @@ export function chooseCover({ energy = null, vibe = null, ageRange = null, seed 
     heroKind: COVER_PLACEMENTS[placementId].hero, aspectRatio: COVER_PLACEMENTS[placementId].aspectRatio };
 }
 
+export function assertCoverFontsOnDisk(voiceKey) {
+  const dir = fileURLToPath(COVER_FONTS_DIR_URL);
+  const missing = [];
+  for (const fam of voiceFontFamilies(voiceKey)) for (const [file] of COVER_FONT_FILES[fam] ?? []) if (!fs.existsSync(path.join(dir, file))) missing.push(file);
+  if (missing.length) throw new Error(`cover fonts missing on disk (${dir}): ${missing.join(", ")} — a cover would silently render in a fallback font`);
+}
+
 export async function renderVoiceCover({ title, name, imagePath, outputDir, outName = "cover", choice }) {
+  assertCoverFontsOnDisk(choice.voiceKey);
   // Opaque JPEG hero: nothing in the PDF but one DCT image + vector fills + text.
   const heroJpg = path.join(outputDir, `${outName}-hero.jpg`);
   await sharp(imagePath).flatten({ background: "#FAF9F0" }).removeAlpha().jpeg({ quality: 92, chromaSubsampling: "4:4:4" }).toFile(heroJpg);
@@ -405,10 +414,12 @@ export async function assembleFrontMatter({ story, childName, childAge, sheets, 
   let heroPath = coverImagePath;
   // COVER_VOICES=on → the voice/placement cover system; off → legacy cover, byte-identical.
   const voices = process.env.COVER_VOICES === "on";
+  const force = { voice: process.env.COVER_FORCE_VOICE, placement: process.env.COVER_FORCE_PLACEMENT };
+  if (voices && (force.voice || force.placement)) console.warn(`[cover] FORCED override active: voice=${force.voice ?? "-"} placement=${force.placement ?? "-"} (every book gets this)`);
   const choice = voices ? chooseCover({
     energy: story.cover_energy ?? null, vibe, ageRange: coverSelection?.ageRange ?? null,
-    seed: coverSelection?.seed ?? `${story.title}|${childName}`,
-    force: { voice: process.env.COVER_FORCE_VOICE, placement: process.env.COVER_FORCE_PLACEMENT },
+    seed: coverSelection?.seed ?? coverSeedFor({ title: story.title, childName, theme: coverSelection?.theme }),
+    force,
   }) : null;
   if (withCover && !heroPath) {
     const buf = await generateCoverHero({ story, childName, childAge, sheets, heroKind: choice?.heroKind ?? null, aspectRatio: choice?.aspectRatio ?? null }, deps);
@@ -431,5 +442,5 @@ export async function assembleFrontMatter({ story, childName, childAge, sheets, 
   const ded = await renderFrontMatterPage({ kind: "dedication", subs: buildDedicationSubs({ childName, message: dedicationMessage, adultMode, vibe }), outputDir, outName: "98-dedication" });
   const col = await renderFrontMatterPage({ kind: "colophon", subs: buildColophonSubs({ childName, generatedAtIso }), outputDir, outName: "99-colophon" });
 
-  return { front, back: [ded.pdfPath, col.pdfPath], cost };
+  return { front, back: [ded.pdfPath, col.pdfPath], cost, cover: choice ? { voice: choice.voiceKey, placement: choice.placementId, palette: choice.palette.name, torn: choice.torn, energy: choice.energy } : null };
 }

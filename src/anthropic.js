@@ -494,7 +494,7 @@ export function buildStorySchema(registry, readingLevel = "standard", adultMode 
     : (READING_LEVELS[readingLevel] ?? READING_LEVELS.standard).schemaDesc;
   return {
     type: "object",
-    required: ["title", "character", "companion_characters", "scenes", "cover_concept", "cover_subjects"],
+    required: ["title", "character", "companion_characters", "scenes", "cover_concept", "cover_energy", "cover_subjects"],
     additionalProperties: false,
     properties: {
       title: {
@@ -570,7 +570,7 @@ export function buildStorySchema(registry, readingLevel = "standard", adultMode 
       },
       cover_concept: {
         type: "string",
-        description: "A vivid 2-4 sentence art-direction note describing the IDEAL FRONT-COVER image for THIS specific story — its signature action/moment, key visual motif, and emotional mood. HARD CONSTRAINTS: the protagonist's face and the main action MUST sit in the upper half/centre of the frame; the lower ~40% MUST stay calm and open (no faces, action, or key objects there — it is reserved for the title panel). Show the protagonist DOING the signature action (not posing), with a sense of camera distance/angle that fits the moment.",
+        description: "A vivid 2-4 sentence art-direction note describing the IDEAL FRONT-COVER image for THIS specific story — its signature action/moment, key visual motif, and emotional mood. Describe WHAT is shown (who, doing what, where, in what light and mood), never where things sit in the frame — the layout decides the framing. Show the protagonist DOING the signature action (not posing), with a sense of camera distance/angle that fits the moment.",
       },
       cover_energy: {
         type: "string",

@@ -6,8 +6,9 @@ import {
   COVER_FONT_FILES, COVER_FONTS_DIR_URL, voiceFontFamilies,
   COVER_VOICES, COVER_PLACEMENTS, COVER_PALETTES, COVER_ENERGIES, COVER_AGE_BANDS,
   hashSeed, coverEnergyFor, ageBandFor, selectCoverVoice, selectCoverPlacement,
-  balanceTwoLines, stackLines, buildCoverPageHtml, lintCoverHtml, HERO_COMPOSITIONS,
+  balanceTwoLines, stackLines, breakLongWords, coverSeedFor, buildCoverPageHtml, lintCoverHtml, HERO_COMPOSITIONS,
 } from "../../src/cover-voices.js";
+import { assertCoverFontsOnDisk } from "../../src/front-matter.js";
 
 const T = "Eddie and the Shining Door";
 
@@ -46,6 +47,39 @@ describe("line breaking", () => {
   it("stacks narrow titles word-wise, joining short words, never more than 5 lines", () => {
     expect(stackLines(T)).toEqual(["Eddie and", "the", "Shining", "Door"]);
     expect(stackLines("Maximilian-Alexander and the Very Long Wonderful Secret Garden Adventure").length).toBeLessThanOrEqual(5);
+  });
+});
+
+describe("review hardening (2026-10-27)", () => {
+  it("breakLongWords splits a hyphenated word that cannot fit a narrow zone, leaves others alone", () => {
+    expect(breakLongWords(["Maximilian-Alexander", "and the", "Door"], 11)).toEqual(["Maximilian-", "Alexander", "and the", "Door"]);
+    expect(breakLongWords(["Eddie and", "Door"], 11)).toEqual(["Eddie and", "Door"]);
+    expect(stackLines("Maximilian-Alexander and the Door").length).toBeLessThanOrEqual(5);
+  });
+  it("stackLines merges the shortest pair when over 5 lines (no NaN precedence)", () => {
+    const out = stackLines("a b c d e f g h i", 1);
+    expect(out.length).toBe(5);
+    expect(out.join(" ")).toBe("a b c d e f g h i");
+  });
+  it("coverSeedFor is the single seed and tolerates missing parts", () => {
+    expect(coverSeedFor({ title: "T", childName: "N", theme: "th" })).toBe("T|N|th");
+    expect(coverSeedFor({ title: "T", childName: "N" })).toBe("T|N|");
+  });
+  it("lint inspects CSS only: a title mentioning 'linear-gradient' or 'opacity' is not an offence", () => {
+    const html = buildCoverPageHtml({ voiceKey: "wonder-7-9", placementId: "band", heroUrl: "file:///h.jpg", title: "The linear-gradient opacity:.5 rgba( book", name: "Bo", palette: COVER_PALETTES.wonder[0] });
+    expect(lintCoverHtml(html)).toEqual([]);
+    expect(lintCoverHtml('<div style="background:rgba(0,0,0,.4)"></div>')).toContain("transparency");
+    expect(lintCoverHtml('<style>.x{color:#ffffff80}</style>')).toContain("transparency");
+  });
+  it("the fitter always signals completion and reports font errors", () => {
+    const html = buildCoverPageHtml({ voiceKey: "gentle-3-5", placementId: "sky", heroUrl: "file:///h.jpg", title: T, name: "Eddie", palette: COVER_PALETTES.gentle[0] });
+    expect(html).toMatch(/finally \{\s*window\.__coverFitDone = true;/);
+    expect(html).toContain("dataset.fontErrors");
+    expect(html).not.toContain('class="dots"');
+    expect(html).not.toContain("radial-gradient");
+  });
+  it("assertCoverFontsOnDisk passes for every voice (fonts are shipped in the repo)", () => {
+    for (const v of Object.keys(COVER_VOICES)) expect(() => assertCoverFontsOnDisk(v)).not.toThrow();
   });
 });
 

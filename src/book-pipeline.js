@@ -34,6 +34,7 @@ import { PDFDocument } from "pdf-lib";
 import { assembleFrontMatter } from "./front-matter.js";
 import { generateImage } from "./gemini.js";
 import { loadTemplateRegistry, findTemplate } from "./template-registry.js";
+import { coverSeedFor } from "./cover-voices.js";
 import { renderPageWithTemplate } from "./page-pipeline.js";
 import { deriveSheetAppearance, derivePhotoAppearance } from "./appearance-derive.js";
 import { pageNegativePrompt } from "./art-styles.js";
@@ -1610,7 +1611,7 @@ export async function generateBook({
   // Title/dedication/colophon are $0 typographic pages; the cover is the one
   // paid piece (~$0.04 Gemini hero gen, reusing the interior's sheets). Margins
   // use a PROVISIONAL safe inset — true trim/bleed/safe-area is vendor-gated (B.2).
-  let frontPdfs = [], backPdfs = [], frontMatterCost = 0;
+  let frontPdfs = [], backPdfs = [], frontMatterCost = 0, coverChoice = null;
   if (process.env.FEATURES_FRONTMATTER === "on") {
     try {
       const sheetBufs = ["sheet-01.png", "sheet-02.png", "sheet-03.png"]
@@ -1619,11 +1620,11 @@ export async function generateBook({
         story, childName, childAge, sheets: sheetBufs,
         generatedAtIso: meta?.generatedAt, dedicationMessage, adultMode, vibe,
         // COVER_VOICES: age band + a per-book seed (stable across re-renders of the same book).
-        coverSelection: { ageRange: meta?.inputs?.ageRange ?? null, seed: `${story.title}|${childName}|${meta?.inputs?.theme ?? ""}` },
+        coverSelection: { ageRange: meta?.inputs?.ageRange ?? null, theme: meta?.inputs?.theme ?? "", seed: coverSeedFor({ title: story.title, childName, theme: meta?.inputs?.theme }) },
         outputDir: path.join(outputDir, "front-matter"), withCover: true,
       });
-      frontPdfs = fm.front; backPdfs = fm.back; frontMatterCost = fm.cost;
-      log.log(`Front matter assembled: ${frontPdfs.length} front + ${backPdfs.length} back page(s); cover gen $${frontMatterCost.toFixed(2)}.`);
+      frontPdfs = fm.front; backPdfs = fm.back; frontMatterCost = fm.cost; coverChoice = fm.cover ?? null;
+      log.log(`Front matter assembled: ${frontPdfs.length} front + ${backPdfs.length} back page(s); cover gen $${frontMatterCost.toFixed(2)}.` + (coverChoice ? ` Cover: ${coverChoice.voice} / ${coverChoice.placement} / ${coverChoice.palette}${coverChoice.torn ? " torn" : ""}.` : ""));
     } catch (e) {
       // Front matter must NEVER break book delivery — log + fall back to story-only.
       log.log(`⚠ front-matter assembly failed (${e.message}); delivering story pages only.`);
@@ -1698,6 +1699,8 @@ export async function generateBook({
     sheet_qa_fallbacks: sheetQaEvents.filter((e) => e.fallback).length,
     total_cost_usd: Number(totalCost.toFixed(4)),
     total_gemini_calls: totalCalls,
+    // COVER_VOICES: which cover a shipped book got (survives scratch deletion via generation_metadata).
+    cover: coverChoice,
     locked_bike_colour: bikeColour ?? null, // Spec D-B: canonical bike colour (audit)
     locked_helmet_colour: helmetColour ?? null, // Spec D-H: helmet colour = bike colour (audit)
   };

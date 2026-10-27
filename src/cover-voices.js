@@ -4,8 +4,8 @@
 // each copied from a real picture-book cover Adro approved) × a PLACEMENT (where the title
 // lives and how the hero is composed for it) × a PALETTE colour (per energy, hash-picked).
 // Every output is viewer-proof by construction: solid fills, borders, clip-path polygons,
-// text strokes via -webkit-text-stroke + paint-order, duplicated text for hard shadows —
-// NO gradients, NO transparency, NO blur, NO masks (Edge's PDF engine drops those).
+// duplicated text for hard shadows — NO gradients, NO transparency, NO blur, NO masks (Edge's
+// PDF engine drops those) and NO text strokes (Chromium emits stroked glyphs as Type 3 fonts).
 //
 // Pure: no I/O. front-matter.js renders the HTML this module builds.
 
@@ -182,8 +182,24 @@ export function stackLines(title, maxChars = 9) {
     if (last !== undefined && (last + " " + w).length <= maxChars) lines[lines.length - 1] = last + " " + w;
     else lines.push(w);
   }
-  while (lines.length > 5) { const i = lines.reduce((m, _, j) => (lines[j].length + lines[j + 1]?.length ?? 99) < (lines[m].length + (lines[m + 1]?.length ?? 99)) ? j : m, 0); lines.splice(i, 2, lines[i] + " " + lines[i + 1]); }
+  while (lines.length > 5) {
+    const pairLen = (j) => lines[j].length + (lines[j + 1]?.length ?? Infinity);
+    const i = lines.reduce((m, _, j) => (pairLen(j) < pairLen(m) ? j : m), 0);
+    lines.splice(i, 2, lines[i] + " " + lines[i + 1]);
+  }
   return lines;
+}
+
+/** Narrow zones: a single word longer than the zone can hold breaks at a hyphen if it has one. */
+export function breakLongWords(lines, maxChars) {
+  const out = [];
+  for (const l of lines) {
+    if (l.length > maxChars && l.includes("-") && !l.includes(" ")) {
+      const i = l.lastIndexOf("-", maxChars) > 0 ? l.lastIndexOf("-", maxChars) : l.indexOf("-");
+      out.push(l.slice(0, i + 1), l.slice(i + 1));
+    } else out.push(l);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +264,7 @@ export const COVER_PLACEMENTS = {
     hero: "sky", aspectRatio: "4:3", titleInk: "dark",
     build: ({ heroUrl, titleHtml, palette }) =>
       `${heroImg(heroUrl, "inset:0;width:100%;height:100%")}` +
-      `<div class="dots" style="position:absolute;left:0;top:0;width:4.2%;height:100%;background-color:${palette.fill}"></div>` +
+      `<div style="position:absolute;left:0;top:0;width:4.2%;height:100%;background-color:${palette.fill}"><svg viewBox="0 0 44 816" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">${Array.from({ length: 44 }, (_, i) => `<circle cx="22" cy="${18 + i * 18}" r="2.6" fill="${CREAM}"/>`).join("")}</svg></div>` +
       `<div class="zone" data-fit="100|48" style="position:absolute;left:10%;right:5%;top:6%;height:36%">${titleHtml}</div>` +
       MARK(`right:4%;bottom:3.5%;${lightMark}`),
   },
@@ -349,29 +365,33 @@ export const COVER_BASE_CSS = `
   .zone.centred{justify-content:center;align-items:center;}
   .zone.centred .title{width:100%;}
   .title .ln{white-space:nowrap;}
-  .mark{position:absolute;font-family:'Nunito',sans-serif;font-weight:800;font-size:10.5pt;letter-spacing:.32em;text-transform:uppercase;}
-  .dots{background-image:radial-gradient(circle, rgba(246,234,216,.95) 2.5px, transparent 3px);background-size:18px 18px;}`;
-// NOTE on .dots: a radial-gradient PATTERN exports as a shading. The spine placement therefore
-// pre-bakes its strip? No — keep it simple and safe: the spine strip uses a solid fill plus
-// SVG circles (see build below), the .dots class is unused at render and kept only for the
-// $0 mockups. The renderer strips it.
+  .mark{position:absolute;font-family:'Nunito',sans-serif;font-weight:800;font-size:10.5pt;letter-spacing:.32em;text-transform:uppercase;}`;
 
 /** In-page fitter: shrink each .zone's title block until it fits its zone's width and max-height. */
 export const COVER_FIT_SCRIPT = `
 <script>
 window.__coverFitDone = false;
 document.fonts.ready.then(() => {
-  for (const zone of document.querySelectorAll('.zone[data-fit]')) {
-    const [maxPx, minPx] = zone.dataset.fit.split('|').map(Number);
-    const block = zone.querySelector('.title'); if (!block) continue;
-    const maxH = zone.clientHeight || Infinity; // zones are fixed boxes (height set by the placement)
-    let size = maxPx;
-    block.style.fontSize = size + 'px';
-    const fits = () => block.scrollWidth <= zone.clientWidth + 1 && block.scrollHeight <= maxH + 1;
-    while (!fits() && size > minPx) { size -= 2; block.style.fontSize = size + 'px'; }
-    zone.dataset.fitted = String(size);
+  try {
+    const bad = [...document.fonts].filter((f) => f.status === 'error').map((f) => f.family);
+    document.documentElement.dataset.fontErrors = bad.join(',');
+    for (const zone of document.querySelectorAll('.zone[data-fit]')) {
+      const [maxPx, minPx] = zone.dataset.fit.split('|').map(Number);
+      const block = zone.querySelector('.title'); if (!block) continue;
+      const maxH = zone.clientHeight || Infinity; // zones are fixed boxes (height set by the placement)
+      let size = maxPx;
+      block.style.fontSize = size + 'px';
+      const wideOk = () => block.scrollWidth <= zone.clientWidth + 1;
+      const fits = () => wideOk() && block.scrollHeight <= maxH + 1;
+      while (!fits() && size > minPx) { size -= 2; block.style.fontSize = size + 'px'; }
+      // Width must never spill onto the art: keep shrinking below the floor (height may be short).
+      while (!wideOk() && size > 18) { size -= 2; block.style.fontSize = size + 'px'; }
+      zone.dataset.fitted = String(size);
+      if (!wideOk()) zone.dataset.overflow = 'width';
+    }
+  } finally {
+    window.__coverFitDone = true;
   }
-  window.__coverFitDone = true;
 });
 </script>`;
 
@@ -393,7 +413,7 @@ export function buildCoverPageHtml({ voiceKey, placementId, heroUrl, title, name
   const narrow = pl.narrow || false;
   // Wide strips (band / frame / arch) keep a short title on ONE line, as the real covers do.
   const oneLine = ["band", "frame", "arch"].includes(placementId) && String(title).trim().length <= 30;
-  const lines = narrow ? stackLines(title, placementId === "badge" ? 11 : 9)
+  const lines = narrow ? breakLongWords(stackLines(title, placementId === "badge" ? 11 : 9), placementId === "badge" ? 13 : 11)
     : pl.narrowish ? stackLines(title, 14)
     : oneLine ? [String(title).trim()]
     : balanceTwoLines(title);
@@ -408,23 +428,24 @@ export function buildCoverPageHtml({ voiceKey, placementId, heroUrl, title, name
   const align = narrow ? (placementId === "badge" ? "center" : "left") : (leftVoices.has(voiceKey) && (placementId === "sky" || placementId === "spine") ? "left" : "center");
   const titleHtml = voice.build({ lines, name, ink, align, title });
   const body = pl.build({ heroUrl, titleHtml, palette, torn, align, bandFill, bandInk });
-  // Spine strip dots as solid SVG circles (no gradient pattern in the PDF).
-  const bodySafe = body.replace(/<div class="dots" style="([^"]*)"><\/div>/, (_m, st) => {
-    const circles = Array.from({ length: 44 }, (_, i) => `<circle cx="22" cy="${18 + i * 18}" r="2.6" fill="${CREAM}"/>`).join("");
-    return `<div style="${st}"><svg viewBox="0 0 44 816" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">${circles}</svg></div>`;
-  });
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">${coverFontsLink(voiceKey)}<style>${COVER_BASE_CSS}` +
-    `body{background:${pl.page ?? "#FAF9F0"};}</style></head><body><div class="cover">${bodySafe}</div>${COVER_FIT_SCRIPT}</body></html>`;
+    `body{background:${pl.page ?? "#FAF9F0"};}</style></head><body><div class="cover">${body}</div>${COVER_FIT_SCRIPT}</body></html>`;
 }
 
 /** Lint: the things Edge's PDF engine drops. Returns a list of offences (empty = safe). */
 export function lintCoverHtml(html) {
   const out = [];
-  const css = html.replace(/<script>[\s\S]*?<\/script>/g, "");
-  if (/linear-gradient|conic-gradient|repeating-/.test(css)) out.push("gradient");
-  if (/radial-gradient/.test(css.replace(/\.dots\{[^}]*\}/, ""))) out.push("radial-gradient in use");
+  // Only CSS is inspected: <style> blocks + style="…" attributes (never the escaped title/name text).
+  const css = [...html.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)].map((m) => m[1])
+    .concat([...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1])).join("\n");
+  if (/linear-gradient|conic-gradient|repeating-|radial-gradient/.test(css)) out.push("gradient");
   if (/mask-image|mix-blend|backdrop-filter|filter:\s*(blur|drop-shadow)|box-shadow:(?!\s*none)|text-shadow:(?!\s*none)/.test(css)) out.push("mask/blend/filter/shadow");
   if (/text-stroke/.test(css)) out.push("text-stroke (Chromium emits stroked glyphs as a Type 3 font)");
-  if (/rgba\([^)]*,\s*0?\.\d+\s*\)|opacity:\s*0?\.\d/.test(css.replace(/\.dots\{[^}]*\}/, ""))) out.push("transparency");
+  if (/rgba\(|hsla\(|\/\s*\d+%\s*\)|#[0-9a-f]{8}\b|#[0-9a-f]{4}\b|opacity:\s*(0|0?\.\d+)\b|fill-opacity|stroke-opacity/i.test(css)) out.push("transparency");
   return out;
+}
+
+/** The one seed every caller must use so a re-render reproduces the same placement + palette. */
+export function coverSeedFor({ title, childName, theme }) {
+  return `${title ?? ""}|${childName ?? ""}|${theme ?? ""}`;
 }
