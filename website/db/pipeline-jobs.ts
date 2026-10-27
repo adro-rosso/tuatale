@@ -439,6 +439,25 @@ export async function updateReviewNotes(
  * Does NOT touch status — the email outcome is orthogonal to whether
  * the job is shipped.
  */
+/**
+ * Atomically claim the right to send a delivery email: compare-and-swap on the
+ * notification_error value the caller just read, and only while no email has been sent.
+ * Two concurrent presses read the same value; the first swap wins, the second matches no
+ * row and gets false — so one press can never become two emails.
+ */
+export async function claimNotificationSend(
+  id: string,
+  prevError: string | null,
+  claim: string,
+  client: TuataleSupabaseClient = createServerClient(),
+): Promise<boolean> {
+  let q = client.from('pipeline_jobs').update({ notification_error: claim }).eq('id', id).is('notification_sent_at', null);
+  q = prevError === null ? q.is('notification_error', null) : q.eq('notification_error', prevError);
+  const { data, error } = await q.select('id');
+  if (error) throw new DatabaseError('pipelineJobs.claimNotificationSend', error);
+  return Array.isArray(data) && data.length === 1;
+}
+
 /** Replace the job's book download link (admin re-sign on resend). */
 export async function updateJobPdfUrl(
   id: string,

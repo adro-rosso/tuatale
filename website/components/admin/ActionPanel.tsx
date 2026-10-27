@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/Button';
 import type { Tables } from '@/types/database';
 import type { PipelineJobStatus } from '@/db/pipeline-jobs';
 import { CancelButton } from './CancelButton';
+import { ResendEmailButton } from './ResendEmailButton';
 
 type PipelineJobRow = Tables<'pipeline_jobs'>;
 
@@ -42,21 +43,21 @@ export function ActionPanel({
   const canCancel = status === 'pending' || status === 'awaiting_review' || status === 'failed';
   const isTerminal = status === 'shipped' || status === 'cancelled';
 
-  if (status === 'shipped' && resendEmailAction) {
-    const failed = !job.notification_sent_at && Boolean(job.notification_error);
+  if (status === 'shipped' && resendEmailAction && !job.notification_sent_at) {
+    const sending = (job.notification_error ?? '').startsWith('resend in progress');
     return (
       <section className="space-y-sm">
         <h2 className="font-body text-warm-grey text-caption tracking-wider uppercase">Actions</h2>
         <p className="font-body text-warm-grey text-body">
-          {failed
-            ? 'Shipped, but the delivery email did not go out. Resend it once the cause is fixed.'
-            : 'Shipped. You can resend the delivery email with a fresh 7-day download link.'}
+          {sending
+            ? 'A resend is in progress. Refresh in a moment.'
+            : 'Shipped, but the delivery email did not go out. Resend it once the cause is fixed.'}
         </p>
-        <form>
-          <Button type="submit" variant={failed ? 'primary' : 'secondary'} formAction={resendEmailAction}>
-            Resend delivery email
-          </Button>
-        </form>
+        {sending ? null : (
+          <form>
+            <ResendEmailButton action={resendEmailAction} />
+          </form>
+        )}
       </section>
     );
   }

@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const s = vi.hoisted(() => ({
   getJobById: vi.fn(),
+  claimNotificationSend: vi.fn(),
   updateJobPdfUrl: vi.fn(),
   updateJobNotificationStatus: vi.fn(),
   getOrderById: vi.fn(),
@@ -23,6 +24,7 @@ class RedirectSentinel extends Error {
 
 vi.mock('@/db/pipeline-jobs', () => ({
   getJobById: s.getJobById,
+  claimNotificationSend: s.claimNotificationSend,
   updateJobPdfUrl: s.updateJobPdfUrl,
   updateJobNotificationStatus: s.updateJobNotificationStatus,
 }));
@@ -38,7 +40,7 @@ vi.mock('next/navigation', () => ({
 
 import { resendShipEmailAction } from '@/app/admin/orders/[id]/_actions/resend-email';
 
-const JOB = { id: 'job-1', order_id: 'order-1', status: 'shipped' };
+const JOB = { id: 'job-1', order_id: 'order-1', status: 'shipped', notification_sent_at: null, notification_error: 'domain not verified' };
 const ORDER = { id: 'order-1', customer_email: 'a@b.c', child_name: 'Eddie' };
 
 beforeEach(() => {
@@ -47,6 +49,7 @@ beforeEach(() => {
   s.getJobById.mockResolvedValue(JOB);
   s.getOrderById.mockResolvedValue(ORDER);
   s.signBookPdfUrl.mockResolvedValue('https://signed/fresh.pdf');
+  s.claimNotificationSend.mockResolvedValue(true);
 });
 
 describe('resendShipEmailAction', () => {
@@ -72,6 +75,30 @@ describe('resendShipEmailAction', () => {
     await expect(resendShipEmailAction('job-1', new FormData())).rejects.toBeInstanceOf(RedirectSentinel);
     expect(s.signBookPdfUrl).not.toHaveBeenCalled();
     expect(s.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('ONE TIME: an already-sent email is never resent', async () => {
+    s.getJobById.mockResolvedValue({ ...JOB, notification_sent_at: '2026-10-27T12:00:00Z', notification_error: null });
+    await expect(resendShipEmailAction('job-1', new FormData())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(s.claimNotificationSend).not.toHaveBeenCalled();
+    expect(s.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('ONE TIME: a second press that loses the atomic claim sends nothing', async () => {
+    s.claimNotificationSend.mockResolvedValue(false);
+    await expect(resendShipEmailAction('job-1', new FormData())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(s.claimNotificationSend).toHaveBeenCalledWith('job-1', 'domain not verified', expect.stringMatching(/^resend in progress since /));
+    expect(s.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('ONE TIME: a fresh in-progress claim blocks; a stale (>5 min) one may be retaken', async () => {
+    s.getJobById.mockResolvedValue({ ...JOB, notification_error: `resend in progress since ${new Date().toISOString()}` });
+    await expect(resendShipEmailAction('job-1', new FormData())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(s.sendEmail).not.toHaveBeenCalled();
+    s.getJobById.mockResolvedValue({ ...JOB, notification_error: `resend in progress since ${new Date(Date.now() - 10 * 60_000).toISOString()}` });
+    s.sendEmail.mockResolvedValue({ success: true, messageId: 'm2' });
+    await expect(resendShipEmailAction('job-1', new FormData())).rejects.toBeInstanceOf(RedirectSentinel);
+    expect(s.sendEmail).toHaveBeenCalledTimes(1);
   });
 
   it('a signing failure is recorded, nothing is sent', async () => {
