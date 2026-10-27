@@ -114,7 +114,14 @@ if (ARGS.order) {
   // Everything materialised now has mtime <= this instant; a later re-roll rewrites a page
   // to a NEWER mtime, so the reship derives its dirty-page set by comparing against it — no
   // per-handler dirty bookkeeping needed.
-  SESSION = { dir, heartbeat, orderId: ARGS.order, materializedAt: Date.now() };
+  // Admin hand-off: find this order's pipeline job so the station can link back to the admin
+  // page (where Ship lives). Best-effort — a lookup failure only hides the link.
+  let jobId = null;
+  try {
+    const { data } = await client.from("pipeline_jobs").select("id").eq("order_id", ARGS.order).limit(1);
+    jobId = data?.[0]?.id ?? null;
+  } catch { /* link hidden */ }
+  SESSION = { dir, heartbeat, orderId: ARGS.order, jobId, materializedAt: Date.now() };
   console.log(`  → ${count} object(s) → ${dir} (TRANSIENT — deleted on close)`);
 } else {
   BOOK_DIR = path.resolve(ARGS.dir);
@@ -463,6 +470,8 @@ function buildViewModel() {
     // operation, so the UI keys the button off this.
     mode: SESSION ? "prod" : "local",
     orderId: SESSION ? SESSION.orderId : null,
+    // Admin order page for this book (Ship lives there). ADMIN_BASE_URL overrides for previews.
+    adminUrl: SESSION?.jobId ? `${(process.env.ADMIN_BASE_URL || "https://tuatale.vercel.app").replace(/\/$/, "")}/admin/orders/${SESSION.jobId}` : null,
     inputs: buildInputsModel(story),
     pages,
     summary: {

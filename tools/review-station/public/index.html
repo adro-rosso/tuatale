@@ -122,6 +122,8 @@
   <div class="tally"><b id="approvedN">0</b>/<span id="totalN">0</span> approved</div>
   <div class="tally">img re-rolls: <b id="rerollN">0</b> · text regens: <b id="regenN">0</b> · est <b id="costN">$0.00</b></div>
   <span id="envWarn" class="banner" style="display:none">env-file not loaded → text regen disabled</span>
+  <a id="adminLink" href="#" target="_blank" rel="noopener" style="display:none;margin-left:12px">Admin page ↗</a>
+  <div id="orderMismatch" class="banner" style="display:none;margin-top:8px"></div>
 </header>
 
 <main>
@@ -295,6 +297,16 @@ function render() {
   // A customer-facing overwrite (Verify & re-ship) is a DISTINCT control from the local
   // Finalize, shown only for a prod (--order) session. Local (--dir) books see Finalize.
   const isProd = STATE.mode === "prod";
+  // Admin hand-off: back-link to the admin page, and a warning when the admin link asked for a
+  // DIFFERENT order than the one this station is open on (it serves one order per process).
+  if (STATE.adminUrl) { $("adminLink").href = STATE.adminUrl; $("adminLink").style.display = ""; }
+  const wanted = new URLSearchParams(location.search).get("order");
+  if (wanted && wanted !== STATE.orderId) {
+    $("orderMismatch").style.display = "";
+    $("orderMismatch").innerHTML = `This station is open on ${STATE.orderId ? "order <b>" + esc(STATE.orderId.slice(0, 8)) + "</b>" : "a local book"}, `
+      + `but the admin link was for order <b>${esc(wanted.slice(0, 8))}</b>. Stop this station (Ctrl+C in its terminal) and run: `
+      + `<code>npm run station -- ${esc(wanted)}</code>`;
+  } else { $("orderMismatch").style.display = "none"; }
   $("finalizeBtn").style.display = isProd ? "none" : "";
   $("finalizeBtn").disabled = !summary.allApproved;
   $("reshipBtn").style.display = isProd ? "" : "none";
@@ -432,7 +444,8 @@ async function reship() {
   const r = await api("/api/reship", {});
   if (r.ok) {
     $("finalizeMsg").innerHTML = `✓ Re-shipped: book.pdf replaced (${r.bookPages} pages), pushed ${r.pushed.length} artifact(s). `
-      + `<span style="color:var(--warn)">Note: the admin PDF link may serve the old book for a short cache window.</span>`;
+      + `<span style="color:var(--warn)">Note: the admin PDF link may serve the old book for a short cache window.</span>`
+      + (STATE.adminUrl ? ` <b>Next:</b> <a href="${STATE.adminUrl}" target="_blank" rel="noopener">open the admin page and click Ship ↗</a>` : "");
   } else {
     const failed = (r.checks || []).filter((c) => !c.pass).map((c) => `${c.name} (${c.detail})`);
     $("finalizeMsg").innerHTML = `<span style="color:var(--err)">✗ Re-ship ABORTED — customer book UNTOUCHED.</span> `

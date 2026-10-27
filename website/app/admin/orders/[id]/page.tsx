@@ -9,6 +9,7 @@ import { BookContentSection } from '@/components/admin/BookContentSection';
 import { PdfPreviewSection } from '@/components/admin/PdfPreviewSection';
 import { JobExecutionDetail } from '@/components/admin/JobExecutionDetail';
 import { ActionPanel } from '@/components/admin/ActionPanel';
+import { StationLinkSection } from '@/components/admin/StationLinkSection';
 import { saveNotesAction } from './_actions/save-notes';
 import { shipJobAction } from './_actions/ship-job';
 import { retryJobAction } from './_actions/retry-job';
@@ -80,6 +81,7 @@ export default async function AdminOrderDetailPage({
       <OrderSummarySection order={order} job={job} />
       <BookContentSection order={order} photos={photos} />
       <PdfPreviewSection job={job} />
+      <StationLinkSection orderId={order.id} jobId={job.id} status={job.status} />
       <JobExecutionDetail job={job} />
       <ActionPanel
         job={job}
