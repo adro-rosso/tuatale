@@ -233,7 +233,7 @@ export const COVER_PLACEMENTS = {
     build: ({ heroUrl, titleHtml, bandFill, bandInk }) =>
       `${heroImg(heroUrl, "left:0;top:0;width:100%;height:72%;object-position:center 45%")}` +
       `<div style="position:absolute;left:0;right:0;bottom:0;height:28%;background:${bandFill}"></div>` +
-      `<div class="zone" data-fit="84|34" style="position:absolute;left:5%;right:5%;bottom:5%;height:21%">${titleHtml}</div>` +
+      `<div class="zone centred" data-fit="84|34" style="position:absolute;left:5%;right:5%;bottom:3.5%;height:24%">${titleHtml}</div>` +
       MARK(`right:4%;bottom:3%;color:${bandInk}`),
   },
   plaque: {
@@ -242,7 +242,7 @@ export const COVER_PLACEMENTS = {
     build: ({ heroUrl, titleHtml }) =>
       `${heroImg(heroUrl, "inset:0;width:100%;height:100%;object-position:100% 60%")}` +
       `<div style="position:absolute;left:31%;top:26%;width:600px;height:290px;transform:translate(-50%,-50%);border-radius:50%;background:#DCEAF2;border:8px solid ${CREAM}"></div>` +
-      `<div class="zone" data-fit="60|28" style="position:absolute;left:31%;top:26%;width:470px;transform:translate(-50%,-50%);height:220px">${titleHtml}</div>` +
+      `<div class="zone centred" data-fit="60|28" style="position:absolute;left:31%;top:26%;width:470px;transform:translate(-50%,-50%);height:220px">${titleHtml}</div>` +
       MARK(`right:4%;bottom:3.5%;${lightMark}`),
   },
   spine: {
@@ -258,7 +258,7 @@ export const COVER_PLACEMENTS = {
     name: "Keepsake frame", ref: "Guess How Much I Love You; Magic Beach",
     hero: "stage", aspectRatio: "16:9", titleInk: "dark", page: CREAM,
     build: ({ heroUrl, titleHtml, palette }) =>
-      `<div class="zone" data-fit="76|34" style="position:absolute;left:5%;right:5%;top:5%;height:18%">${titleHtml}</div>` +
+      `<div class="zone centred" data-fit="76|34" style="position:absolute;left:5%;right:5%;top:4%;height:19%">${titleHtml}</div>` +
       `<div style="position:absolute;left:7%;top:25%;width:86%;height:67%;border:9px solid ${palette.fill};border-radius:18px;overflow:hidden">${heroImg(heroUrl, "inset:0;width:100%;height:100%;object-position:center 45%")}</div>` +
       MARK(`left:0;right:0;bottom:2.6%;text-align:center;color:#5A4634`),
   },
@@ -266,7 +266,7 @@ export const COVER_PLACEMENTS = {
     name: "Arched window", ref: "Magic Beach (Alison Lester)",
     hero: "stage", aspectRatio: "16:9", titleInk: "dark", page: "#EFE3CC",
     build: ({ heroUrl, titleHtml }) =>
-      `<div class="zone" data-fit="66|32" style="position:absolute;left:5%;right:5%;top:5.5%;height:12%">${titleHtml}</div>` +
+      `<div class="zone centred" data-fit="66|32" style="position:absolute;left:5%;right:5%;top:4.5%;height:13%">${titleHtml}</div>` +
       `<div style="position:absolute;left:12%;top:19%;width:76%;height:73%;border:8px solid #3A2415;border-radius:380px 380px 14px 14px;overflow:hidden">${heroImg(heroUrl, "inset:0;width:100%;height:100%;object-position:center 50%")}</div>` +
       MARK(`right:4%;top:4%;color:#5A4634`),
   },
@@ -277,7 +277,7 @@ export const COVER_PLACEMENTS = {
       `${heroImg(heroUrl, "inset:0;width:100%;height:100%;object-position:100% 60%")}` +
       `<div style="position:absolute;left:27%;top:42%;width:470px;height:470px;transform:translate(-50%,-50%);border-radius:50%;background:${CREAM}"></div>` +
       `<div style="position:absolute;left:27%;top:42%;width:446px;height:446px;transform:translate(-50%,-50%);border-radius:50%;background:${palette.fill}"></div>` +
-      `<div class="zone" data-fit="64|28" style="position:absolute;left:27%;top:42%;width:330px;transform:translate(-50%,-50%);height:330px">${titleHtml}</div>` +
+      `<div class="zone centred" data-fit="64|28" style="position:absolute;left:27%;top:42%;width:320px;transform:translate(-50%,-50%);height:320px">${titleHtml}</div>` +
       MARK(`right:4%;top:4%;color:${ESP};background:${CREAM};padding:.7em 1.1em;border-radius:2em`),
   },
 };
@@ -347,7 +347,9 @@ export const COVER_BASE_CSS = `
   .cover{position:relative;width:11in;height:8.5in;overflow:hidden;}
   .cover *{box-sizing:border-box;margin:0;}
   .hero{position:absolute;display:block;object-fit:cover;}
-  .zone{overflow:visible;}
+  .zone{overflow:visible;display:flex;flex-direction:column;justify-content:flex-start;}
+  .zone.centred{justify-content:center;align-items:center;}
+  .zone.centred .title{width:100%;}
   .title .ln{white-space:nowrap;}
   .mark{position:absolute;font-family:'Nunito',sans-serif;font-weight:800;font-size:10.5pt;letter-spacing:.32em;text-transform:uppercase;}
   .dots{background-image:radial-gradient(circle, rgba(246,234,216,.95) 2.5px, transparent 3px);background-size:18px 18px;}`;
