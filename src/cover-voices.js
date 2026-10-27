@@ -240,7 +240,7 @@ export const COVER_PLACEMENTS = {
     name: "Oval plaque", ref: "Each Peach Pear Plum",
     hero: "stage-right", aspectRatio: "16:9", titleInk: "dark", narrowish: true,
     build: ({ heroUrl, titleHtml }) =>
-      `${heroImg(heroUrl, "inset:0;width:100%;height:100%;object-position:0% 60%")}` +
+      `${heroImg(heroUrl, "inset:0;width:100%;height:100%;object-position:100% 60%")}` +
       `<div style="position:absolute;left:31%;top:26%;width:600px;height:290px;transform:translate(-50%,-50%);border-radius:50%;background:#DCEAF2;border:8px solid ${CREAM}"></div>` +
       `<div class="zone" data-fit="60|28" style="position:absolute;left:31%;top:26%;width:470px;transform:translate(-50%,-50%);height:220px">${titleHtml}</div>` +
       MARK(`right:4%;bottom:3.5%;${lightMark}`),
@@ -274,7 +274,7 @@ export const COVER_PLACEMENTS = {
     name: "Porthole badge", ref: "Librio 'Where's Daisy?'; Dinkleboo",
     hero: "stage-right", aspectRatio: "16:9", titleInk: "light", narrow: true,
     build: ({ heroUrl, titleHtml, palette }) =>
-      `${heroImg(heroUrl, "inset:0;width:100%;height:100%;object-position:0% 60%")}` +
+      `${heroImg(heroUrl, "inset:0;width:100%;height:100%;object-position:100% 60%")}` +
       `<div style="position:absolute;left:27%;top:42%;width:470px;height:470px;transform:translate(-50%,-50%);border-radius:50%;background:${CREAM}"></div>` +
       `<div style="position:absolute;left:27%;top:42%;width:446px;height:446px;transform:translate(-50%,-50%);border-radius:50%;background:${palette.fill}"></div>` +
       `<div class="zone" data-fit="64|28" style="position:absolute;left:27%;top:42%;width:330px;transform:translate(-50%,-50%);height:330px">${titleHtml}</div>` +
@@ -301,7 +301,7 @@ export const HERO_COMPOSITIONS = {
   portrait: "FRAMING: a TALL 3:4 portrait. The protagonist fills most of the frame from head to knees, turned slightly to the LEFT and looking at the viewer; a simple, uncluttered background (calm sky, plain wall or soft hedge) with one small hint of the story's setting at the right edge.",
   "portrait-left": "FRAMING: a TALL 3:4 portrait. The protagonist fills most of the frame from head to knees, turned slightly to the RIGHT and looking at the viewer; a simple, uncluttered background (calm sky, plain wall or soft hedge) with one small hint of the story's setting at the left edge.",
   stage: "FRAMING: a WIDE 16:9 scene. Full-length figures standing on level ground near the BOTTOM of the frame, feet just above the lower edge; the story's key setting behind them; open sky across the top.",
-  "stage-right": "FRAMING: a WIDE 16:9 scene. The protagonist stands full-length in the RIGHT HALF of the frame, feet just above the lower edge; the left half is the story's setting only (scenery, no faces, nothing important); open sky across the top.",
+  "stage-right": "FRAMING: a WIDE 16:9 scene. The protagonist stands full-length in the RIGHT 40% of the frame, feet just above the lower edge, looking toward the viewer; the LEFT 60% is the story's setting only (scenery, no faces, nothing important) — a title badge will cover part of it; open sky across the top.",
 };
 export const NO_PANEL_CLAUSE = "The book's title will be printed over this image LATER by the layout. Do NOT paint any panel, band, box, strip, plaque, blank rectangle, lettering, words, signs or frame anywhere: the entire image is uninterrupted scene, edge to edge.";
 
