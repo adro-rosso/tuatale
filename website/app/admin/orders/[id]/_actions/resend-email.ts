@@ -19,8 +19,8 @@ import { adminUsername } from '@/lib/admin-auth';
 import { sendEmail } from '@/lib/email/send';
 import { buildShipNotification } from '@/lib/email/templates/ship-notification';
 import { signBookPdfUrl } from '@/lib/email/book-link';
+import { RESEND_CLAIM_PREFIX } from '@/lib/admin/resend-claim';
 
-export const RESEND_CLAIM_PREFIX = 'resend in progress since ';
 const STALE_CLAIM_MS = 5 * 60 * 1000;
 
 export async function resendShipEmailAction(jobId: string, _formData: FormData): Promise<never> {

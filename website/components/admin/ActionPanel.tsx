@@ -3,6 +3,7 @@ import type { Tables } from '@/types/database';
 import type { PipelineJobStatus } from '@/db/pipeline-jobs';
 import { CancelButton } from './CancelButton';
 import { ResendEmailButton } from './ResendEmailButton';
+import { RESEND_CLAIM_PREFIX } from '@/lib/admin/resend-claim';
 
 type PipelineJobRow = Tables<'pipeline_jobs'>;
 
@@ -44,7 +45,7 @@ export function ActionPanel({
   const isTerminal = status === 'shipped' || status === 'cancelled';
 
   if (status === 'shipped' && resendEmailAction && !job.notification_sent_at) {
-    const sending = (job.notification_error ?? '').startsWith('resend in progress');
+    const sending = (job.notification_error ?? '').startsWith(RESEND_CLAIM_PREFIX);
     return (
       <section className="space-y-sm">
         <h2 className="font-body text-warm-grey text-caption tracking-wider uppercase">Actions</h2>
