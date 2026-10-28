@@ -12,7 +12,9 @@
  */
 import { useEffect, useState } from 'react';
 
-const STAGES: { until: number; text: string }[] = [
+export type ProgressStage = { until: number; text: string };
+
+const STAGES: ProgressStage[] = [
   { until: 4000, text: 'Mixing the paints…' },
   { until: 15000, text: 'Sketching their face…' },
   { until: 40000, text: 'Painting their hair…' },
@@ -20,19 +22,23 @@ const STAGES: { until: number; text: string }[] = [
   { until: Infinity, text: 'Almost there — thanks for your patience ✨' },
 ];
 
-const stageFor = (ms: number) => (STAGES.find((s) => ms < s.until) ?? STAGES[STAGES.length - 1])!.text;
+const stageFor = (stages: ProgressStage[], ms: number) =>
+  (stages.find((s) => ms < s.until) ?? stages[stages.length - 1])!.text;
 
 export function PreviewProgress({
   done,
   photo,
   completed,
   total,
+  stages = STAGES,
 }: {
   done: boolean;
   photo?: boolean;
   /** Real progress signal (optional): how many sub-items have landed, out of `total`. */
   completed?: number;
   total?: number;
+  /** Staged copy override (the cover uses its own; the default is about a character). */
+  stages?: ProgressStage[];
 }) {
   const [elapsed, setElapsed] = useState(0);
 
@@ -48,7 +54,7 @@ export function PreviewProgress({
   // If the caller knows real completion, let it pull the bar forward.
   const realFrac = total && total > 0 && completed != null ? (completed / total) * 100 : 0;
   const pct = done ? 100 : Math.max(timeCreep, realFrac);
-  const copy = done ? 'Ready!' : stageFor(elapsed);
+  const copy = done ? 'Ready!' : stageFor(stages, elapsed);
 
   return (
     <div className="space-y-sm w-full" role="status" aria-live="polite">

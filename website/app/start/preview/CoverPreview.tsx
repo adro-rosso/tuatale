@@ -20,11 +20,21 @@ import { balanceTitleLines } from '@/lib/cover/title';
 import { Body } from '@/components/ui/Body';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { PreviewProgress, type ProgressStage } from '@/app/start/child/PreviewProgress';
 
 const POLL_MS = 1500;
 const TIMEOUT_MS = 150_000; // matches the preview UI ceiling (worker fail-fast + hedge)
 
 type Phase = 'loading' | 'painting' | 'done' | 'passthrough';
+
+// Cover-specific copy for the shared progress bar (its default stages describe a character).
+const COVER_STAGES: ProgressStage[] = [
+  { until: 4000, text: 'Setting the scene…' },
+  { until: 20000, text: 'Painting your cover…' },
+  { until: 60000, text: 'Adding the light and colour…' },
+  { until: 100000, text: 'Adding the finishing touches…' },
+  { until: Infinity, text: 'Almost there — thanks for your patience ✨' },
+];
 
 interface Props {
   /** next/font Fredoka variable class from the server page, so var(--font-fredoka) resolves. */
@@ -182,11 +192,16 @@ export function CoverPreview({ fontClassName }: Props) {
                   </div>
                 </>
               ) : (
-                // Painting / loading state inside the cover frame.
+                // Painting / loading state inside the cover frame. A fresh render takes up to
+                // ~2 min, so it gets the same progress bar as the character preview.
                 <div className="text-warm-grey p-md flex h-full w-full items-center justify-center text-center">
-                  <p className="font-body text-caption">
-                    {phase === 'loading' ? 'Preparing your cover…' : 'Painting your cover…'}
-                  </p>
+                  {phase === 'painting' ? (
+                    <div className="w-3/4 max-w-[260px]">
+                      <PreviewProgress done={false} stages={COVER_STAGES} />
+                    </div>
+                  ) : (
+                    <p className="font-body text-caption">Preparing your cover…</p>
+                  )}
                 </div>
               )}
 
@@ -196,7 +211,9 @@ export function CoverPreview({ fontClassName }: Props) {
                   className="absolute inset-0 flex items-center justify-center"
                   style={{ backgroundColor: 'rgba(253,251,239,.72)' }}
                 >
-                  <p className="font-body text-warm-grey text-caption">Painting a new cover…</p>
+                  <div className="w-3/4 max-w-[260px]">
+                    <PreviewProgress done={false} stages={COVER_STAGES} />
+                  </div>
                 </div>
               ) : null}
             </div>

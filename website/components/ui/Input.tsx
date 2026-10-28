@@ -10,7 +10,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     return (
       <input
         ref={ref}
-        className={`font-body text-body text-near-black bg-paper border-warm-grey-light placeholder:text-warm-grey/60 focus:border-iron-oxide focus:ring-iron-oxide/20 px-md py-md w-full rounded-xl border transition-colors focus:ring-2 focus:outline-none ${className}`}
+        className={`font-body text-body text-near-black bg-paper border-warm-grey-light placeholder:text-warm-grey/40 focus:border-iron-oxide focus:ring-iron-oxide/20 px-md py-md w-full rounded-xl border transition-colors focus:ring-2 focus:outline-none ${className}`}
         {...rest}
       />
     );

@@ -119,6 +119,27 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
 
   return (
     <div className="space-y-lg">
+      {/* Companion-photo consent, ABOVE the cards: it comes before the photo upload it
+          unlocks (Adro, 2026-10). Pet: shown once photos exist (owner/other pets). Child:
+          shown as soon as a card exists, because it GATES the (child-book) companion uploads
+          via `disabled` — companions can be children, so it's the stricter companion-v1
+          attestation and the server stores its canonical text per card. */}
+      {((isPet && anyPhotos) || (isChildCompanionPhoto && cards.length > 0)) && (
+        <label className="gap-sm border-warm-grey-light/70 bg-paper p-md flex cursor-pointer items-start rounded-xl border">
+          <input
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+            className="accent-iron-oxide mt-1"
+          />
+          <span className="font-body text-near-black text-body">
+            {isChildCompanionPhoto
+              ? CONSENT['companion-v1'].label
+              : 'I have the right to use these photos, and I’m happy for Tuatale to use them to illustrate this book.'}
+          </span>
+        </label>
+      )}
+      {consentError && <FieldError>{consentError}</FieldError>}
       {cards.length === 0 ? (
         <Body className="font-body text-warm-grey text-center">
           No companions added yet. Click below to add {isPet ? 'their owner, a friend, or another pet' : 'a friend, a pet, or a favourite toy'}, or skip
@@ -146,26 +167,6 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
         </div>
       )}
 
-      {/* Companion-photo consent. Pet: shown once photos exist (owner/other pets). Child:
-          shown as soon as a card exists, because it GATES the (child-book) companion uploads
-          via `disabled` — companions can be children, so it's the stricter companion-v1
-          attestation and the server stores its canonical text per card. */}
-      {((isPet && anyPhotos) || (isChildCompanionPhoto && cards.length > 0)) && (
-        <label className="gap-sm border-warm-grey-light/70 bg-paper p-md flex cursor-pointer items-start rounded-xl border">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-            className="accent-iron-oxide mt-1"
-          />
-          <span className="font-body text-near-black text-body">
-            {isChildCompanionPhoto
-              ? CONSENT['companion-v1'].label
-              : 'I have the right to use these photos, and I’m happy for Tuatale to use them to illustrate this book.'}
-          </span>
-        </label>
-      )}
-      {consentError && <FieldError>{consentError}</FieldError>}
 
       <FormBlockedNotice show={hasFieldErrors(errors)} message="Please fix the highlighted companion details above, then continue." />
 

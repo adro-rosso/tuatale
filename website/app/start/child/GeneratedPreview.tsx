@@ -30,6 +30,8 @@ const TIMEOUT_MS = 150_000;
 const RETRY_DELAY_MS = 3_000;
 const BUSY_MSG =
   'Our art engine is busy right now — give it another try in a moment. (You haven’t been charged.)';
+const CAPPED_MSG =
+  'That’s all the free previews for this book. Your characters are still painted in full after you order.';
 
 type Phase = 'idle' | 'generating' | 'done' | 'failed';
 
@@ -50,6 +52,11 @@ export function GeneratedPreview({ inputs, photo }: Props) {
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Whether this user-initiated generate has already spent its ONE silent retry.
   const autoRetriedRef = useRef(false);
+  // "Try another look" must be a NEW dice roll: identical inputs hit the input-hash cache
+  // and handed back the same image (Adro, 2026-10). Each re-roll gets a fresh variant (a
+  // distinct cache slot); the first preview keeps the plain key so a returning parent sees
+  // their saved one. In a ref so the silent auto-retry re-requests the SAME variant.
+  const variantRef = useRef<string | undefined>(undefined);
 
   const stop = () => {
     if (pollRef.current) clearTimeout(pollRef.current);
@@ -60,6 +67,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
   // User action: a fresh generate resets the one-silent-retry budget.
   function generate() {
     autoRetriedRef.current = false;
+    if (phase === 'done') variantRef.current = `reroll:${crypto.randomUUID()}`;
     void runPreview();
   }
 
@@ -87,6 +95,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
         ...inputs,
         photoPath: photo?.path,
         photoHash: photo?.hash,
+        variant: variantRef.current,
       });
       if (res.status === 'done' && res.imageUrl) {
         setImageUrl(res.imageUrl);
@@ -95,7 +104,13 @@ export function GeneratedPreview({ inputs, photo }: Props) {
         setPhase('done');
         return;
       }
-      // Blocked (rate-limited / capped / no draft) → no previewId to poll → treat as busy.
+      // Out of free previews: say so plainly (no silent retry; it would only be refused again).
+      if (res.blocked === 'capped') {
+        setPhase('failed');
+        setError(CAPPED_MSG);
+        return;
+      }
+      // Blocked (rate-limited / no draft) → no previewId to poll → treat as busy.
       if (!res.previewId) {
         onBusy();
         return;
