@@ -43,6 +43,10 @@ const PREVIEW_BUCKET = 'tuatale-previews';
 // S-E preview cost-control (~$0.04/gen). Cache hits are free + never counted;
 // these bound NEW gens only. Starting values — tune from real usage.
 const FREE_PREVIEW_CAP = 10;          // distinct gens per draft (~$0.40 COGS ceiling)
+// Character re-rolls are real new gens (2026-10), so they could spend the whole cap before
+// the cover step. The FIRST cover render may use a few slots past the cap; cover re-rolls
+// stay under the normal cap.
+const COVER_RESERVE = 3;
 const RATE_BURST_MS = 5_000;          // ≥1 new gen per 5s = throttle (burst debounce)
 const RATE_HOUR_MS = 3_600_000;
 const RATE_HOURLY_MAX = 40;           // hard per-draft hourly ceiling
@@ -404,7 +408,7 @@ export async function requestPreview(input: RequestPreviewInput): Promise<Previe
   // key (an anonymous flood with no draft would dodge both).
   const draftId = input.draftId;
   if (!draftId) {
-    return { previewId: '', status: 'failed', cached: false, blocked: 'capped' };
+    return { previewId: '', status: 'failed', cached: false, blocked: 'unavailable' };
   }
   // photoPath OWNERSHIP (security fix D, 2026-07-17). photoPath arrives from the
   // client and was previously forwarded verbatim into the Inngest event, where the
@@ -416,7 +420,7 @@ export async function requestPreview(input: RequestPreviewInput): Promise<Previe
     const ownPrefix = `${draftUploadPrefix(draftId)}/`;
     if (!input.photoPath.startsWith(ownPrefix) || input.photoPath.includes('..')) {
       console.error(`[requestPreview] BLOCKED foreign photoPath for draft ${draftId}: ${input.photoPath}`);
-      return { previewId: '', status: 'failed', cached: false, blocked: 'capped' };
+      return { previewId: '', status: 'failed', cached: false, blocked: 'unavailable' };
     }
   }
   // Free-preview cap: bound total distinct gens per draft.
@@ -534,7 +538,8 @@ export async function requestCoverScene(opts?: { regenerate?: boolean }): Promis
   }
 
   // Same S-E cost control as requestPreview: per-draft free cap + burst/hourly rate-limit.
-  if ((await countPreviewsForDraft(draftId)) >= FREE_PREVIEW_CAP) {
+  // The first cover may use COVER_RESERVE slots past the cap (see the constant).
+  if ((await countPreviewsForDraft(draftId)) >= FREE_PREVIEW_CAP + (regenerate ? 0 : COVER_RESERVE)) {
     return { previewId: '', status: 'failed', cached: false, blocked: 'capped' };
   }
   const now = Date.now();

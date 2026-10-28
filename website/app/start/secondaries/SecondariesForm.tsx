@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState, useTransition } from 'react';
+import { useId, useRef, useState, useTransition } from 'react';
 import { submitSecondariesStep } from '@/app/start/_actions/submit-secondaries';
 import { Button } from '@/components/ui/Button';
 import { Body } from '@/components/ui/Body';
@@ -70,6 +70,8 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
   const [errors, setErrors] = useState<FieldErrors>({});
   const [consent, setConsent] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
+  // The checkbox sits ABOVE the cards, far from Continue: scroll it into view on error.
+  const consentRef = useRef<HTMLLabelElement>(null);
   const [isPending, startTransition] = useTransition();
   useScrollToFirstError(errors);
 
@@ -97,6 +99,7 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
     // were already uploaded (child-book companion uploads were also gated + moderated).
     if (companionsPhotoEnabled && anyPhotos && !consent) {
       setConsentError('Please confirm the consent checkbox before continuing.');
+      consentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     startTransition(async () => {
@@ -125,7 +128,7 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
           via `disabled` — companions can be children, so it's the stricter companion-v1
           attestation and the server stores its canonical text per card. */}
       {((isPet && anyPhotos) || (isChildCompanionPhoto && cards.length > 0)) && (
-        <label className="gap-sm border-warm-grey-light/70 bg-paper p-md flex cursor-pointer items-start rounded-xl border">
+        <label ref={consentRef} className="gap-sm border-warm-grey-light/70 bg-paper p-md flex cursor-pointer items-start rounded-xl border">
           <input
             type="checkbox"
             checked={consent}

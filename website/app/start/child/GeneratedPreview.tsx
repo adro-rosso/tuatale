@@ -35,6 +35,13 @@ const CAPPED_MSG =
 
 type Phase = 'idle' | 'generating' | 'done' | 'failed';
 
+// crypto.randomUUID needs a secure context (missing over plain http on a LAN IP, and in
+// Safari before 15.4); the variant only has to be unique per draft, so fall back.
+const randomId = () =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
 interface Props {
   inputs: RequestPreviewInput;
   /** A chosen photo (already uploaded by CharacterBuilder), or null for the structured path. */
@@ -53,10 +60,16 @@ export function GeneratedPreview({ inputs, photo }: Props) {
   // Whether this user-initiated generate has already spent its ONE silent retry.
   const autoRetriedRef = useRef(false);
   // "Try another look" must be a NEW dice roll: identical inputs hit the input-hash cache
-  // and handed back the same image (Adro, 2026-10). Each re-roll gets a fresh variant (a
-  // distinct cache slot); the first preview keeps the plain key so a returning parent sees
-  // their saved one. In a ref so the silent auto-retry re-requests the SAME variant.
+  // and handed back the same image (Adro, 2026-10). A re-roll of the image on screen gets a
+  // fresh variant (a distinct cache slot); a first preview of any inputs uses the plain key,
+  // so a returning parent, or one who changes a feature and back, gets the saved image free.
+  // In a ref so the silent auto-retry re-requests the SAME variant.
   const variantRef = useRef<string | undefined>(undefined);
+  // Which inputs the image on screen was painted from, and which the in-flight request uses.
+  const paintedKeyRef = useRef<string | null>(null);
+  const requestKeyRef = useRef<string | null>(null);
+  // The image on screen, readable from the async request path (a failed re-roll keeps it).
+  const imageUrlRef = useRef<string | null>(null);
 
   const stop = () => {
     if (pollRef.current) clearTimeout(pollRef.current);
@@ -67,8 +80,27 @@ export function GeneratedPreview({ inputs, photo }: Props) {
   // User action: a fresh generate resets the one-silent-retry budget.
   function generate() {
     autoRetriedRef.current = false;
-    if (phase === 'done') variantRef.current = `reroll:${crypto.randomUUID()}`;
+    const key = JSON.stringify({ ...inputs, photoHash: photo?.hash ?? null });
+    if (key !== paintedKeyRef.current) variantRef.current = undefined; // new inputs: plain key
+    else if (phase === 'done') variantRef.current = `reroll:${randomId()}`; // re-roll this look
+    // else: same inputs after a failure → retry the same request
+    requestKeyRef.current = key;
     void runPreview();
+  }
+
+  function show(url: string, bg: string | null, fromCache: boolean) {
+    imageUrlRef.current = url;
+    paintedKeyRef.current = requestKeyRef.current;
+    setImageUrl(url);
+    setBgColor(bg);
+    setCached(fromCache);
+    setPhase('done');
+  }
+
+  // A failed attempt never blanks the step: if an image is on screen, keep it and say why.
+  function giveUp(message: string) {
+    setPhase(imageUrlRef.current ? 'done' : 'failed');
+    setError(message);
   }
 
   async function runPreview() {
@@ -86,8 +118,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
         pollRef.current = setTimeout(() => void runPreview(), RETRY_DELAY_MS);
         return;
       }
-      setPhase('failed');
-      setError(BUSY_MSG);
+      giveUp(BUSY_MSG);
     };
 
     try {
@@ -98,16 +129,12 @@ export function GeneratedPreview({ inputs, photo }: Props) {
         variant: variantRef.current,
       });
       if (res.status === 'done' && res.imageUrl) {
-        setImageUrl(res.imageUrl);
-        setBgColor(res.bgColor ?? null);
-        setCached(res.cached);
-        setPhase('done');
+        show(res.imageUrl, res.bgColor ?? null, res.cached);
         return;
       }
       // Out of free previews: say so plainly (no silent retry; it would only be refused again).
       if (res.blocked === 'capped') {
-        setPhase('failed');
-        setError(CAPPED_MSG);
+        giveUp(CAPPED_MSG);
         return;
       }
       // Blocked (rate-limited / no draft) → no previewId to poll → treat as busy.
@@ -124,9 +151,7 @@ export function GeneratedPreview({ inputs, photo }: Props) {
         try {
           const s = await getPreviewStatus(res.previewId);
           if (s.status === 'done' && s.imageUrl) {
-            setImageUrl(s.imageUrl);
-            setBgColor(s.bgColor ?? null);
-            setPhase('done');
+            show(s.imageUrl, s.bgColor ?? null, false);
             return;
           }
           if (s.status === 'failed') {
@@ -160,17 +185,17 @@ export function GeneratedPreview({ inputs, photo }: Props) {
             Optional. See how they’ll look before you continue.
           </p>
         ) : null}
-        {phase === 'done' && cached ? (
+        {phase === 'done' && cached && !error ? (
           <p className="font-body text-warm-grey text-caption">
             ✨ Here’s your character (from your saved preview).
           </p>
         ) : null}
-        {phase === 'done' && !cached ? (
+        {phase === 'done' && !cached && !error ? (
           <p className="font-body text-warm-grey text-caption">
             A painted preview. Your book places them in the story.
           </p>
         ) : null}
-        {phase === 'failed' && error ? (
+        {phase !== 'generating' && error ? (
           <p className="font-body text-iron-oxide text-caption" role="alert">
             {error}
           </p>

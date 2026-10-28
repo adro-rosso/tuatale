@@ -89,10 +89,10 @@ describe('requestPreview', () => {
   });
 
   // ---- S-E cost-control ----
-  it('COST: no draftId → blocked (capped), no row/event (cap/rate-limit need a key)', async () => {
+  it('COST: no draftId → blocked (unavailable, not "out of previews"), no row/event (cap/rate-limit need a key)', async () => {
     (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const r = await requestPreview({ ...input, draftId: undefined });
-    expect(r.blocked).toBe('capped');
+    expect(r.blocked).toBe('unavailable');
     expect(createPreviewJob).not.toHaveBeenCalled();
     expect(inngest.send).not.toHaveBeenCalled();
   });
@@ -121,7 +121,7 @@ describe('requestPreview', () => {
   it('SECURITY: a photoPath outside the caller\'s own draft prefix is blocked, no spend', async () => {
     (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const r = await requestPreview({ ...input, photoPath: 'uploads/draft-2/deadbeef.png' });
-    expect(r.blocked).toBe('capped');
+    expect(r.blocked).toBe('unavailable');
     expect(createPreviewJob).not.toHaveBeenCalled();
     expect(inngest.send).not.toHaveBeenCalled();
   });
@@ -129,7 +129,7 @@ describe('requestPreview', () => {
   it('SECURITY: traversal out of the prefix is blocked', async () => {
     (findCachedPreview as ReturnType<typeof vi.fn>).mockResolvedValue(null);
     const r = await requestPreview({ ...input, photoPath: 'uploads/draft-1/../draft-2/x.png' });
-    expect(r.blocked).toBe('capped');
+    expect(r.blocked).toBe('unavailable');
     expect(inngest.send).not.toHaveBeenCalled();
   });
 
@@ -776,10 +776,26 @@ describe('requestCoverScene — anchor priority + guards', () => {
     expect(inngest.send).not.toHaveBeenCalled();
   });
 
-  it('CAPPED → blocked, no dispatch', async () => {
+  it('RESERVE: character re-rolls used the whole cap → the FIRST cover still renders', async () => {
     coverDraft();
     (countPreviewsForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(10);
     const r = await requestCoverScene();
+    expect(r).toMatchObject({ previewId: 'cov-1', status: 'queued' });
+    expect(inngest.send).toHaveBeenCalled();
+  });
+
+  it('CAPPED: past cap + reserve → blocked, no dispatch', async () => {
+    coverDraft();
+    (countPreviewsForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(13);
+    const r = await requestCoverScene();
+    expect(r).toMatchObject({ status: 'failed', blocked: 'capped' });
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
+  it('CAPPED: a cover RE-ROLL gets no reserve', async () => {
+    coverDraft();
+    (countPreviewsForDraft as ReturnType<typeof vi.fn>).mockResolvedValue(10);
+    const r = await requestCoverScene({ regenerate: true });
     expect(r).toMatchObject({ status: 'failed', blocked: 'capped' });
     expect(inngest.send).not.toHaveBeenCalled();
   });
