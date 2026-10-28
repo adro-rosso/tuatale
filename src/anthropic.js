@@ -210,8 +210,9 @@ const client = new Anthropic({
 // 529 is Anthropic's "overloaded" status (per their error-code reference) —
 // included in the retryable 5xx set.
 const RETRYABLE_5XX = [500, 502, 503, 504, 529];
+const MIDSTREAM_RETRYABLE_TYPES = ["overloaded_error", "api_error"];
 const FAST_NETWORK_CODES = ["ECONNRESET", "ETIMEDOUT"];
-const SLOW_TIMEOUT_CODES = ["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"];
+const SLOW_TIMEOUT_CODES = ["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "UND_ERR_SOCKET"];
 
 // Backoff schedules — list length = max retries for that category.
 const BACKOFF_CHEAP = [5000, 15000];   // 5xx + fast network: 2 retries
@@ -225,7 +226,7 @@ const BACKOFF_AFTER_TIMEOUT = [10000]; // slow timeouts + generic "fetch failed"
  * APIConnectionError, etc.) with .status populated for HTTP errors and
  * .cause?.code populated for raw network errors. We inspect both.
  */
-function classifyError(err) {
+export function classifyError(err) {
   const status = err?.status ?? null;
   if (status !== null && RETRYABLE_5XX.includes(status)) {
     return { reason: `${status} from Anthropic`, backoffs: BACKOFF_CHEAP };
@@ -242,7 +243,15 @@ function classifyError(err) {
     const name = err?.constructor?.name ?? "APIConnectionError";
     return { reason: `${name} (SDK timeout/connection)`, backoffs: BACKOFF_AFTER_TIMEOUT };
   }
-  const code = err?.cause?.code;
+  // A streamed reply can fail AFTER the 200: the SDK throws APIError with no status and
+  // the SSE error's type. Overload / server error mid-stream is as transient as a 529/500.
+  if (status === null && MIDSTREAM_RETRYABLE_TYPES.includes(err?.type)) {
+    return { reason: `${err.type} mid-stream from Anthropic`, backoffs: BACKOFF_CHEAP };
+  }
+  // A socket that drops DURING a streamed body throws AnthropicError("terminated") with the
+  // code two causes down (err.cause.cause.code), so walk the chain, not just one level.
+  let code;
+  for (let c = err?.cause, depth = 0; c && depth < 4 && !code; c = c.cause, depth++) code = c.code;
   if (code && FAST_NETWORK_CODES.includes(code)) {
     return { reason: `network error (${code})`, backoffs: BACKOFF_CHEAP };
   }
@@ -254,6 +263,12 @@ function classifyError(err) {
       reason: `network error (${code ?? "fetch failed"})`,
       backoffs: BACKOFF_AFTER_TIMEOUT,
     };
+  }
+  // A stream cut off with no code at all (no message_stop). Deliberate aborts are
+  // APIUserAbortError and never reach here as these messages.
+  if (status === null && !(err instanceof Anthropic.APIUserAbortError)
+      && /^terminated$|stream ended without producing/i.test(String(err?.message ?? ""))) {
+    return { reason: "stream cut off", backoffs: BACKOFF_AFTER_TIMEOUT };
   }
   return null;
 }
@@ -389,11 +404,18 @@ export class ShapeValidationError extends Error {
 //     bump itself doesn't raise typical-case spend; it only widens the
 //     worst-case envelope (~$0.50 at 32K of output, vs $0.24 at 16K).
 //
+//   - 64000 (2026-10-28) — STORY_CRAFT (want/snag/choice, dialogue, payoff rules)
+//     raised thinking spend, and it VARIES run to run on the same brief: 15.5k/20.1k
+//     (3-5), 24.8k/30.5k (5-7), 26.8k/41.9k (7-9) output tokens, the last past 32K.
+//     ~50% over the worst seen. At the measured ~59 tok/s this is ~1085s, inside
+//     the 1200s per-attempt cap, so a runaway still fails here with the max_tokens
+//     diagnostic rather than as a timeout.
+//
 // Banked for later: max_tokens-truncation failures should capture the raw
 // truncated response to output/stories/_failed/ before throwing — same
 // pattern as shape-validation failures. The 2026-05-30 truncation gave us
 // nothing to inspect.
-export const MAX_TOKENS = 32768;
+export const MAX_TOKENS = 64000;
 
 // Sonnet 4.6 silently defaults to "high" effort; we set "medium" explicitly
 // because story-gen is one-shot creative work, not multi-step agentic.
@@ -463,10 +485,12 @@ export const ADULT_WALL_CEILING_MS = Number(process.env.ADULT_WALL_CEILING_MS) >
 // exactly as for adult. Env-overridable; defaults mirror the adult values.
 export const STORY_SDK_TIMEOUT_MS = Number(process.env.STORY_SDK_TIMEOUT_MS) > 0
   ? Number(process.env.STORY_SDK_TIMEOUT_MS)
-  : 420_000;  // 7 min — ~40% headroom over the 299s worst case observed
+  : 1_200_000;  // 20 min PER ATTEMPT (streamed: enforced by abort). STORY_CRAFT measured
+                // 263/364s (3-5), 402/527s (5-7), 463/703s (7-9) on 2026-10-28; ~70% over
+                // the worst, and above MAX_TOKENS' ~1085s so a runaway hits max_tokens first.
 export const STORY_WALL_CEILING_MS = Number(process.env.STORY_WALL_CEILING_MS) > 0
   ? Number(process.env.STORY_WALL_CEILING_MS)
-  : 900_000;  // 15 min total, so one full retry fits inside the ceiling
+  : 2_500_000;  // ~42 min total, so one full retry (1200 + 10s backoff + 1200) fits
 
 // ---- Output schema (for output_config.format) ------------------------------
 // What Claude generates. Wrapper merges these two fields with the brand
@@ -780,6 +804,41 @@ The protagonist of THIS story is a real ANIMAL — a pet — not a child. This s
 
 `;
 
+// ---- Storytelling craft (STORY_CRAFT, 2026-10-27, default off) ---------------------
+// Adro on Eddie's book: "the text part of our books needs a real upgrade, that book was written
+// so poorly". Diagnosis on the shipped text: a sightseeing tour with no want, no problem and no
+// choice; a narrator-exclamation refrain ×5 ("What a wonderful thing to see!"); the companion
+// (a cheeky uncle) never spoke or did anything; the toy rockets from page 1 never came back; and
+// the SIMPLEST rules ("single-clause SVO only, no similes") ruled out what real books for 3-5
+// year olds do (Peace at Last, The Gruffalo, Owl Babies, We're Going on a Bear Hunt: dialogue,
+// sound, rhythm, a small problem). Flag off → prompt byte-identical.
+export const STORY_CRAFT_BLOCK = `STORYTELLING CRAFT (this overrides any looser guidance above)
+
+A picture book is a small story with a heartbeat, not a tour of pretty places. Before writing, decide privately: what does the protagonist WANT, what gets in the way, and what do THEY do about it. Then write:
+
+- A WANT, A SNAG, A CHOICE: by page 3 the protagonist wants something specific and small (to find, fix, help, reach, get home, be brave about). Something gets in the way at least twice (the rule of three: try, fail, try differently, succeed is ideal). The PROTAGONIST makes the decisive choice or has the idea that solves it, never a companion or a grown-up. Wonder is welcome, but wonder alone is not a story.
+- COMPANIONS ARE CHARACTERS: every named companion gets a clear personality taken from the customer's words (a "bossy" big sister gives orders that go comically wrong; a "sleepy" grandad yawns at the worst moment), shown through what they DO on at least three pages. Companions who are people may also speak; animals and toys show who they are through what they do, unless the customer's story makes them talk. They help, but they never take over the protagonist's moment.
+- PEOPLE TALK: at least four pages carry a short line of dialogue in quotation marks, in the speaker's own voice ("Wait for me!" called Nana.), spoken only by characters who can talk in this story. Dialogue is the fastest way to make a page come alive when read aloud. If no one in the story can talk, give those pages a gesture or a sound instead.
+- PLANT AND PAY OFF: anything special on the first two pages (a toy, a pet, a habit, a word) must come back later and MATTER, ideally as the key to the solution or the final image.
+- TURN THE PAGE: at least three pages end with a pull to the next one: a question, a sentence that begins with "But", a sound from somewhere, something half-seen. Every page still ends on a complete sentence.
+- SPECIFIC, SENSORY, SURPRISING: name the particular thing (the blue bucket with the cracked handle, not "a bucket"); give at least four pages a texture, a temperature, a smell or a quality of light (sound words stay within the [[sfx:]] budget above); one small funny detail per three pages for the young reader.
+- FEELINGS BY BODY, NOT LABEL: show a feeling through what the body does (a wobbly lip, a fierce grip, a giggle that won't stop), and give the book ONE quiet, heart-felt beat near the end.
+- AN ENDING THAT ANSWERS THE BEGINNING: the last page echoes the first page, changed by what happened (the same kitchen table, but now there are two cups on it).
+- REPETITION THAT GROWS: a repeated phrase is optional; if you use one, it must CHANGE or gain meaning each time (2 to 4 uses), like "Not yet," then "Not yet!", then "NOW!". NEVER a narrator exclamation or a name-list as a refrain.
+- BANNED, these make prose sound generic: "wonderful", "amazing", "magical", "beautiful", "incredible", "what a … to see", "safe and sound", "safe and warm", "an adventure they would never forget", "the best day ever", and any line that tells the reader how to feel.
+- Keep every page within its length budget. Short does not mean flat: a short page can hold a voice, a sound and a turn.`;
+
+// SIMPLEST rules under STORY_CRAFT: same length budget, but the sentence rules match what
+// real books for 3-5 do (short sentences WITH dialogue, sound and rhythm), and no forced refrain.
+export const STORY_CRAFT_SIMPLEST_RULES = `READING LEVEL — SIMPLEST (read-aloud for the very young)
+
+Write every page's narrative_text at the simplest level:
+- LENGTH: 1 to 2 short sentences per page (about 40 to 140 characters). Never more than 2 sentences, and a short line of dialogue counts as a sentence. Each page is at least one COMPLETE sentence.
+- VOCABULARY: concrete, everyday words a three-year-old knows, plus at most one fun "big" word in the whole book that the picture explains.
+- SENTENCES: short and rhythmic. Simple joins with "and", "but", "so" are fine. Dialogue, sound words and simple comparisons a young child knows ("as big as a bus") are welcome. Read it aloud: it should bounce.
+- PATTERN: young children love a pattern they can join in with: a repeated phrase that grows, or a rule-of-three attempt. One pattern, used with variation, never a narrator exclamation.
+- Favour the short-text template (about 150-char cap) for these pages so a short page does not read sparse.`;
+
 // ---- Natural art direction (ART_NATURAL_ENABLED, 2026-10) ------------------
 // APPENDED to the system prompt only when the flag is on, so a flag-off book's prompt is
 // byte-identical. Three refinements that pair with the natural page composition
@@ -1083,6 +1142,7 @@ export function resolveReadingLevel({ reading_level, ageRange, age } = {}) {
  * by both generateStory and the prompt-scope test. Unknown level → standard.
  */
 export function buildReadingLevelRulesBlock(level) {
+  if (process.env.STORY_CRAFT === "on" && level === "simplest") return STORY_CRAFT_SIMPLEST_RULES;
   return (READING_LEVELS[level] ?? READING_LEVELS.standard).rules;
 }
 
@@ -1302,7 +1362,10 @@ export async function generateStory(input, options = {}) {
     .replace(/\{\{PROSE_LENGTH\}\}/g, levelDef.proseLength)
     // ART_NATURAL_ENABLED: append the natural-direction refinements (candid moments, inviolable
     // user-stated roles, in-scene sfx). Flag off → nothing appended, prompt byte-identical.
-    + (process.env.ART_NATURAL_ENABLED === "on" ? `\n\n${NATURAL_DIRECTION_BLOCK}` : "");
+    + (process.env.ART_NATURAL_ENABLED === "on" ? `\n\n${NATURAL_DIRECTION_BLOCK}` : "")
+    // STORY_CRAFT: want/snag/choice, companion voices, dialogue, payoff, page-turns, banned
+    // generic words. Child + pet books only (adult books have their own register). Off → identical.
+    + (process.env.STORY_CRAFT === "on" && !adultMode ? `\n\n${STORY_CRAFT_BLOCK}` : "");
   const schema = buildStorySchema(registry, readingLevel, adultMode);
 
   // Compact input summary surfaced in MaxTokensError + ShapeValidationError
@@ -1403,8 +1466,28 @@ export async function generateStory(input, options = {}) {
 async function attemptStoryGeneration({ systemPrompt, userMessage, schema, attempt, validationInput, inputSummary, onSlowCall, adultMode = false }) {
   // Adult books get a reduced thinking budget and headroom on BOTH timeouts; every
   // child/pet call takes the original path unchanged (adultMode defaults false).
-  const response = await callWithRetry(
-    () => client.messages.create(
+  // STREAMED (2026-10-28): a non-streamed reply sends no bytes until the whole story is
+  // written, so a long generation died at whichever cap came first: the SDK timeout here,
+  // or undici's 300s headers timeout (raised to 600s only as a side effect of importing
+  // src/gemini.js). STORY_CRAFT measured 402s on a 5-7 book. Streamed, headers arrive at
+  // once, so the SDK `timeout` bounds only time-to-first-byte. Each attempt therefore
+  // carries its own AbortController: the per-attempt cap aborts the stream and surfaces as a
+  // retryable timeout (as the old non-streamed timeout did), and the finally below aborts a
+  // stream the wall ceiling abandoned, so it stops generating and billing.
+  // finalMessage() returns the same Message shape, except stop_details (SDK 0.96 drops it
+  // from message_delta), captured from the raw event so refusals keep their category.
+  const attemptCapMs = adultMode ? ADULT_SDK_TIMEOUT_MS : STORY_SDK_TIMEOUT_MS;
+  let inflight = null;
+  let response;
+  try {
+    response = await callWithRetry(
+      () => {
+        const ac = new AbortController();
+        inflight = ac;
+        let capped = false;
+        let stopDetails = null;
+        const capTimer = setTimeout(() => { capped = true; ac.abort(); }, attemptCapMs);
+        const stream = client.messages.stream(
       {
         model: MODEL,
         max_tokens: MAX_TOKENS,
@@ -1417,17 +1500,36 @@ async function attemptStoryGeneration({ systemPrompt, userMessage, schema, attem
         messages: [{ role: "user", content: userMessage }],
       },
       // Per-REQUEST override; the shared client's 300_000 default still governs
-      // every other caller. Story-gen gets headroom for EVERY book (measured
-      // 267-299s vs the 300s ceiling); adult keeps its own tuned values.
-      { timeout: adultMode ? ADULT_SDK_TIMEOUT_MS : STORY_SDK_TIMEOUT_MS },
-    ),
-    {
-      callKind: "story_gen",
-      subjectName: validationInput?.child?.name,
-      onSlowCall,
-      wallCeilingMs: adultMode ? ADULT_WALL_CEILING_MS : STORY_WALL_CEILING_MS,
-    },
-  );
+      // every other caller. Streamed, this caps time-to-first-byte only.
+      { timeout: attemptCapMs, signal: ac.signal },
+        );
+        stream.on("streamEvent", (ev) => {
+          if (ev.type === "message_delta" && ev.delta?.stop_details) stopDetails = ev.delta.stop_details;
+        });
+        return stream.finalMessage()
+          .then((msg) => {
+            if (msg.stop_details == null && stopDetails) msg.stop_details = stopDetails;
+            return msg;
+          })
+          .catch((err) => {
+            if (capped) throw new Anthropic.APIConnectionTimeoutError({ message: `story attempt exceeded ${attemptCapMs / 1000}s` });
+            throw err;
+          })
+          .finally(() => {
+            clearTimeout(capTimer);
+            if (inflight === ac) inflight = null;
+          });
+      },
+      {
+        callKind: "story_gen",
+        subjectName: validationInput?.child?.name,
+        onSlowCall,
+        wallCeilingMs: adultMode ? ADULT_WALL_CEILING_MS : STORY_WALL_CEILING_MS,
+      },
+    );
+  } finally {
+    inflight?.abort();
+  }
 
   // Surface stop reasons that mean the response is unusable.
   if (response.stop_reason === "refusal") {
