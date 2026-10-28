@@ -20,6 +20,7 @@ import { generateImage } from "./gemini.js";
 import { buildSubjectViewZeroPrompt, buildSubjectListForSheetGen } from "./book-pipeline.js";
 import { resolveStyle, COMPOSITION_RULES, NEGATIVE_PROMPT } from "./art-styles.js";
 import { composeAppearance } from "./character-features.js";
+import { pickerGuidanceClause } from "./pick-guidance.js";
 
 /**
  * The EXACT story fields the book's sheet-mint reads: style from the chosen art_style;
@@ -134,13 +135,14 @@ export function pickerPoseVariant(variantIndex, subjectType) {
  * appends a pose/angle/framing clause so the N options are visibly distinct; omitting it
  * yields the exact pre-variant prompt.
  */
-export async function generatePickerOption({ role, inputs, artStyle, variantIndex }, photoPaths, callContext = { callKind: "picker_mint" }) {
+export async function generatePickerOption({ role, inputs, artStyle, variantIndex, guidance }, photoPaths, callContext = { callKind: "picker_mint" }) {
   const story = buildFaithfulStory(artStyle);
   const subject = buildPickerSubject({ role, inputs, story });
   if (!subject) throw new Error(`picker: could not build subject for role=${role} name=${inputs?.name}`);
   const photoBufs = (photoPaths ?? []).map((p) => fs.readFileSync(p));
   const basePrompt = buildSubjectViewZeroPrompt(subject, story);
   const poseClause = pickerPoseVariant(variantIndex, inputs?.subject_type);
-  const prompt = poseClause ? `${basePrompt}\n\n${poseClause}` : basePrompt;
+  // A guided re-roll (src/pick-guidance.js) adds the customer's requested change; none → unchanged.
+  const prompt = [basePrompt, poseClause, pickerGuidanceClause(guidance)].filter(Boolean).join("\n\n");
   return generateImage(prompt, photoBufs, {}, callContext);
 }

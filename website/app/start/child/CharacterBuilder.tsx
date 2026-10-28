@@ -366,7 +366,13 @@ export function CharacterBuilder({
       </div>
 
       {/* 3 + 4. Generate → the (until-then empty) preview box. */}
-      <GeneratedPreview inputs={previewInputs} photo={photo} />
+      <GeneratedPreview
+        inputs={previewInputs}
+        photo={photo}
+        // Structured path only: the "Anything else?" text drives BOTH this preview and the
+        // book, so it is the honest place to steer a re-roll. (A photo preview ignores it.)
+        refineHint={photo ? undefined : 'Want something different? Describe it under “Anything else?” below, then preview again. Your book is drawn from the same description.'}
+      />
 
       {/* Hidden inputs carry the selections into the existing server-action form. */}
       {['hair_colour', 'hair_style', 'skin_tone', 'eye_colour', 'build', 'glasses'].map((k) => (

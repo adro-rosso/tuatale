@@ -87,7 +87,7 @@ export async function downloadPhoto(photoPath) {
 async function mintPickerOption(event, deps) {
   const getPhoto = deps.getPhoto ?? downloadPhoto;
   const generatePickerOption = deps.generatePickerOption ?? realGeneratePickerOption;
-  const { previewId, role, inputs, artStyle, photo_paths, variantIndex } = event;
+  const { previewId, role, inputs, artStyle, photo_paths, variantIndex, guidance } = event;
   const dir = path.join(os.tmpdir(), `picker-${previewId}`);
   fs.mkdirSync(dir, { recursive: true });
   const locals = [];
@@ -117,7 +117,8 @@ async function mintPickerOption(event, deps) {
   const png = await generatePickerOption(
     // variantIndex drives the per-option pose/angle/framing differentiation (neutral
     // expression + likeness anchoring untouched).
-    { role, inputs: { ...inputs, photoPaths: selected }, artStyle, variantIndex },
+    // guidance: the customer's requested change on a guided re-roll (absent → prompt unchanged).
+    { role, inputs: { ...inputs, photoPaths: selected }, artStyle, variantIndex, guidance },
     selected,
     { callKind: "picker_mint", subjectName: `picker-${previewId}` },
   );

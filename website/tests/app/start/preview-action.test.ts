@@ -485,6 +485,19 @@ describe('requestPreviewBatch', () => {
     expect(cn()).not.toHaveBeenCalled();
   });
 
+  it('GUIDANCE: the re-roll guidance reaches every picker event, cleaned to one safe line', async () => {
+    await requestPreviewBatch({ ...batchInput, guidance: '  fluffier ears\n and a "red" collar ' });
+    const events = (inngest.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0].data);
+    expect(events).toHaveLength(3);
+    for (const d of events) expect(d.guidance).toBe("fluffier ears and a 'red' collar");
+  });
+
+  it('GUIDANCE: none / blank → the event carries no guidance key (unchanged)', async () => {
+    await requestPreviewBatch({ ...batchInput, guidance: '   ' });
+    const d = (inngest.send as ReturnType<typeof vi.fn>).mock.calls[0]![0].data;
+    expect(d).not.toHaveProperty('guidance');
+  });
+
   it('mints MAX_BATCH_OPTIONS (3) rows + 3 picker events; batch_id + variant_index set', async () => {
     const r = await requestPreviewBatch(batchInput);
     expect(r.blocked).toBeUndefined();

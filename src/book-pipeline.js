@@ -51,6 +51,7 @@ import {
   SheetState,
 } from "./sheet-meta.js";
 import { maskName } from "./text-utils.js";
+import { applyPickGuidance } from "./pick-guidance.js";
 
 // ---- Constants (verbatim from generate-book.js) ----------------------------
 export const GEMINI_IMAGE_USD_PER_CALL = 0.04;
@@ -805,6 +806,9 @@ export async function generateBook({
   // PHOTO_APPEARANCE: photo-derived physical text for photo-anchored humans, BEFORE planBook
   // (fingerprint) — cached in sheetsDir so re-renders reuse the same words. Flag off → no-op.
   await applyPhotoAppearance(story, meta, { outputDir, log });
+  // Picker guidance AFTER the photo-derived text, so the description agrees with the locked
+  // picked picture (src/pick-guidance.js). Idempotent; none → no-op.
+  for (const n of applyPickGuidance(story, meta)) log?.log?.(`  [pick-guidance] ${n}: approved-look note added to the description`);
   fs.mkdirSync(pagesDir, { recursive: true });
 
   const displayPath = (abs) => path.relative(outputDir, abs).replace(/\\/g, "/");

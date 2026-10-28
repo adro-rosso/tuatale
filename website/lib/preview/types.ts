@@ -81,6 +81,9 @@ export interface ChosenSheet {
   imageUrl?: string | null;
   /** Set on the operator-fine-tune escalation path. */
   escalated?: boolean;
+  /** The re-roll guidance that produced this option, if any. The book appends it to the
+   *  character's description so the text agrees with the locked picture. */
+  guidance?: string;
   /** Slice 4: the durable copy/PNG was unavailable → book made from photos, pick lost. */
   degraded?: boolean;
   degradedReason?: string;
@@ -110,6 +113,9 @@ export interface RequestPreviewBatchInput {
   photoPaths: string[];
   /** Requested option count — SERVER-CAPPED at MAX_BATCH_OPTIONS, never client-trusted. */
   count?: number;
+  /** Optional customer guidance for a re-roll ("shorter hair"). Cleaned server-side
+   *  (lib/preview/guidance.ts) and appended to the picker prompt by the worker. */
+  guidance?: string;
 }
 
 export interface PreviewBatchOption {

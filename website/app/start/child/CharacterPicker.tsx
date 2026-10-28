@@ -15,12 +15,14 @@
  * (persisted; "this is [name] throughout"); options → regenerate (≤2 re-rolls) → escalation
  * (weak photos vs hard case, via the worker faceH signal); any failure → degraded.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { requestPreviewBatch, getPreviewBatchStatus, persistChosenSheet, getChosenSheet } from '@/app/start/_actions/preview';
 import type { RequestPreviewBatchInput, PreviewBatchOption, ChosenSheet } from '@/lib/preview/types';
 import { PickerTile } from './PickerTile';
 import { PreviewProgress } from './PreviewProgress';
 import { buttonClasses } from '@/components/ui/Button';
+import { fieldControl } from '@/components/ui/form-styles';
+import { PICK_GUIDANCE_MAX } from '@/lib/preview/guidance';
 
 const POLL_MS = 1500;
 const TIMEOUT_MS = 150_000;
@@ -60,6 +62,12 @@ export function CharacterPicker(props: Props) {
   const [staleNote, setStaleNote] = useState(false); // a resumed pick's image expired
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retriedRef = useRef(false);
+  // Re-roll guidance ("shorter hair"). The pick is LOCKED into the book, so guidance lives
+  // HERE (not on a throwaway preview): it shapes the next options, and the option picked
+  // carries it (sheet.guidance) so the book's description agrees with the picture.
+  const [guidance, setGuidance] = useState('');
+  const [batchGuidance, setBatchGuidance] = useState<string | undefined>(undefined); // of the batch on screen
+  const guidanceId = useId();
 
   const stop = () => { if (pollRef.current) clearTimeout(pollRef.current); pollRef.current = null; };
   useEffect(() => stop, []);
@@ -76,19 +84,20 @@ export function CharacterPicker(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only resume
   }, []);
 
-  async function start(currentRound: number) {
+  async function start(currentRound: number, withGuidance?: string) {
     stop();
     retriedRef.current = false;
     setMode('generating');
     setOptions([]);
+    setBatchGuidance(withGuidance);
 
     const onBusy = () => {
-      if (!retriedRef.current) { retriedRef.current = true; pollRef.current = setTimeout(() => void start(currentRound), RETRY_DELAY_MS); return; }
+      if (!retriedRef.current) { retriedRef.current = true; pollRef.current = setTimeout(() => void start(currentRound, withGuidance), RETRY_DELAY_MS); return; }
       setMode('degraded');
     };
 
     try {
-      const res = await requestPreviewBatch({ role, inputs, artStyle, photoPaths, count: 3 });
+      const res = await requestPreviewBatch({ role, inputs, artStyle, photoPaths, count: 3, guidance: withGuidance });
       if (res.blocked || res.options.length === 0) { onBusy(); return; }
       setBatchId(res.batchId);
       setOptions(res.options);
@@ -113,11 +122,11 @@ export function CharacterPicker(props: Props) {
   function begin() { setStaleNote(false); setRound(0); void start(0); }
   function tryAgain() {
     if (round >= MAX_REROLLS) { setMode('escalation'); return; }
-    const next = round + 1; setRound(next); void start(next);
+    const next = round + 1; setRound(next); void start(next, guidance.trim() || undefined);
   }
   async function pick(o: PreviewBatchOption) {
     stop();
-    const sheet: ChosenSheet = { subjectId: subjectKey, previewId: o.previewId, imagePath: `previews/${o.previewId}.png`, batchId: batchId ?? undefined, imageUrl: o.imageUrl ?? null };
+    const sheet: ChosenSheet = { subjectId: subjectKey, previewId: o.previewId, imagePath: `previews/${o.previewId}.png`, batchId: batchId ?? undefined, imageUrl: o.imageUrl ?? null, guidance: batchGuidance };
     setChosen(sheet);
     setMode('picked');
     try { await persistChosenSheet(subjectKey, sheet); } catch { /* soft: pick shows locally; book still generates */ }
@@ -181,8 +190,24 @@ export function CharacterPicker(props: Props) {
           {mode === 'options' ? (
             <div className="space-y-xs flex flex-col items-center text-center">
               <p className="font-body text-warm-grey text-caption">Like several? Pick your favourite, and we’ll use it throughout the book.</p>
+              <div className="space-y-xs pt-xs w-full max-w-[26rem] text-left">
+                <label htmlFor={guidanceId} className="font-body text-warm-grey text-caption block">
+                  None quite right? Tell us what to change (optional).
+                </label>
+                <input
+                  id={guidanceId}
+                  type="text"
+                  value={guidance}
+                  onChange={(e) => setGuidance(e.target.value)}
+                  // Enter paints new looks; it must never submit the surrounding step form.
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); tryAgain(); } }}
+                  maxLength={PICK_GUIDANCE_MAX}
+                  placeholder="e.g. shorter hair, rounder glasses"
+                  className={fieldControl}
+                />
+              </div>
               <button type="button" onClick={tryAgain} className="font-body text-iron-oxide underline text-caption">
-                None of these look like {name}? Try again
+                Paint 3 new looks for {name}
               </button>
             </div>
           ) : null}

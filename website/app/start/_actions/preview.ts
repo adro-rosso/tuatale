@@ -15,6 +15,7 @@ import { createHash } from 'node:crypto';
 import { inngest } from '@/lib/inngest/client';
 import { createServerClient } from '@/lib/supabase';
 import { computeInputHash } from '@/lib/preview/hash';
+import { cleanGuidance } from '@/lib/preview/guidance';
 import { draftUploadPrefix } from '@/lib/preview/paths';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { getDraftByCookieId, updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
@@ -634,6 +635,8 @@ export async function requestPreviewBatch(input: RequestPreviewBatchInput): Prom
   }
 
   const count = Math.max(1, Math.min(input.count ?? MAX_BATCH_OPTIONS, MAX_BATCH_OPTIONS)); // server-capped
+  // Optional re-roll guidance ("shorter hair"): one clean line, or nothing (event unchanged).
+  const guidance = cleanGuidance(input.guidance);
   const batchId = createHash('sha256').update(`${draftId}:${now}:${Math.random()}`).digest('hex').slice(0, 32);
 
   const options: PreviewBatchResult['options'] = [];
@@ -671,6 +674,7 @@ export async function requestPreviewBatch(input: RequestPreviewBatchInput): Prom
           // Drives the worker's per-option pose/angle/framing differentiation so the N
           // picker draws are visibly distinct (neutral expression + likeness untouched).
           variantIndex: i,
+          ...(guidance ? { guidance } : {}),
         },
       });
       options.push({ variant: i, previewId: job.id, status: 'queued' });

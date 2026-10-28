@@ -46,9 +46,12 @@ interface Props {
   inputs: RequestPreviewInput;
   /** A chosen photo (already uploaded by CharacterBuilder), or null for the structured path. */
   photo?: { path: string; hash: string } | null;
+  /** Shown after a preview: how to steer the next one. Only where the steering ALSO reaches
+   *  the book (the structured path's description); a photo preview never feeds the book. */
+  refineHint?: string;
 }
 
-export function GeneratedPreview({ inputs, photo }: Props) {
+export function GeneratedPreview({ inputs, photo, refineHint }: Props) {
   const [phase, setPhase] = useState<Phase>('idle');
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +197,9 @@ export function GeneratedPreview({ inputs, photo }: Props) {
           <p className="font-body text-warm-grey text-caption">
             A painted preview. Your book places them in the story.
           </p>
+        ) : null}
+        {phase === 'done' && refineHint ? (
+          <p className="font-body text-near-black text-caption max-w-[26rem] text-center">{refineHint}</p>
         ) : null}
         {phase !== 'generating' && error ? (
           <p className="font-body text-iron-oxide text-caption" role="alert">
