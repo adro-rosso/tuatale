@@ -25,7 +25,7 @@ interface SecondaryCardData {
   photos: string[];
   // The character-picker pick for this card. Travels with the card on submit; the server
   // verifies it (lib/preview/companion-picks.ts). Cleared when the photos change.
-  chosen?: { previewId: string; guided?: boolean } | null;
+  chosen?: { previewId: string; guided?: boolean; imageUrl?: string | null } | null;
   // Client-only stable React key, so removing a card never hands its picker to another card.
   _key?: string;
 }
@@ -92,10 +92,12 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
   const anyPhotos = cards.some((c) => (c.photos?.length ?? 0) > 0);
 
   function updateCard(idx: number, patch: Partial<SecondaryCardData>) {
-    setCards(cards.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
+    // Functional update: a photo upload finishing late must not revert another card's change
+    // (e.g. a pick made on card 2 while card 1 was still uploading).
+    setCards((prev) => prev.map((c, i) => (i === idx ? { ...c, ...patch } : c)));
   }
   function removeCard(idx: number) {
-    setCards(cards.filter((_, i) => i !== idx));
+    setCards((prev) => prev.filter((_, i) => i !== idx));
   }
   function addCard() {
     if (cards.length >= MAX_CARDS) return;
@@ -354,6 +356,9 @@ function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChi
           {pickerEnabled && data.photos.length > 0 ? (
             <div className="pt-sm border-warm-grey-light/50 mt-sm border-t">
               <CharacterPicker
+                // Keyed by the photos: new photos remount the picker, so it never shows a pick
+                // the card has dropped (the pick was painted from the old photos).
+                key={data.photos.join('|')}
                 subjectKey={`companion-${idx + 1}`}
                 name={data.name || 'this character'}
                 role="secondary"
@@ -367,7 +372,12 @@ function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChi
                 photoPaths={data.photos}
                 ready={data.photos.length > 0}
                 // The pick rides with this card to the server (see SecondaryCardData.chosen).
-                onChosen={(s) => onChange({ chosen: s?.previewId ? { previewId: s.previewId, guided: s.guided === true } : null })}
+                initialChosen={
+                  data.chosen
+                    ? { subjectId: `companion-${idx + 1}`, previewId: data.chosen.previewId, imagePath: `previews/${data.chosen.previewId}.png`, imageUrl: data.chosen.imageUrl ?? null, guided: data.chosen.guided }
+                    : null
+                }
+                onChosen={(s) => onChange({ chosen: s?.previewId ? { previewId: s.previewId, guided: s.guided === true, imageUrl: s.imageUrl ?? null } : null })}
               />
             </div>
           ) : null}

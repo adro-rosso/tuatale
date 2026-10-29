@@ -46,7 +46,9 @@ interface Props {
   initialChosen?: ChosenSheet | null;
   /** Intent gate: only offer generation once a photo + consent are present. */
   ready: boolean;
-  /** Told about every pick, so a parent form can carry it on submit (companion cards). */
+  /** PARENT-MANAGED pick (companion cards): the parent holds the pick and carries it on submit,
+   *  so the picker never reads or writes the draft by POSITION (persistChosenSheet /
+   *  getChosenSheet), which could land a pick on the wrong card after a card is removed. */
   onChosen?: (sheet: ChosenSheet | null) => void;
   /** DEV/harness only: force a state for render verification (no network). */
   __forceMode?: Mode;
@@ -83,7 +85,7 @@ export function CharacterPicker(props: Props) {
   // RESUME: on mount (no forced state, no prop pick), restore a persisted pick from the
   // draft so a returning customer lands back in PICKED — not forced to regenerate.
   useEffect(() => {
-    if (props.__forceMode || initialChosen) return;
+    if (props.__forceMode || initialChosen || onChosen) return; // parent-managed: no positional resume
     let live = true;
     void getChosenSheet(subjectKey)
       .then((c) => { if (live && c && !c.escalated) { setChosen(c); setMode('picked'); } })
@@ -147,7 +149,7 @@ export function CharacterPicker(props: Props) {
     const g = guidance.trim();
     if (g && !isGuidanceAllowed(g)) { setGuidanceError(GUIDANCE_REFUSED); return; }
     setGuidanceError(null);
-    if (round >= MAX_REROLLS) { setMode('escalation'); return; }
+    if (round >= MAX_REROLLS) { stop(); runRef.current += 1; setMode('escalation'); return; }
     runRef.current += 1;
     retriedRef.current = false;
     const next = round + 1; setRound(next); void start(runRef.current, next, g || undefined);
@@ -157,8 +159,8 @@ export function CharacterPicker(props: Props) {
     runRef.current += 1; // a poll still in flight must not flip the pick back to options
     const sheet: ChosenSheet = { subjectId: subjectKey, previewId: o.previewId, imagePath: `previews/${o.previewId}.png`, batchId: batchId ?? undefined, imageUrl: o.imageUrl ?? null, guided: Boolean(batchGuidance) };
     setChosen(sheet);
-    onChosen?.(sheet);
     setMode('picked');
+    if (onChosen) { onChosen(sheet); return; } // the parent carries it on submit
     try { await persistChosenSheet(subjectKey, sheet); } catch { /* soft: pick shows locally; book still generates */ }
   }
   async function escalateToOperator() {

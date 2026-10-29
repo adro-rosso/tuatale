@@ -26,6 +26,14 @@ const SYSTEM =
   "background, NO camera direction, NO clothing unless clearly worn in the image. One sentence, " +
   "present tense, starting with the subject.";
 
+// physicalOnly (a customer's PICKED picture describing the book's look): never clothing, which
+// the book carries in its own outfit sentence; a "wearing…" clause would also make the caller's
+// outfit filter drop the whole sentence.
+const SYSTEM_PHYSICAL = SYSTEM.replace(
+  "NO clothing unless clearly worn in the image",
+  "NO clothing at all (glasses and facial hair are physical features: include them)",
+);
+
 function mediaType(buf) {
   return buf[0] === 0xff && buf[1] === 0xd8 ? "image/jpeg" : "image/png";
 }
@@ -36,7 +44,7 @@ function mediaType(buf) {
  * @param {object} [opts] - { subjectType: "human"|"non_human", animalKind, timeoutMs }
  * @returns {Promise<string|null>} the derived sentence, or null on any failure (soft-fail).
  */
-export async function deriveSheetAppearance(sheetBuffer, { subjectType, animalKind, timeoutMs = 20000 } = {}) {
+export async function deriveSheetAppearance(sheetBuffer, { subjectType, animalKind, timeoutMs = 20000, physicalOnly = false } = {}) {
   const client = getClient();
   if (!client || !sheetBuffer || !sheetBuffer.length) return null;
   const hint = subjectType === "non_human"
@@ -47,7 +55,7 @@ export async function deriveSheetAppearance(sheetBuffer, { subjectType, animalKi
       {
         model: DERIVE_MODEL,
         max_tokens: 200,
-        system: SYSTEM,
+        system: physicalOnly ? SYSTEM_PHYSICAL : SYSTEM,
         messages: [{
           role: "user",
           content: [

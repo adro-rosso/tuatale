@@ -12,7 +12,7 @@ describe('attachCompanionPicks', () => {
   it('a verified pick is attached with a SERVER-built image path (+ guided flag)', async () => {
     const lookup = vi.fn().mockResolvedValue(row());
     const out = await attachCompanionPicks([card()], [{ ...card(), chosen: { previewId: PID, guided: true } }], 'draft-1', lookup as never);
-    expect(out[0]!.chosen_sheet).toEqual({ subjectId: 'companion-1', previewId: PID, imagePath: `previews/${PID}.png`, batchId: 'b-1', guided: true });
+    expect(out[0]!.chosen_sheet).toEqual({ subjectId: 'companion-1', previewId: PID, imagePath: `previews/${PID}.png`, batchId: 'b-1', imageUrl: 'u', guided: true });
   });
 
   it('unguided pick → no guided key', async () => {

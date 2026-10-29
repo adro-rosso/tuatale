@@ -91,8 +91,22 @@ describe("book describes a guided pick from the PICKED picture", () => {
     const readFile = (f) => (String(f).endsWith("companion-1-01.png") ? PICKED : PHOTO);
     await applyPhotoAppearance(story, meta, { outputDir: tmp, derive, deriveSheet, readFile });
     expect(derive).not.toHaveBeenCalled();
-    expect(deriveSheet).toHaveBeenCalledWith(PICKED, { subjectType: "human" });
+    expect(deriveSheet).toHaveBeenCalledWith(PICKED, { subjectType: "human", physicalOnly: true });
     expect(story.companion_characters[0].character_description).toBe("Matthew is Eddie's uncle. A man with short cropped hair. He wears a grey sweatshirt.");
+  });
+
+  it("picked-picture description that is only clothing (or empty) → falls back to the photos", async () => {
+    fs.mkdirSync(path.join(tmp, "character-sheets"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, "character-sheets", "companion-1-01.png"), PICKED);
+    for (const bad of ["A man wearing a grey hoodie.", null]) {
+      const { story, meta } = fixture(true);
+      fs.rmSync(path.join(tmp, "character-sheets", "photo-appearance-companion-1.json"), { force: true });
+      const derive = vi.fn().mockResolvedValue("A man with long wavy hair.");
+      const deriveSheet = vi.fn().mockResolvedValue(bad);
+      await applyPhotoAppearance(story, meta, { outputDir: tmp, derive, deriveSheet, readFile: (f) => (String(f).endsWith("-01.png") ? PICKED : PHOTO) });
+      expect(derive).toHaveBeenCalledWith([PHOTO]);
+      expect(story.companion_characters[0].character_description).toContain("A man with long wavy hair.");
+    }
   });
 
   it("not guided → photos as before (deriveSheet never called)", async () => {

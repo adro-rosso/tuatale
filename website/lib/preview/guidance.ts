@@ -8,6 +8,7 @@ export const PICK_GUIDANCE_MAX = 200;
 export function cleanGuidance(text: unknown): string | undefined {
   if (typeof text !== 'string') return undefined;
   const clean = text
+    .replace(/[\u200b-\u200d\u2060\ufeff]/g, '') // zero-width chars can hide a blocked word
     .replace(/[\u0000-\u001f\u007f]+/g, ' ')
     .replace(/["“”]/g, "'")
     .replace(/\s+/g, ' ')
@@ -24,7 +25,7 @@ export function cleanGuidance(text: unknown): string | undefined {
  * (src/pick-guidance.js uses the same pattern). Keep the two patterns identical.
  */
 const BLOCKED =
-  /\b(naked|nude|nudity|topless|shirtless|undress\w*|underwear|lingerie|bikini|swimsuit|swimwear|bras?|panties|knickers|sexy|sexual\w*|seductive|sensual|erotic|cleavage|kiss\w*|blood\w*|gore|gory|wound\w*|weapons?|guns?|knife|knives|cigarettes?|vap(e|ing)|alcohol|beer|wine|drunk|drugs?)\b|\b\d{1,2}\s*(years?|yrs?|y\/?o)\b/i;
+  /\b(naked|nude|nudity|topless|shirtless|bare[\s-]*(chest(ed)?|skin(ned)?|body|bottom)|undress\w*|underwear|lingerie|bikini|swim\s*suit|swimwear|swimming\s*costume|bathing\s*suit|bras?|panties|knickers|sexy|sexual\w*|seductive|sensual|erotic|cleavage|kissing|kisses|blood(?![\s-]*(orange|red))|bloody|bleeding|gory|wounded|injur(y|ies|ed)|weapons?|guns?|knife|knives|cigarettes?|vap(e|ing)|alcohol|beer|drunk|drugs?)\b|\b\d{1,2}\s*(years?|yrs?|y\/?o)\b/i;
 
 export function isGuidanceAllowed(text: string): boolean {
   return !BLOCKED.test(text);

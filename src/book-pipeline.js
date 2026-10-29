@@ -451,18 +451,20 @@ export async function applyPhotoAppearance(story, meta, { outputDir, derive = de
       }
       if (!derived) {
         if (!flagOn) continue; // no cache + flag off → untouched (byte-identical)
-        const picked = t.pickedSheet && fs.existsSync(t.pickedSheet) ? readFile(t.pickedSheet) : null;
-        if (picked) {
-          t.source = "picked picture";
-          derived = await deriveSheet(picked, { subjectType: "human" });
-        } else {
-          const bufs = t.photos.map((f) => { try { return readFile(f); } catch { return null; } }).filter(Boolean);
-          if (!bufs.length) continue;
-          derived = await derive(bufs);
-        }
         // The descriptor must carry no clothing (system prompt); if the model slips a "wears…"
         // sentence in, drop it here so outfitSentences() can never duplicate it (#4).
-        if (derived) derived = String(derived).split(/(?<=[.!?])\s+/).filter((x) => !OUTFIT_VERB.test(x)).join(" ").trim() || null;
+        const noOutfit = (d) => (d ? String(d).split(/(?<=[.!?])\s+/).filter((x) => !OUTFIT_VERB.test(x)).join(" ").trim() || null : null);
+        const picked = t.pickedSheet && fs.existsSync(t.pickedSheet) ? readFile(t.pickedSheet) : null;
+        if (picked) {
+          derived = noOutfit(await deriveSheet(picked, { subjectType: "human", physicalOnly: true }));
+          if (derived) t.source = "picked picture";
+          else log?.log?.(`  [photo-appearance] ${t.name}: picked-picture description empty — falling back to the photos`);
+        }
+        if (!derived) {
+          const bufs = t.photos.map((f) => { try { return readFile(f); } catch { return null; } }).filter(Boolean);
+          if (!bufs.length) continue;
+          derived = noOutfit(await derive(bufs));
+        }
         if (derived) {
           fs.mkdirSync(cacheDir, { recursive: true });
           fs.writeFileSync(cachePath, JSON.stringify({ subject: t.name, derived, source: t.source ?? "photos", photos: t.photos.map((f) => path.basename(f)), at: new Date().toISOString() }, null, 2));

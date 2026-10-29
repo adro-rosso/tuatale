@@ -44,6 +44,9 @@ export async function attachCompanionPicks(
         previewId: c.previewId,
         imagePath: `previews/${c.previewId}.png`,
         batchId: row.batch_id ?? undefined,
+        // So a returning customer sees the picked picture (a signed URL; if it has expired the
+        // picker falls back to "refresh your options", never a blank tile).
+        imageUrl: row.image_url ?? null,
         ...(c.guided ? { guided: true } : {}),
       };
       return { ...card, chosen_sheet: sheet };

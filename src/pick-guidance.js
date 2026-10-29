@@ -17,12 +17,13 @@ export const PICK_GUIDANCE_MAX = 200;
 // explicit ages (a real person's photo anchors the picture). Same pattern as the website's
 // website/lib/preview/guidance.ts, which refuses first; this is the worker's own backstop.
 const BLOCKED =
-  /\b(naked|nude|nudity|topless|shirtless|undress\w*|underwear|lingerie|bikini|swimsuit|swimwear|bras?|panties|knickers|sexy|sexual\w*|seductive|sensual|erotic|cleavage|kiss\w*|blood\w*|gore|gory|wound\w*|weapons?|guns?|knife|knives|cigarettes?|vap(e|ing)|alcohol|beer|wine|drunk|drugs?)\b|\b\d{1,2}\s*(years?|yrs?|y\/?o)\b/i;
+  /\b(naked|nude|nudity|topless|shirtless|bare[\s-]*(chest(ed)?|skin(ned)?|body|bottom)|undress\w*|underwear|lingerie|bikini|swim\s*suit|swimwear|swimming\s*costume|bathing\s*suit|bras?|panties|knickers|sexy|sexual\w*|seductive|sensual|erotic|cleavage|kissing|kisses|blood(?![\s-]*(orange|red))|bloody|bleeding|gory|wounded|injur(y|ies|ed)|weapons?|guns?|knife|knives|cigarettes?|vap(e|ing)|alcohol|beer|drunk|drugs?)\b|\b\d{1,2}\s*(years?|yrs?|y\/?o)\b/i;
 
 /** Customer free text → one safe line (no control chars/newlines, collapsed, capped), or null. */
 export function cleanPickGuidance(text) {
   if (typeof text !== "string") return null;
   const clean = text
+    .replace(/[\u200b-\u200d\u2060\ufeff]/g, "") // zero-width chars can hide a blocked word
     .replace(/[\u0000-\u001f\u007f]+/g, " ")
     .replace(/["“”]/g, "'")
     .replace(/\s+/g, " ")
