@@ -22,12 +22,13 @@ import { PickerTile } from './PickerTile';
 import { PreviewProgress } from './PreviewProgress';
 import { buttonClasses } from '@/components/ui/Button';
 import { fieldControl } from '@/components/ui/form-styles';
-import { PICK_GUIDANCE_MAX } from '@/lib/preview/guidance';
+import { PICK_GUIDANCE_MAX, isGuidanceAllowed } from '@/lib/preview/guidance';
 
 const POLL_MS = 1500;
 const TIMEOUT_MS = 150_000;
 const RETRY_DELAY_MS = 3_000;
 const MAX_REROLLS = 2; // initial + 2 re-rolls = 3 batches, then escalate
+const GUIDANCE_REFUSED = 'Please describe a change to how they look, like their hair, glasses or clothing colours.';
 // Weak-photo escalation cutoff — best faceH below this ⇒ "add a clearer front-facing photo".
 // n=1-derived (the 20% selection floor, Nicki); TUNABLE / revisit-with-data. LOW STAKES:
 // the picker never blocks, so a wrong threshold only shows slightly-off escalation COPY.
@@ -45,6 +46,8 @@ interface Props {
   initialChosen?: ChosenSheet | null;
   /** Intent gate: only offer generation once a photo + consent are present. */
   ready: boolean;
+  /** Told about every pick, so a parent form can carry it on submit (companion cards). */
+  onChosen?: (sheet: ChosenSheet | null) => void;
   /** DEV/harness only: force a state for render verification (no network). */
   __forceMode?: Mode;
   __forceOptions?: PreviewBatchOption[];
@@ -52,7 +55,7 @@ interface Props {
 }
 
 export function CharacterPicker(props: Props) {
-  const { subjectKey, name, role, inputs, artStyle, photoPaths, initialChosen, ready } = props;
+  const { subjectKey, name, role, inputs, artStyle, photoPaths, initialChosen, ready, onChosen } = props;
   const [mode, setMode] = useState<Mode>(props.__forceMode ?? (initialChosen ? 'picked' : 'idle'));
   const [options, setOptions] = useState<PreviewBatchOption[]>(props.__forceOptions ?? []);
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -63,11 +66,16 @@ export function CharacterPicker(props: Props) {
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retriedRef = useRef(false);
   // Re-roll guidance ("shorter hair"). The pick is LOCKED into the book, so guidance lives
-  // HERE (not on a throwaway preview): it shapes the next options, and the option picked
-  // carries it (sheet.guidance) so the book's description agrees with the picture.
+  // HERE (not on a throwaway preview): it shapes the next options, and an option picked from a
+  // guided batch is marked `guided`, so the book describes the character from that picture.
   const [guidance, setGuidance] = useState('');
+  const [guidanceError, setGuidanceError] = useState<string | null>(null);
   const [batchGuidance, setBatchGuidance] = useState<string | undefined>(undefined); // of the batch on screen
   const guidanceId = useId();
+  // Bumped by every user action (begin / re-roll / pick). An older run's in-flight request or
+  // poll checks it after each await and stops, so a late old batch can never overwrite the new
+  // one (or flip a pick back to options) and the pick always matches the batch on screen.
+  const runRef = useRef(0);
 
   const stop = () => { if (pollRef.current) clearTimeout(pollRef.current); pollRef.current = null; };
   useEffect(() => stop, []);
@@ -84,27 +92,37 @@ export function CharacterPicker(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only resume
   }, []);
 
-  async function start(currentRound: number, withGuidance?: string) {
+  async function start(run: number, currentRound: number, withGuidance?: string) {
+    const stale = () => runRef.current !== run;
     stop();
-    retriedRef.current = false;
     setMode('generating');
     setOptions([]);
     setBatchGuidance(withGuidance);
 
+    // ONE silent retry for a transient miss. The retry flag is reset only by a user action
+    // (begin / tryAgain), never here, so a retry can't re-arm itself into an endless loop.
     const onBusy = () => {
-      if (!retriedRef.current) { retriedRef.current = true; pollRef.current = setTimeout(() => void start(currentRound, withGuidance), RETRY_DELAY_MS); return; }
+      if (stale()) return;
+      if (!retriedRef.current) { retriedRef.current = true; pollRef.current = setTimeout(() => void start(run, currentRound, withGuidance), RETRY_DELAY_MS); return; }
       setMode('degraded');
     };
 
     try {
       const res = await requestPreviewBatch({ role, inputs, artStyle, photoPaths, count: 3, guidance: withGuidance });
+      if (stale()) return;
+      // A refusal (out of previews, picker off, no photos, unsafe guidance) won't change on a
+      // retry: go straight to the calm fallback. Only busy/unavailable gets the silent retry.
+      if (res.blocked && res.blocked !== 'rate_limited' && res.blocked !== 'unavailable') { setMode('degraded'); return; }
       if (res.blocked || res.options.length === 0) { onBusy(); return; }
       setBatchId(res.batchId);
       setOptions(res.options);
+      let last = res.options;
       const startedAt = Date.now();
       const poll = async () => {
         try {
           const s = await getPreviewBatchStatus(res.batchId);
+          if (stale()) return;
+          last = s.options;
           setOptions(s.options);
           if (s.faceQuality != null) setFaceQuality(s.faceQuality);
           const anyDone = s.options.some((o) => o.status === 'done' && o.imageUrl);
@@ -112,22 +130,34 @@ export function CharacterPicker(props: Props) {
           if (anyDone) setMode('options'); // reveal as each lands
           if (settled) { if (!anyDone) setMode('degraded'); return; }
         } catch { /* transient poll error — keep going until timeout */ }
-        if (Date.now() - startedAt > TIMEOUT_MS) { if (!options.some((o) => o.status === 'done')) onBusy(); return; }
+        if (stale()) return;
+        if (Date.now() - startedAt > TIMEOUT_MS) { if (!last.some((o) => o.status === 'done')) onBusy(); return; }
         pollRef.current = setTimeout(poll, POLL_MS);
       };
       pollRef.current = setTimeout(poll, POLL_MS);
     } catch { onBusy(); }
   }
 
-  function begin() { setStaleNote(false); setRound(0); void start(0); }
+  function begin() {
+    runRef.current += 1;
+    retriedRef.current = false;
+    setStaleNote(false); setRound(0); void start(runRef.current, 0);
+  }
   function tryAgain() {
+    const g = guidance.trim();
+    if (g && !isGuidanceAllowed(g)) { setGuidanceError(GUIDANCE_REFUSED); return; }
+    setGuidanceError(null);
     if (round >= MAX_REROLLS) { setMode('escalation'); return; }
-    const next = round + 1; setRound(next); void start(next, guidance.trim() || undefined);
+    runRef.current += 1;
+    retriedRef.current = false;
+    const next = round + 1; setRound(next); void start(runRef.current, next, g || undefined);
   }
   async function pick(o: PreviewBatchOption) {
     stop();
-    const sheet: ChosenSheet = { subjectId: subjectKey, previewId: o.previewId, imagePath: `previews/${o.previewId}.png`, batchId: batchId ?? undefined, imageUrl: o.imageUrl ?? null, guidance: batchGuidance };
+    runRef.current += 1; // a poll still in flight must not flip the pick back to options
+    const sheet: ChosenSheet = { subjectId: subjectKey, previewId: o.previewId, imagePath: `previews/${o.previewId}.png`, batchId: batchId ?? undefined, imageUrl: o.imageUrl ?? null, guided: Boolean(batchGuidance) };
     setChosen(sheet);
+    onChosen?.(sheet);
     setMode('picked');
     try { await persistChosenSheet(subjectKey, sheet); } catch { /* soft: pick shows locally; book still generates */ }
   }
@@ -200,11 +230,16 @@ export function CharacterPicker(props: Props) {
                   value={guidance}
                   onChange={(e) => setGuidance(e.target.value)}
                   // Enter paints new looks; it must never submit the surrounding step form.
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); tryAgain(); } }}
+                  // (not while an IME is composing: Enter there confirms a character)
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); tryAgain(); } }}
                   maxLength={PICK_GUIDANCE_MAX}
                   placeholder="e.g. shorter hair, rounder glasses"
                   className={fieldControl}
+                  aria-invalid={guidanceError ? true : undefined}
                 />
+                {guidanceError ? (
+                  <p className="font-body text-iron-oxide text-caption" role="alert">{guidanceError}</p>
+                ) : null}
               </div>
               <button type="button" onClick={tryAgain} className="font-body text-iron-oxide underline text-caption">
                 Paint 3 new looks for {name}

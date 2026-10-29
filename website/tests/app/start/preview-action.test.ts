@@ -492,6 +492,13 @@ describe('requestPreviewBatch', () => {
     for (const d of events) expect(d.guidance).toBe("fluffier ears and a 'red' collar");
   });
 
+  it('GUIDANCE: unsafe guidance is refused before any spend (blocked: guidance)', async () => {
+    const r = await requestPreviewBatch({ ...batchInput, guidance: 'make him shirtless' });
+    expect(r.blocked).toBe('guidance');
+    expect(cn()).not.toHaveBeenCalled();
+    expect(inngest.send).not.toHaveBeenCalled();
+  });
+
   it('GUIDANCE: none / blank → the event carries no guidance key (unchanged)', async () => {
     await requestPreviewBatch({ ...batchInput, guidance: '   ' });
     const d = (inngest.send as ReturnType<typeof vi.fn>).mock.calls[0]![0].data;

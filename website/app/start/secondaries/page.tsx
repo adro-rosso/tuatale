@@ -24,6 +24,7 @@ export default async function SecondariesStepPage() {
           appearance?: string;
           extra_care?: boolean;
           photos?: string[];
+          chosen_sheet?: { previewId?: string; degraded?: boolean; guided?: boolean } | null;
         }>
       ).map((s) => ({
         name: s.name ?? '',
@@ -33,6 +34,11 @@ export default async function SecondariesStepPage() {
         appearance: s.appearance ?? '',
         extra_care: s.extra_care ?? false,
         photos: Array.isArray(s.photos) ? s.photos : [],
+        // A saved companion pick comes back with its card, so re-submitting keeps it.
+        chosen:
+          s.chosen_sheet?.previewId && !s.chosen_sheet.degraded
+            ? { previewId: s.chosen_sheet.previewId, guided: s.chosen_sheet.guided === true }
+            : null,
       }))
     : [];
 

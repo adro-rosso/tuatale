@@ -30,7 +30,9 @@
 
 import { validateChildFeatures } from "../../src/character-features.js";
 import { validateArtStyle } from "../../src/art-styles.js";
-import { cleanPickGuidance } from "../../src/pick-guidance.js";
+// A usable pick that came from a guided re-roll (src/pick-guidance.js): the book then
+// describes that character from the picked picture. Degraded / pathless picks never count.
+const isGuidedPick = (c) => Boolean(c && !c.degraded && c.imagePath && c.guided === true);
 
 const HUMAN = "human";
 
@@ -103,11 +105,9 @@ export function adaptSecondary(s, index) {
     anchor: deriveAnchor(s),
     appearance_markers: s.appearance,
   };
-  // Picker guidance (src/pick-guidance.js): the customer's requested change on the option
-  // they picked — the book appends it to this character's description. Only for a usable
-  // (non-degraded) pick; absent → adapted object byte-identical.
-  const sg = s.chosen_sheet && !s.chosen_sheet.degraded ? cleanPickGuidance(s.chosen_sheet.guidance) : null;
-  if (sg) adapted.pick_guidance = sg;
+  // Guided pick (src/pick-guidance.js) → the book describes this character from the picked
+  // picture. Absent → adapted object byte-identical.
+  if (isGuidedPick(s.chosen_sheet)) adapted.pick_guided = true;
   if (subjectType === HUMAN) {
     // Forward gender verbatim. We deliberately DO NOT default a missing gender:
     // the wizard's Zod refine already requires it on humans, so absence means
@@ -162,9 +162,8 @@ export function adaptOrderToPipelineInput(order) {
     // FEATURES_COMPOSE — heritage is always honoured); the HERITAGE frame governs render.
     background: order.background ?? null,
   };
-  // Protagonist picker guidance (pet / adult heroes have the picker): same rule as companions.
-  const cg = order.chosen_sheet && !order.chosen_sheet.degraded ? cleanPickGuidance(order.chosen_sheet.guidance) : null;
-  if (cg) child.pick_guidance = cg;
+  // Protagonist guided pick (pet / adult heroes have the picker): same rule as companions.
+  if (isGuidedPick(order.chosen_sheet)) child.pick_guided = true;
   if (isPet) {
     // Non-human protagonist: species/breed + multi-photo anchor. No structured
     // features (a pet has none). photo_urls shape for pets: { pet: ["uploads/…", …] }.

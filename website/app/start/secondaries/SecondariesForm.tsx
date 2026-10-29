@@ -23,10 +23,19 @@ interface SecondaryCardData {
   // Storage paths — a companion's photos drive their likeness (pet books only:
   // owner / other pets, never a child). Empty for text-only companions.
   photos: string[];
+  // The character-picker pick for this card. Travels with the card on submit; the server
+  // verifies it (lib/preview/companion-picks.ts). Cleared when the photos change.
+  chosen?: { previewId: string; guided?: boolean } | null;
+  // Client-only stable React key, so removing a card never hands its picker to another card.
+  _key?: string;
 }
+
+let nextCardKey = 0;
+const cardKey = () => `card-${++nextCardKey}`;
 
 function emptyCard(): SecondaryCardData {
   return {
+    _key: cardKey(),
     name: '',
     subject_type: '',
     relationship: '',
@@ -66,7 +75,7 @@ const SECONDARY_PHOTO_ENABLED = true;
 const MAX_CARDS = 3;
 
 export function SecondariesForm({ initialSecondaries, bookType, protagonistName, artStyle, pickerEnabled, childPhotoEnabled = false }: SecondariesFormProps) {
-  const [cards, setCards] = useState<SecondaryCardData[]>(initialSecondaries);
+  const [cards, setCards] = useState<SecondaryCardData[]>(() => initialSecondaries.map((c) => ({ ...c, _key: cardKey() })));
   const [errors, setErrors] = useState<FieldErrors>({});
   const [consent, setConsent] = useState(false);
   const [consentError, setConsentError] = useState<string | null>(null);
@@ -152,7 +161,7 @@ export function SecondariesForm({ initialSecondaries, bookType, protagonistName,
         <div className="space-y-md">
           {cards.map((card, idx) => (
             <SecondaryCard
-              key={idx}
+              key={card._key ?? idx}
               idx={idx}
               data={card}
               errors={errorsForCard(errors, idx)}
@@ -327,7 +336,8 @@ function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChi
           </label>
           <PhotoUploader
             paths={data.photos}
-            onChange={(photos) => onChange({ photos })}
+            // New photos make an earlier pick stale (it was painted from the old ones).
+            onChange={(photos) => onChange({ photos, chosen: null })}
             max={5}
             upload={isChildCompanionPhoto ? uploadCompanionPhoto : undefined}
             consentVersion={isChildCompanionPhoto ? 'companion-v1' : undefined}
@@ -356,6 +366,8 @@ function SecondaryCard({ idx, data, errors, isPet, companionsPhotoEnabled, isChi
                 artStyle={artStyle}
                 photoPaths={data.photos}
                 ready={data.photos.length > 0}
+                // The pick rides with this card to the server (see SecondaryCardData.chosen).
+                onChosen={(s) => onChange({ chosen: s?.previewId ? { previewId: s.previewId, guided: s.guided === true } : null })}
               />
             </div>
           ) : null}

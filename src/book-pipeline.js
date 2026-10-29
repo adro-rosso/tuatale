@@ -51,7 +51,6 @@ import {
   SheetState,
 } from "./sheet-meta.js";
 import { maskName } from "./text-utils.js";
-import { applyPickGuidance } from "./pick-guidance.js";
 
 // ---- Constants (verbatim from generate-book.js) ----------------------------
 export const GEMINI_IMAGE_USD_PER_CALL = 0.04;
@@ -408,7 +407,7 @@ function outfitSentences(text) {
     .join(" ");
 }
 
-export async function applyPhotoAppearance(story, meta, { outputDir, derive = derivePhotoAppearance, log = null, readFile = fs.readFileSync } = {}) {
+export async function applyPhotoAppearance(story, meta, { outputDir, derive = derivePhotoAppearance, deriveSheet = deriveSheetAppearance, log = null, readFile = fs.readFileSync } = {}) {
   const applied = [];
   if (!story || !meta?.inputs) return applied;
   // Flag gates NEW derivations only. A cache file means "this book was minted with the derived
@@ -425,6 +424,10 @@ export async function applyPhotoAppearance(story, meta, { outputDir, derive = de
     const age = child.is_adult ? `${child.name} is an adult.`
       : child.age != null ? `${child.name} is ${child.age} years old.` : `${child.name}.`;
     targets.push({ prefix: "protagonist", name: child.name, photos: childPhotos, lead: age,
+      // GUIDED PICK (src/pick-guidance.js): the customer re-rolled with guidance ("shorter
+      // hair") and picked the result, LOCKED as this sheet (worker chosen-sheet-inject). Describe
+      // that approved picture, not the photos, or the text fights the picture on every page.
+      pickedSheet: child.pick_guided ? path.join(cacheDir, "sheet-01.png") : null,
       get: () => story.character, set: (v) => { story.character = v; } });
   }
   (meta.inputs.secondaries ?? []).forEach((ms, i) => {
@@ -433,7 +436,9 @@ export async function applyPhotoAppearance(story, meta, { outputDir, derive = de
     const photos = Array.isArray(ms.photo_paths) && ms.photo_paths.length ? ms.photo_paths : (ms.photoPath ? [ms.photoPath] : []);
     if (!photos.length) return;
     const rel = ms.relationship ? `${ms.name} is ${story.character_name ?? child?.name ?? "the child"}'s ${ms.relationship}.` : `${ms.name}.`;
-    targets.push({ prefix: ms.id ?? `companion-${i + 1}`, name: ms.name, photos, lead: rel,
+    const prefix = ms.id ?? `companion-${i + 1}`;
+    targets.push({ prefix, name: ms.name, photos, lead: rel,
+      pickedSheet: ms.pick_guided ? path.join(cacheDir, `${prefix}-01.png`) : null,
       get: () => comp.character_description, set: (v) => { comp.character_description = v; } });
   });
   for (const t of targets) {
@@ -446,15 +451,21 @@ export async function applyPhotoAppearance(story, meta, { outputDir, derive = de
       }
       if (!derived) {
         if (!flagOn) continue; // no cache + flag off → untouched (byte-identical)
-        const bufs = t.photos.map((f) => { try { return readFile(f); } catch { return null; } }).filter(Boolean);
-        if (!bufs.length) continue;
-        derived = await derive(bufs);
+        const picked = t.pickedSheet && fs.existsSync(t.pickedSheet) ? readFile(t.pickedSheet) : null;
+        if (picked) {
+          t.source = "picked picture";
+          derived = await deriveSheet(picked, { subjectType: "human" });
+        } else {
+          const bufs = t.photos.map((f) => { try { return readFile(f); } catch { return null; } }).filter(Boolean);
+          if (!bufs.length) continue;
+          derived = await derive(bufs);
+        }
         // The descriptor must carry no clothing (system prompt); if the model slips a "wears…"
         // sentence in, drop it here so outfitSentences() can never duplicate it (#4).
         if (derived) derived = String(derived).split(/(?<=[.!?])\s+/).filter((x) => !OUTFIT_VERB.test(x)).join(" ").trim() || null;
         if (derived) {
           fs.mkdirSync(cacheDir, { recursive: true });
-          fs.writeFileSync(cachePath, JSON.stringify({ subject: t.name, derived, photos: t.photos.map((f) => path.basename(f)), at: new Date().toISOString() }, null, 2));
+          fs.writeFileSync(cachePath, JSON.stringify({ subject: t.name, derived, source: t.source ?? "photos", photos: t.photos.map((f) => path.basename(f)), at: new Date().toISOString() }, null, 2));
         }
       }
     } catch (err) {
@@ -470,7 +481,7 @@ export async function applyPhotoAppearance(story, meta, { outputDir, derive = de
     const next = `${head} ${outfit}`.replace(/\s+/g, " ").trim();
     t.set(next);
     applied.push(t.name);
-    log?.log?.(`  [photo-appearance] ${t.name}: description derived from ${t.photos.length} photo(s)`);
+    log?.log?.(`  [photo-appearance] ${t.name}: description derived from ${t.source ?? `${t.photos.length} photo(s)`}`);
   }
   return applied;
 }
@@ -806,9 +817,6 @@ export async function generateBook({
   // PHOTO_APPEARANCE: photo-derived physical text for photo-anchored humans, BEFORE planBook
   // (fingerprint) — cached in sheetsDir so re-renders reuse the same words. Flag off → no-op.
   await applyPhotoAppearance(story, meta, { outputDir, log });
-  // Picker guidance AFTER the photo-derived text, so the description agrees with the locked
-  // picked picture (src/pick-guidance.js). Idempotent; none → no-op.
-  for (const n of applyPickGuidance(story, meta)) log?.log?.(`  [pick-guidance] ${n}: approved-look note added to the description`);
   fs.mkdirSync(pagesDir, { recursive: true });
 
   const displayPath = (abs) => path.relative(outputDir, abs).replace(/\\/g, "/");

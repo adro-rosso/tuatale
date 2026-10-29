@@ -3,7 +3,8 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { validateSecondaries } from '@/lib/validation/validate';
-import { updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
+import { getDraftByCookieId, updateDraftByCookieId, type DraftUpdate } from '@/db/drafts';
+import { attachCompanionPicks } from '@/lib/preview/companion-picks';
 import { getDraftCookieFromRequest } from '@/lib/draft-cookie';
 import { isConsentVersion, buildConsentRecord } from '@/lib/consent/registry';
 import type { FieldErrors } from '@/lib/validation/validate';
@@ -51,6 +52,11 @@ export async function submitSecondariesStep(
       return Array.isArray(photos) && photos.length > 0 ? { ...card, photo_consent: record } : card;
     });
   }
+
+  // Companion picker picks ride with their cards (the Zod schema strips them); attach each
+  // only after verifying its preview row belongs to this draft (lib/preview/companion-picks).
+  const draft = await getDraftByCookieId(cookieId);
+  if (draft?.id) secondaries = await attachCompanionPicks(secondaries, payload.secondaries, draft.id);
 
   const update: DraftUpdate = {
     secondaries: secondaries as unknown as Json,

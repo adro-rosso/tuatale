@@ -81,9 +81,10 @@ export interface ChosenSheet {
   imageUrl?: string | null;
   /** Set on the operator-fine-tune escalation path. */
   escalated?: boolean;
-  /** The re-roll guidance that produced this option, if any. The book appends it to the
-   *  character's description so the text agrees with the locked picture. */
-  guidance?: string;
+  /** The option came from a guided re-roll ("shorter hair"). The book then describes the
+   *  character from this picked picture, not the photos, so text and picture agree. The
+   *  guidance TEXT itself is never stored or sent to the book. */
+  guided?: boolean;
   /** Slice 4: the durable copy/PNG was unavailable → book made from photos, pick lost. */
   degraded?: boolean;
   degradedReason?: string;
@@ -132,5 +133,5 @@ export interface PreviewBatchResult {
   /** Best-photo faceH across the batch (Slice 3 escalation). null = pet / not yet known. */
   faceQuality?: number | null;
   /** Set when the batch was refused up-front (no spend, no rows). */
-  blocked?: 'capped' | 'rate_limited' | 'no_photos' | 'disabled' | 'unavailable';
+  blocked?: 'capped' | 'rate_limited' | 'no_photos' | 'disabled' | 'unavailable' | 'guidance';
 }
